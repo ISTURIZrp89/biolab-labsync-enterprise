@@ -26,6 +26,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint('DashboardScreen initState called');
     _loadStats();
   }
 
@@ -84,8 +85,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthService>();
-    final sync = context.watch<SyncEngine>();
+    final AuthService auth;
+    final SyncEngine sync;
+    try {
+      auth = context.watch<AuthService>();
+      sync = context.watch<SyncEngine>();
+    } catch (e) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF001020),
+        body: Center(
+          child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF001020),
