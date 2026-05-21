@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../data/db.dart';
+import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
@@ -21,22 +22,22 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   int _todayEntries = 0;
   int _totalEntries = 0;
   String _todayClosureStatus = 'ABIERTO';
-  late AnimationController _animationController;
+  late AnimationController _animController;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
+    _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _animationController.forward();
+    _animController.forward();
     _loadStats();
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
@@ -45,19 +46,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       final db = await LocalDatabase.instance.database;
       final today = DateTime.now().toIso8601String().split('T')[0];
 
-      final todayEntries = await db.query(
-        'form_entries',
-        where: 'date = ?',
-        whereArgs: [today],
-      );
-
+      final todayEntries = await db.query('form_entries', where: 'date = ?', whereArgs: [today]);
       final totalEntries = await db.query('form_entries');
-
-      final closures = await db.query(
-        'day_closures',
-        where: 'date = ?',
-        whereArgs: [today],
-      );
+      final closures = await db.query('day_closures', where: 'date = ?', whereArgs: [today]);
 
       final syncEngine = context.read<SyncEngine>();
       final pending = await syncEngine.getPendingCount();
@@ -67,31 +58,21 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           _pendingCount = pending;
           _todayEntries = todayEntries.length;
           _totalEntries = totalEntries.length;
-          _todayClosureStatus = closures.isNotEmpty
-              ? closures.first['status'] as String
-              : 'ABIERTO';
+          _todayClosureStatus = closures.isNotEmpty ? closures.first['status'] as String : 'ABIERTO';
         });
       }
     } catch (e) {
-      debugPrint('Dashboard load error (offline mode): $e');
-      if (mounted) {
-        setState(() {
-          _pendingCount = 0;
-          _todayEntries = 0;
-          _totalEntries = 0;
-          _todayClosureStatus = 'ABIERTO';
-        });
-      }
+      debugPrint('Dashboard load error: $e');
     }
   }
 
   static const _modules = [
-    {"module": "incubadoras", "label": "Incubadoras", "icon": Icons.thermostat, "color": Color(0xFFFF6B6B)},
-    {"module": "autoclaves", "label": "Autoclaves", "icon": Icons.local_fire_department, "color": Color(0xFFFFA94D)},
-    {"module": "ultracongeladores", "label": "Ultracongeladores", "icon": Icons.ac_unit, "color": Color(0xFF4DABF7)},
-    {"module": "equipos", "label": "Equipos", "icon": Icons.precision_manufacturing, "color": Color(0xFF69DB7C)},
-    {"module": "procesamiento", "label": "Procesamiento", "icon": Icons.biotech, "color": Color(0xFFB197FC)},
-    {"module": "bitacora", "label": "Bitacora General", "icon": Icons.book, "color": Color(0xFFE91E63)},
+    {"module": "incubadoras", "label": "Incubadoras", "icon": Icons.thermostat_outlined, "color": OmniTheme.red400},
+    {"module": "autoclaves", "label": "Autoclaves", "icon": Icons.local_fire_department_outlined, "color": OmniTheme.orange400},
+    {"module": "ultracongeladores", "label": "Ultracongeladores", "icon": Icons.ac_unit_outlined, "color": OmniTheme.accentBlue},
+    {"module": "equipos", "label": "Equipos", "icon": Icons.precision_manufacturing_outlined, "color": OmniTheme.green400},
+    {"module": "procesamiento", "label": "Procesamiento", "icon": Icons.biotech_outlined, "color": Color(0xFFB197FC)},
+    {"module": "bitacora", "label": "Bitacora", "icon": Icons.book_outlined, "color": Color(0xFFF472B6)},
   ];
 
   @override
@@ -103,307 +84,363 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       sync = context.watch<SyncEngine>();
     } catch (e) {
       return Scaffold(
-        backgroundColor: const Color(0xFF020617),
-        body: Center(
-          child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
-        ),
+        backgroundColor: OmniTheme.bg950,
+        body: Center(child: Text('Error: $e', style: const TextStyle(color: OmniTheme.red400))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
-      appBar: AppBar(
-        title: Column(
+      backgroundColor: OmniTheme.bg950,
+      appBar: _buildAppBar(auth, sync),
+      body: Stack(
+        children: [
+          const _BackgroundEffect(),
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatsSection(),
+                const SizedBox(height: 24),
+                _buildActivitySection(),
+                const SizedBox(height: 24),
+                _buildModulesGrid(),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(AuthService auth, SyncEngine sync) {
+    return AppBar(
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(color: OmniTheme.accentBlue.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 2)),
+              ],
+            ),
+            child: const Icon(Icons.biotech, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo],
+                ).createShader(bounds),
+                child: const Text(
+                  'BioLab',
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              Text(
+                auth.currentUser?.nombre ?? 'Dashboard',
+                style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted, letterSpacing: 1),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: OmniTheme.bg900,
+            border: Border.all(color: OmniTheme.bg800),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: sync.isOnline ? OmniTheme.green400 : OmniTheme.red400,
+                  shape: BoxShape.circle,
+                  boxShadow: sync.isOnline
+                      ? [BoxShadow(color: OmniTheme.green400, blurRadius: 6)]
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                sync.isOnline ? 'ONLINE' : 'OFFLINE',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textSecondary),
+              ),
+              if (_pendingCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: OmniTheme.orange400.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$_pendingCount',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.orange400),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.sync, size: 20),
+          onPressed: () async {
+            try {
+              final success = await sync.synchronize();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success ? 'Sincronizacion completada' : 'Sin conexion'),
+                    backgroundColor: OmniTheme.bg800,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                );
+                _loadStats();
+              }
+            } catch (_) {}
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined, size: 20),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+        ),
+        IconButton(
+          icon: const Icon(Icons.logout, size: 20),
+          onPressed: () {
+            try { sync.stopPeriodicSync(); } catch (_) {}
+            auth.logout();
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsSection() {
+    final now = DateTime.now();
+    final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShaderMask(
               shaderCallback: (bounds) => const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo],
               ).createShader(bounds),
               child: const Text(
-                'BioLab',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                'Pipeline de Datos v1.0.0',
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
-            Text(
-              auth.currentUser?.nombre ?? 'Dashboard',
-              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.normal),
+            const SizedBox(height: 16),
+            const Row(
+              children: [
+                Expanded(child: _StatusCard(title: 'Registros Hoy', value: '0', status: 'OK', color: OmniTheme.green400)),
+                SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Total Registros', value: '0', status: 'OK', color: OmniTheme.green400)),
+                SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Pendientes Sync', value: '0', status: 'Clear', color: OmniTheme.textMuted)),
+                SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Cierre del Dia', value: 'ABIERTO', status: 'Active', color: OmniTheme.accentBlue)),
+              ],
             ),
           ],
-        ),
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: sync.isOnline ? const Color(0xFF22C55E).withOpacity(0.15) : const Color(0xFFEF4444).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    sync.isOnline ? Icons.wifi : Icons.wifi_off,
-                    color: sync.isOnline ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
-                    size: 16,
-                  ),
-                ),
-                if (_pendingCount > 0)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFEF4444)]),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$_pendingCount',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync, size: 20),
-            onPressed: () async {
-              try {
-                final success = await sync.synchronize();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(success ? 'Sincronizacion completada' : 'Sin conexion. Datos guardados localmente'),
-                      backgroundColor: success ? const Color(0xFF1E293B) : const Color(0xFF1E293B),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  );
-                  _loadStats();
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Modo offline activo'),
-                    backgroundColor: const Color(0xFF1E293B),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  );
-                }
-              }
-            },
-            tooltip: 'Sincronizar',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings, size: 20),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, size: 20),
-            onPressed: () {
-              try {
-                sync.stopPeriodicSync();
-              } catch (_) {}
-              auth.logout();
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF020617), Color(0xFF0F172A)],
-          ),
-        ),
-        child: RefreshIndicator(
-          onRefresh: _loadStats,
-          color: const Color(0xFF3B82F6),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildStatsCard(),
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildActionButton(
-                          icon: Icons.calendar_month,
-                          label: 'Calendario',
-                          onTap: () => Navigator.push(
-                            context,
-                            PageRouteBuilder(
-                              pageBuilder: (context, animation, secondaryAnimation) => const CalendarScreen(),
-                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                return FadeTransition(opacity: animation, child: child);
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildActionButton(
-                          icon: Icons.history,
-                          label: 'Auditoria',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const AuditScreen()),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 3,
-                        height: 16,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF6366F1)]),
-                          borderRadius: BorderRadius.all(Radius.circular(2)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Modulos de Bitacora',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                AnimatedBuilder(
-                  animation: _animationController,
-                  builder: (context, child) {
-                    return GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 1.25,
-                      ),
-                      itemCount: _modules.length,
-                      itemBuilder: (context, index) {
-                        final m = _modules[index];
-                        final delay = index * 0.08;
-                        final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-                          CurvedAnimation(
-                            parent: _animationController,
-                            curve: Interval(delay, (delay + 0.3).clamp(0.0, 1.0), curve: Curves.easeOutCubic),
-                          ),
-                        );
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
-                              CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
-                            ),
-                            child: _buildModuleCard(m),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
         ),
       ),
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required String label, required VoidCallback onTap}) {
+  Widget _buildActivitySection() {
+    return Card(
+      child: SizedBox(
+        height: 200,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+              ),
+              child: const Row(
+                children: [
+                  Text(
+                    'Actividad Reciente',
+                    style: TextStyle(
+                      fontFamily: 'Outfit',
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                      color: OmniTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inbox_outlined, size: 32, color: OmniTheme.bg700),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'No hay actividad reciente en el pipeline.',
+                      style: TextStyle(color: OmniTheme.bg700, fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModulesGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.4,
+      ),
+      itemCount: _modules.length,
+      itemBuilder: (context, index) {
+        final m = _modules[index];
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: Duration(milliseconds: 400 + (index * 100)),
+          curve: Curves.easeOutCubic,
+          builder: (_, value, child) {
+            return Transform.translate(
+              offset: Offset(0, 20 * (1 - value)),
+              child: Opacity(opacity: value, child: child),
+            );
+          },
+          child: _ModuleCard(
+            label: m['label'] as String,
+            icon: m['icon'] as IconData,
+            color: m['color'] as Color,
+            onTap: () => Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (_, __, ___) => FormEntryScreen(
+                  module: m['module'] as String,
+                  moduleLabel: m['label'] as String,
+                ),
+                transitionsBuilder: (_, animation, __, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 300),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String status;
+  final Color color;
+
+  const _StatusCard({required this.title, required this.value, required this.status, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: OmniTheme.textMuted,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontFamily: 'Outfit',
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: OmniTheme.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              status,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuleCard extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ModuleCard({required this.label, required this.icon, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F172A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: const Color(0xFF3B82F6)),
-              const SizedBox(width: 8),
-              Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModuleCard(Map<String, dynamic> m) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) => FormEntryScreen(
-                module: m['module'] as String,
-                moduleLabel: m['label'] as String,
-              ),
-              transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-              transitionDuration: const Duration(milliseconds: 300),
-            ),
-          );
-        },
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF0F172A),
-                (m['color'] as Color).withOpacity(0.08),
-              ],
-            ),
+            color: OmniTheme.bg900,
+            border: Border.all(color: OmniTheme.bg800),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -411,21 +448,24 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: (m['color'] as Color).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(14),
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(m['icon'] as IconData, size: 24, color: m['color'] as Color),
+                  child: Icon(icon, color: color, size: 22),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(
-                  m['label'] as String,
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'Outfit',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: OmniTheme.textPrimary,
+                  ),
                   textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -434,128 +474,40 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       ),
     );
   }
+}
 
-  Widget _buildStatsCard() {
-    final now = DateTime.now();
-    final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+class _BackgroundEffect extends StatelessWidget {
+  const _BackgroundEffect();
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3B82F6).withOpacity(0.05),
-            blurRadius: 20,
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                today,
-                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _getClosureStatusColor(_todayClosureStatus).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _getClosureStatusColor(_todayClosureStatus).withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _getClosureStatusColor(_todayClosureStatus),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _todayClosureStatus,
-                      style: TextStyle(
-                        color: _getClosureStatusColor(_todayClosureStatus),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(child: _statItem('Registros Hoy', '$_todayEntries', Icons.today_outlined)),
-              const SizedBox(width: 12),
-              Expanded(child: _statItem('Total', '$_totalEntries', Icons.folder_outlined)),
-              const SizedBox(width: 12),
-              Expanded(child: _statItem('Pendientes', '$_pendingCount', Icons.sync_outlined)),
-            ],
-          ),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size.infinite,
+      painter: _RadialGradientPainter(),
     );
   }
+}
 
-  Widget _statItem(String label, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: const Color(0xFF3B82F6), size: 20),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w500),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+class _RadialGradientPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, 0),
+      width: size.width,
+      height: size.height,
     );
+    final gradient = RadialGradient(
+      center: Alignment.topCenter,
+      radius: 0.8,
+      colors: [
+        OmniTheme.accentBlue.withOpacity(0.04),
+        Colors.transparent,
+      ],
+    );
+    final paint = Paint()..shader = gradient.createShader(rect);
+    canvas.drawRect(rect, paint);
   }
 
-  Color _getClosureStatusColor(String status) {
-    switch (status) {
-      case 'CERRADO':
-        return const Color(0xFF22C55E);
-      case 'CERRADO_CON_OBSERVACION':
-      case 'CERRADO_OBSERVACION':
-        return const Color(0xFF3B82F6);
-      case 'COMPLETO':
-        return const Color(0xFF22C55E);
-      case 'PENDIENTE':
-        return const Color(0xFFF59E0B);
-      case 'REABIERTO':
-        return const Color(0xFFF97316);
-      default:
-        return Colors.grey;
-    }
-  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

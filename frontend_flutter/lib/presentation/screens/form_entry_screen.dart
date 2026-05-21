@@ -1,1247 +1,814 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
-import '../../domain/entities/form_entry.dart';
 import '../../domain/form_definitions.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
-import '../widgets/smart_form_field.dart';
+import '../../theme/omni_theme.dart';
 
 class FormEntryScreen extends StatefulWidget {
   final String module;
   final String moduleLabel;
 
-  const FormEntryScreen({
-    super.key,
-    required this.module,
-    required this.moduleLabel,
-  });
+  const FormEntryScreen({super.key, required this.module, required this.moduleLabel});
 
   @override
   State<FormEntryScreen> createState() => _FormEntryScreenState();
 }
 
 class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProviderStateMixin {
-  final FormRepositoryImpl _formRepo = FormRepositoryImpl();
-  TabController? _tabController;
-  String? _selectedSection;
-  List<FormEntry> _entries = [];
+  FormModuleDef? _moduleDef;
+  int _activeSectionIndex = 0;
+  List<Map<String, dynamic>> _entries = [];
   bool _loading = true;
-  FormModuleDef _moduleDef = <String, dynamic>{};
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _moduleDef = findModule(widget.module);
-    final sections = _moduleDef['sections'] as List? ?? [];
-    if (sections.isNotEmpty) {
-      _selectedSection = sections.first['key'] as String;
-      _tabController = TabController(length: sections.length, vsync: this);
-      _tabController!.addListener(() {
-        if (!_tabController!.indexIsChanging) {
-          final section = sections[_tabController!.index];
-          setState(() => _selectedSection = section['key'] as String);
-          _loadEntries();
-        }
-      });
+    if (_moduleDef != null && (_moduleDef!['sections'] as List).length > 1) {
+      _tabController = TabController(
+        length: (_moduleDef!['sections'] as List).length,
+        vsync: this,
+      );
     }
     _loadEntries();
   }
 
   @override
   void dispose() {
-    _tabController?.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _loadEntries() async {
     setState(() => _loading = true);
     try {
-      List<FormEntry> entries;
-      if (_selectedSection != null) {
-        entries = await _formRepo.getEntriesByModuleAndSubModule(widget.module, _selectedSection!);
-      } else {
-        entries = await _formRepo.getEntriesByModule(widget.module);
-      }
+      final repo = context.read<FormRepositoryImpl>();
+      final section = _getCurrentSection();
+      final sectionKey = section?['key'] as String?;
+      final entries = sectionKey != null
+          ? await repo.getEntriesByModuleAndSubModule(widget.module, sectionKey)
+          : await repo.getEntriesByModule(widget.module);
       if (mounted) {
-        setState(() => _entries = entries);
+        setState(() {
+          _entries = entries.map((e) => e.toJson()).toList();
+          _loading = false;
+        });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _entries = []);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      debugPrint('Load entries error: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _openForm({FormEntry? existing, Map<String, dynamic>? prefilledValues, bool quickEntry = false}) async {
-    final section = findSection(widget.module, _selectedSection ?? '');
-    if (section == null && (_moduleDef['sections'] as List?)?.isEmpty == true) {
-      return;
-    }
-
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => _FormBuilderScreen(
-          module: widget.module,
-          moduleLabel: widget.moduleLabel,
-          sectionKey: _selectedSection,
-          section: section,
-          existingEntry: existing,
-          prefilledValues: prefilledValues,
-          quickEntry: quickEntry,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-      ),
-    );
-
-    if (result != null) {
-      _loadEntries();
-      if (result['quickEntry'] == true) {
-        _openForm(
-          prefilledValues: result['formData'] as Map<String, dynamic>?,
-          quickEntry: true,
-        );
-      }
-    }
+  FormSectionDef? _getCurrentSection() {
+    if (_moduleDef == null) return null;
+    final sections = _moduleDef!['sections'] as List;
+    if (sections.isEmpty) return null;
+    return sections[_activeSectionIndex] as FormSectionDef;
   }
 
-  Future<void> _syncNow() async {
-    if (!mounted) return;
-    final syncEngine = context.read<SyncEngine>();
-    final success = await syncEngine.synchronize();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(success ? Icons.check_circle : Icons.warning_amber, color: success ? const Color(0xFF22C55E) : const Color(0xFFF59E0B)),
-              const SizedBox(width: 12),
-              Text(success ? 'Sincronizacion completada' : 'Error al sincronizar'),
-            ],
-          ),
-          backgroundColor: const Color(0xFF1E293B),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      );
-      if (success) _loadEntries();
-    }
-  }
+  void _openForm() {
+    final section = _getCurrentSection();
+    if (section == null) return;
 
-  void _showEntryDetails(FormEntry entry) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF0F172A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(_getModuleIcon(), color: _getModuleColor(), size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _getSectionLabel(entry.subModule),
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _detailRow('Fecha', _formatDate(entry.date)),
-                _detailRow('Usuario', entry.data['usuario'] ?? entry.data['nombre'] ?? entry.data['responsable'] ?? '-'),
-                const Divider(color: Colors.white10),
-                ...entry.data.entries.map((e) => _detailRow(_formatKey(e.key), _formatValue(e.value))),
-                const Divider(color: Colors.white10),
-                _detailRow('Estado', entry.status.toUpperCase()),
-                _detailRow('Creado', _formatDateTime(entry.createdAt)),
-                _detailRow('Actualizado', _formatDateTime(entry.updatedAt)),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _openForm(existing: entry);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: _getModuleColor()),
-            child: const Text('Editar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => _SmartFillModal(
+        module: widget.module,
+        moduleLabel: widget.moduleLabel,
+        section: section,
+        onSave: () {
+          _loadEntries();
+        },
       ),
     );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatKey(String key) {
-    return key.replaceAll('_', ' ').split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1);
-    }).join(' ');
-  }
-
-  String _formatValue(dynamic value) {
-    if (value == null) return '-';
-    return value.toString();
-  }
-
-  String _formatDate(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('dd/MM/yyyy').format(date);
-    } catch (_) {
-      return dateStr;
-    }
-  }
-
-  String _formatDateTime(String dateStr) {
-    try {
-      final date = DateTime.parse(dateStr);
-      return DateFormat('dd/MM/yyyy HH:mm').format(date.toLocal());
-    } catch (_) {
-      return dateStr;
-    }
-  }
-
-  String _getSectionLabel(String? sectionKey) {
-    if (sectionKey == null) return widget.moduleLabel;
-    final section = findSection(widget.module, sectionKey);
-    return section?['label'] as String? ?? sectionKey;
-  }
-
-  String _getEntrySummary(FormEntry entry) {
-    final data = entry.data;
-    final priorityKeys = ['equipo', 'modelo', 'nombre', 'paciente', 'contenido', 'producto', 'responsable', 'actividad', 'tipo_actividad'];
-    for (var key in priorityKeys) {
-      if (data.containsKey(key) && data[key].toString().isNotEmpty) {
-        return data[key].toString();
-      }
-    }
-    if (data.isNotEmpty) {
-      return data.values.firstWhere(
-        (v) => v.toString().isNotEmpty,
-        orElse: () => 'Sin datos',
-      ).toString();
-    }
-    return 'Sin datos';
-  }
-
-  IconData _getModuleIcon() {
-    final iconStr = _moduleDef['icon'] as String?;
-    switch (iconStr) {
-      case 'thermostat': return Icons.thermostat;
-      case 'local_fire_department': return Icons.local_fire_department;
-      case 'ac_unit': return Icons.ac_unit;
-      case 'precision_manufacturing': return Icons.precision_manufacturing;
-      case 'biotech': return Icons.biotech;
-      case 'book': return Icons.book;
-      default: return Icons.folder;
-    }
-  }
-
-  Color _getModuleColor() {
-    final colorStr = _moduleDef['color'] as String?;
-    if (colorStr != null) {
-      try {
-        return Color(int.parse(colorStr));
-      } catch (_) {}
-    }
-    return const Color(0xFF3B82F6);
   }
 
   @override
   Widget build(BuildContext context) {
-    final sections = _moduleDef['sections'] as List? ?? [];
+    final sections = _moduleDef?['sections'] as List? ?? [];
+    final hasTabs = sections.length > 1;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: OmniTheme.bg950,
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Row(
           children: [
-            Icon(_getModuleIcon(), color: _getModuleColor(), size: 22),
-            const SizedBox(width: 10),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(_getModuleIcon(), color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
             Text(widget.moduleLabel),
           ],
         ),
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: sections.length > 1
+        bottom: hasTabs
             ? TabBar(
                 controller: _tabController,
-                isScrollable: true,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white54,
-                indicatorColor: _getModuleColor(),
-                indicatorSize: TabBarIndicatorSize.tab,
-                tabs: sections.map((s) => Tab(text: s['label'] as String)).toList(),
+                onTap: (i) => setState(() => _activeSectionIndex = i),
+                tabs: sections.map<Tab>((s) {
+                  final sec = s as FormSectionDef;
+                  return Tab(text: (sec['label'] as String).toUpperCase());
+                }).toList(),
               )
             : null,
-        actions: [
-          Consumer<SyncEngine>(
-            builder: (context, sync, _) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: sync.isOnline ? const Color(0xFF22C55E).withOpacity(0.15) : const Color(0xFFEF4444).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  sync.isOnline ? Icons.wifi : Icons.wifi_off,
-                  color: sync.isOnline ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
-                  size: 16,
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync, size: 20),
-            onPressed: _syncNow,
-            tooltip: 'Sincronizar ahora',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 20),
-            onPressed: _loadEntries,
-          ),
-        ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF020617), Color(0xFF0F172A)],
-          ),
-        ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _openForm(),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Nuevo Registro'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _getModuleColor(),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
-                  : _entries.isEmpty
-                      ? _buildEmptyState()
-                      : _buildEntriesList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
         children: [
-          Icon(
-            _getModuleIcon(),
-            size: 80,
-            color: Colors.white.withOpacity(0.1),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  '${_entries.length} registros',
+                  style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+                ),
+                const Spacer(),
+                ElevatedButton.icon(
+                  onPressed: _openForm,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('NUEVO REGISTRO'),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Sin registros en ${_getSectionLabel(_selectedSection)}',
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Presiona "Nuevo Registro" para comenzar',
-            style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _entries.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox_outlined, size: 48, color: OmniTheme.bg700),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Sin registros para esta seccion.',
+                              style: TextStyle(color: OmniTheme.textMuted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _entries.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final entry = _entries[index];
+                          return _EntryCard(entry: entry, onDelete: _loadEntries);
+                        },
+                      ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEntriesList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      itemCount: _entries.length,
-      itemBuilder: (context, index) {
-        final entry = _entries[index];
-        final summary = _getEntrySummary(entry);
-        final dateStr = _formatDate(entry.date);
+  IconData _getModuleIcon() {
+    switch (widget.module) {
+      case 'incubadoras': return Icons.thermostat_outlined;
+      case 'autoclaves': return Icons.local_fire_department_outlined;
+      case 'ultracongeladores': return Icons.ac_unit_outlined;
+      case 'equipos': return Icons.precision_manufacturing_outlined;
+      case 'procesamiento': return Icons.biotech_outlined;
+      case 'bitacora': return Icons.book_outlined;
+      default: return Icons.folder_outlined;
+    }
+  }
+}
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F172A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _showEntryDetails(entry),
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
+class _EntryCard extends StatelessWidget {
+  final Map<String, dynamic> entry;
+  final VoidCallback onDelete;
+
+  const _EntryCard({required this.entry, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    Map<String, dynamic> data = {};
+    try {
+      data = jsonDecode(entry['data_json'] as String);
+    } catch (_) {}
+
+    final date = entry['date']?.toString() ?? '';
+    final status = entry['status']?.toString() ?? 'pending';
+
+    return Card(
+      child: InkWell(
+        onTap: () => _showDetail(context, data, date, status),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _getModuleColor().withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(_getModuleIcon(), color: _getModuleColor(), size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            summary,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            dateStr,
-                            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
-                          ),
-                          if (entry.subModule != null)
-                            Text(
-                              _getSectionLabel(entry.subModule),
-                              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
-                            ),
-                        ],
+                    Text(
+                      date.length >= 10 ? date.substring(0, 10) : date,
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: OmniTheme.textPrimary,
                       ),
                     ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getStatusBgColor(entry.status),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            entry.status.toUpperCase(),
-                            style: TextStyle(
-                              color: _getStatusColor(entry.status),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.visibility_outlined, color: Colors.white54, size: 18),
-                          onPressed: () => _showEntryDetails(entry),
-                          tooltip: 'Ver detalles',
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, color: Colors.white54, size: 18),
-                          onPressed: () => _openForm(existing: entry),
-                          tooltip: 'Editar',
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
-                        ),
-                      ],
+                    const SizedBox(height: 4),
+                    Text(
+                      _getSummary(data),
+                      style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-            ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: status == 'synced'
+                      ? OmniTheme.green400.withOpacity(0.1)
+                      : OmniTheme.orange400.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  status == 'synced' ? 'SYNCED' : 'PENDING',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'saved': return const Color(0xFF22C55E);
-      case 'synced': return const Color(0xFF3B82F6);
-      case 'pending': return const Color(0xFFF59E0B);
-      default: return Colors.white54;
+  String _getSummary(Map<String, dynamic> data) {
+    final keys = ['usuario', 'operador', 'responsable', 'nombre', 'paciente', 'equipo', 'modelo'];
+    for (final k in keys) {
+      if (data[k] != null && data[k].toString().isNotEmpty) {
+        return data[k].toString();
+      }
     }
+    return data.entries.take(2).map((e) => '${e.value}').join(' / ');
   }
 
-  Color _getStatusBgColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'saved': return const Color(0xFF22C55E).withOpacity(0.15);
-      case 'synced': return const Color(0xFF3B82F6).withOpacity(0.15);
-      case 'pending': return const Color(0xFFF59E0B).withOpacity(0.15);
-      default: return Colors.white.withOpacity(0.1);
-    }
+  void _showDetail(BuildContext context, Map<String, dynamic> data, String date, String status) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (_, scrollController) {
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Detalle del Registro',
+                      style: TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: OmniTheme.textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Text(
+                      date.length >= 10 ? date.substring(0, 10) : date,
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: OmniTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...data.entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            (e.key as String).toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: OmniTheme.textMuted,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            e.value?.toString() ?? '-',
+                            style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
-class _FormBuilderScreen extends StatefulWidget {
+class _SmartFillModal extends StatefulWidget {
   final String module;
   final String moduleLabel;
-  final String? sectionKey;
-  final FormSectionDef? section;
-  final FormEntry? existingEntry;
-  final Map<String, dynamic>? prefilledValues;
-  final bool quickEntry;
+  final FormSectionDef section;
+  final VoidCallback onSave;
 
-  const _FormBuilderScreen({
+  const _SmartFillModal({
     required this.module,
     required this.moduleLabel,
-    this.sectionKey,
-    this.section,
-    this.existingEntry,
-    this.prefilledValues,
-    this.quickEntry = false,
+    required this.section,
+    required this.onSave,
   });
 
   @override
-  State<_FormBuilderScreen> createState() => _FormBuilderScreenState();
+  State<_SmartFillModal> createState() => _SmartFillModalState();
 }
 
-class _FormBuilderScreenState extends State<_FormBuilderScreen> {
-  final FormRepositoryImpl _formRepo = FormRepositoryImpl();
-  final _formKey = GlobalKey<FormState>();
+class _SmartFillModalState extends State<_SmartFillModal> {
+  final Map<String, dynamic> _formData = {};
   final Map<String, TextEditingController> _controllers = {};
-  final Map<String, dynamic> _fieldValues = {};
-  final Map<String, FocusNode> _focusNodes = {};
-  bool _saving = false;
+  final Map<String, GlobalKey<FormState>> _formKeys = {};
+  bool _isSaving = false;
+  bool _saveSuccess = false;
+  String? _saveError;
   bool _quickEntryMode = false;
 
   @override
   void initState() {
     super.initState();
-    _quickEntryMode = widget.quickEntry;
-    _initFields();
-  }
-
-  void _initFields() {
-    final fields = widget.section?['fields'] as List? ?? [];
-    final existingData = widget.existingEntry?.data ?? {};
-    final prefilled = widget.prefilledValues ?? {};
-
-    final smartDefaults = _getSmartDefaults();
-
-    for (var field in fields) {
-      final key = field['key'] as String;
-      final type = field['type'] as String;
-      var initial = existingData[key] ?? prefilled[key];
-
-      if (initial == null || initial.toString().isEmpty) {
-        initial = smartDefaults[key];
-      }
-      if (initial == null || initial.toString().isEmpty) {
-        initial = field['initial'];
-      }
-
-      _focusNodes[key] = FocusNode();
-
-      if (type == 'select') {
-        _fieldValues[key] = initial?.toString() ?? '';
-      } else if (type == 'date' || type == 'time' || type == 'datetime') {
-        _fieldValues[key] = initial?.toString() ?? '';
-        _controllers[key] = TextEditingController(text: _formatInitialValue(type, initial));
-      } else {
-        _fieldValues[key] = initial?.toString() ?? '';
-        _controllers[key] = TextEditingController(text: _fieldValues[key].toString());
-      }
-    }
-  }
-
-  Map<String, dynamic> _getSmartDefaults() {
-    final now = DateTime.now();
-    return {
-      'fecha': DateFormat('yyyy-MM-dd').format(now),
-      'hora': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-      'hora_inicio': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-      'estado': 'ACTIVO',
-    };
-  }
-
-  String _formatInitialValue(String type, dynamic value) {
-    if (value == null || value.toString().isEmpty) return '';
-    final str = value.toString();
-    if (type == 'date') {
-      try {
-        final date = DateTime.parse(str);
-        return DateFormat('dd/MM/yyyy').format(date);
-      } catch (_) {
-        return str;
-      }
-    } else if (type == 'time') {
-      try {
-        final parts = str.split(':');
-        return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
-      } catch (_) {
-        return str;
-      }
-    } else if (type == 'datetime') {
-      try {
-        final date = DateTime.parse(str);
-        return DateFormat('dd/MM/yyyy HH:mm').format(date.toLocal());
-      } catch (_) {
-        return str;
-      }
-    }
-    return str;
+    _initForm();
   }
 
   @override
   void dispose() {
-    for (var c in _controllers.values) {
+    for (final c in _controllers.values) {
       c.dispose();
-    }
-    for (var n in _focusNodes.values) {
-      n.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _pickDate(String key) async {
-    final initialDate = _controllers[key]?.text.isNotEmpty == true
-        ? _tryParseDate(_controllers[key]!.text)
-        : DateTime.now();
-
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF3B82F6),
-              onPrimary: Colors.white,
-              surface: Color(0xFF1E293B),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF0F172A),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _fieldValues[key] = DateFormat('yyyy-MM-dd').format(picked);
-        _controllers[key]?.text = DateFormat('dd/MM/yyyy').format(picked);
-      });
-    }
-  }
-
-  Future<void> _pickTime(String key) async {
-    final initialTime = _controllers[key]?.text.isNotEmpty == true
-        ? _tryParseTime(_controllers[key]!.text)
-        : TimeOfDay.now();
-
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initialTime,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF3B82F6),
-              onPrimary: Colors.white,
-              surface: Color(0xFF1E293B),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF0F172A),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      final timeStr = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-      setState(() {
-        _fieldValues[key] = timeStr;
-        _controllers[key]?.text = timeStr;
-      });
-    }
-  }
-
-  Future<void> _pickDateTime(String key) async {
+  void _initForm() {
+    final fields = widget.section['fields'] as List;
     final now = DateTime.now();
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF3B82F6),
-              surface: Color(0xFF1E293B),
-              onSurface: Colors.white,
-            ),
-            dialogBackgroundColor: const Color(0xFF0F172A),
-          ),
-          child: child!,
-        );
-      },
-    );
+    final today = now.toIso8601String().split('T')[0];
+    final nowTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    if (pickedDate != null) {
-      final pickedTime = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(now),
-        builder: (context, child) {
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF3B82F6),
-                surface: Color(0xFF1E293B),
-                onSurface: Colors.white,
-              ),
-              dialogBackgroundColor: const Color(0xFF0F172A),
-            ),
-            child: child!,
-          );
-        },
+    for (final f in fields) {
+      final key = f['key'] as String;
+      final type = f['type'] as String;
+      _formKeys[key] = GlobalKey<FormState>();
+
+      if (type == 'date') {
+        _formData[key] = today;
+      } else if (type == 'time') {
+        _formData[key] = nowTime;
+      } else {
+        _formData[key] = '';
+      }
+      _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _isSaving = true;
+      _saveError = null;
+      _saveSuccess = false;
+    });
+
+    try {
+      final fields = widget.section['fields'] as List;
+      for (final f in fields) {
+        final key = f['key'] as String;
+        final controller = _controllers[key];
+        if (controller != null) {
+          _formData[key] = controller.text;
+        }
+      }
+
+      final auth = context.read<AuthService>();
+      final prefs = await SharedPreferences.getInstance();
+      final deviceId = prefs.getString('device_id') ?? '';
+
+      final repo = context.read<FormRepositoryImpl>();
+      final sync = context.read<SyncEngine>();
+
+      await repo.createEntry(
+        module: widget.module,
+        subModule: widget.section['key'] as String?,
+        date: _formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0],
+        userId: auth.currentUser?.id ?? 'offline',
+        deviceId: deviceId,
+        data: _formData,
       );
 
-      if (pickedTime != null) {
-        final dateTime = DateTime(
-          pickedDate.year,
-          pickedDate.month,
-          pickedDate.day,
-          pickedTime.hour,
-          pickedTime.minute,
-        );
-        setState(() {
-          _fieldValues[key] = dateTime.toIso8601String();
-          _controllers[key]?.text = DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
-        });
-      }
-    }
-  }
-
-  DateTime _tryParseDate(String text) {
-    try {
-      return DateFormat('dd/MM/yyyy').parse(text);
-    } catch (_) {
-      try {
-        return DateTime.parse(text);
-      } catch (_) {
-        return DateTime.now();
-      }
-    }
-  }
-
-  TimeOfDay _tryParseTime(String text) {
-    try {
-      final parts = text.split(':');
-      return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-    } catch (_) {
-      return TimeOfDay.now();
-    }
-  }
-
-  Future<void> _save({bool andContinue = false}) async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _saving = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final deviceId = prefs.getString('device_id') ?? 'unknown';
-      final auth = context.read<AuthService>();
-      final userId = auth.currentUser?.id ?? 'usr-admin';
-
-      final fields = widget.section?['fields'] as List? ?? [];
-      final formData = <String, dynamic>{};
-
-      for (var field in fields) {
-        final key = field['key'] as String;
-        final type = field['type'] as String;
-        var value = _fieldValues[key];
-
-        if (type == 'number' && value != null && value.toString().isNotEmpty) {
-          value = double.tryParse(value.toString()) ?? value;
-        }
-
-        if (value != null && value.toString().isNotEmpty) {
-          formData[key] = value;
-        }
-
-        if (type == 'text' && value != null && value.toString().isNotEmpty) {
-          await SmartFormFieldHistory.saveValue(key, value.toString());
-        }
-      }
-
-      final dateField = _findDateField(fields);
-      final entryDate = formData[dateField]?.toString() ?? DateTime.now().toIso8601String().split('T')[0];
-
-      if (widget.existingEntry != null) {
-        final updated = FormEntry(
-          id: widget.existingEntry!.id,
-          module: widget.module,
-          subModule: widget.sectionKey,
-          date: entryDate,
-          userId: userId,
-          deviceId: deviceId,
-          version: widget.existingEntry!.version + 1,
-          data: formData,
-          status: 'saved',
-          createdAt: widget.existingEntry!.createdAt,
-          updatedAt: DateTime.now().toUtc().toIso8601String(),
-        );
-        await _formRepo.saveEntry(updated);
-      } else {
-        await _formRepo.createEntry(
-          module: widget.module,
-          subModule: widget.sectionKey,
-          date: entryDate,
-          userId: userId,
-          deviceId: deviceId,
-          data: formData,
-        );
-      }
+      await sync.synchronize();
 
       if (mounted) {
-        if (andContinue) {
-          Navigator.pop(context, {'quickEntry': true, 'formData': formData});
+        setState(() => _saveSuccess = true);
+
+        await Future.delayed(const Duration(milliseconds: 800));
+
+        if (_quickEntryMode) {
+          final fields = widget.section['fields'] as List;
+          final skipKeys = {'usuario', 'operador', 'responsable', 'nombre', 'equipo', 'modelo'};
+          for (final f in fields) {
+            final key = f['key'] as String;
+            final type = f['type'] as String;
+            if (skipKeys.contains(key)) continue;
+            if (type == 'date') {
+              _formData[key] = DateTime.now().toIso8601String().split('T')[0];
+            } else if (type == 'time') {
+              final now = DateTime.now();
+              _formData[key] = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+            } else {
+              _formData[key] = '';
+            }
+            _controllers[key]?.text = _formData[key]?.toString() ?? '';
+          }
+          setState(() => _saveSuccess = false);
         } else {
-          Navigator.pop(context, {'quickEntry': false, 'formData': formData});
+          widget.onSave();
+          Navigator.pop(context);
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Color(0xFF22C55E)),
-                const SizedBox(width: 12),
-                Text(andContinue ? 'Registro guardado. Continuando...' : 'Registro guardado exitosamente'),
-              ],
-            ),
-            backgroundColor: const Color(0xFF1E293B),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
       }
     } catch (e) {
+      debugPrint('Save error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: const Color(0xFF1E293B),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        setState(() => _saveError = e.toString());
       }
     } finally {
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() => _isSaving = false);
       }
     }
-  }
-
-  String _findDateField(List fields) {
-    final dateKeys = ['fecha', 'fecha_hora', 'fecha_prueba', 'fecha_servicio'];
-    for (var key in dateKeys) {
-      if (fields.any((f) => f['key'] == key)) return key;
-    }
-    return 'fecha';
-  }
-
-  List<Widget> _groupFields(List<Map<String, dynamic>> fields) {
-    final groups = <String, List<Map<String, dynamic>>>{};
-    final order = ['Informacion General', 'Lectura', 'Observaciones'];
-
-    for (var field in fields) {
-      final key = field['key'] as String;
-      final multiline = field['multiline'] as bool? ?? false;
-
-      String group;
-      if (['fecha', 'hora', 'hora_inicio', 'hora_fin', 'usuario', 'operador', 'responsable', 'nombre', 'paciente'].contains(key)) {
-        group = 'Informacion General';
-      } else if (['temperatura', 'co2', 'presion', 'humedad', 'ph_obtenido', 'temp_inicial', 'temp_final', 'volumen', 'volumen_ml', 'pedido', 'ciclo_no'].contains(key)) {
-        group = 'Lectura';
-      } else if (multiline || ['observaciones', 'notas', 'actividad', 'equipos_usados', 'firma_responsable'].contains(key)) {
-        group = 'Observaciones';
-      } else {
-        group = 'Informacion General';
-      }
-
-      groups.putIfAbsent(group, () => []);
-      groups[group]!.add(field);
-    }
-
-    final widgets = <Widget>[];
-    for (var groupName in order) {
-      if (groups.containsKey(groupName) && groups[groupName]!.isNotEmpty) {
-        IconData? icon;
-        switch (groupName) {
-          case 'Informacion General':
-            icon = Icons.info_outline;
-            break;
-          case 'Lectura':
-            icon = Icons.speed;
-            break;
-          case 'Observaciones':
-            icon = Icons.note_alt_outlined;
-            break;
-          default:
-            icon = Icons.folder;
-        }
-
-        widgets.add(
-          SmartFormFieldGroup(
-            title: groupName,
-            icon: icon,
-            accentColor: _getModuleColor(),
-            children: groups[groupName]!.map((f) => _buildField(f)).toList(),
-          ),
-        );
-      }
-    }
-
-    return widgets;
-  }
-
-  Widget _buildField(Map<String, dynamic> field) {
-    final key = field['key'] as String;
-    final label = field['label'] as String;
-    final required = field['required'] as bool? ?? false;
-    final type = field['type'] as String? ?? 'text';
-    final unit = field['unit'] as String?;
-    final multiline = field['multiline'] as bool? ?? false;
-    final options = field['options'] as List?;
-
-    switch (type) {
-      case 'number':
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SmartNumberField(
-            fieldKey: key,
-            label: label,
-            required: required,
-            unit: unit,
-            controller: _controllers[key],
-            focusNode: _focusNodes[key],
-            onChanged: (v) => _fieldValues[key] = v,
-          ),
-        );
-      case 'select':
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SmartSelectField(
-            fieldKey: key,
-            label: label,
-            options: options?.cast<String>() ?? [],
-            required: required,
-            initialValue: _fieldValues[key]?.toString(),
-            onChanged: (v) => setState(() => _fieldValues[key] = v ?? ''),
-          ),
-        );
-      case 'date':
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SmartDateField(
-            fieldKey: key,
-            label: label,
-            required: required,
-            onChanged: (v) => setState(() => _fieldValues[key] = v),
-          ),
-        );
-      case 'time':
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SmartTimeField(
-            fieldKey: key,
-            label: label,
-            required: required,
-            onChanged: (v) => setState(() => _fieldValues[key] = v),
-          ),
-        );
-      case 'datetime':
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: InkWell(
-            onTap: () => _pickDateTime(key),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
-                borderRadius: BorderRadius.circular(12),
-                color: const Color(0xFF0F172A),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.event_note, color: Colors.white54, size: 18),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _controllers[key]?.text.isEmpty == true ? label : _controllers[key]!.text,
-                      style: TextStyle(
-                        color: _controllers[key]?.text.isEmpty == true ? Colors.white54 : Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      default:
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: SmartTextField(
-            fieldKey: key,
-            label: label,
-            required: required,
-            multiline: multiline,
-            controller: _controllers[key],
-            focusNode: _focusNodes[key],
-            onChanged: (v) => _fieldValues[key] = v,
-          ),
-        );
-    }
-  }
-
-  IconData _getModuleIcon() {
-    final mod = findModule(widget.module);
-    final iconStr = mod['icon'] as String?;
-    switch (iconStr) {
-      case 'thermostat': return Icons.thermostat;
-      case 'local_fire_department': return Icons.local_fire_department;
-      case 'ac_unit': return Icons.ac_unit;
-      case 'precision_manufacturing': return Icons.precision_manufacturing;
-      case 'biotech': return Icons.biotech;
-      case 'book': return Icons.book;
-      default: return Icons.folder;
-    }
-  }
-
-  Color _getModuleColor() {
-    final mod = findModule(widget.module);
-    final colorStr = mod['color'] as String?;
-    if (colorStr != null) {
-      try {
-        return Color(int.parse(colorStr));
-      } catch (_) {}
-    }
-    return const Color(0xFF3B82F6);
   }
 
   @override
   Widget build(BuildContext context) {
-    final fields = widget.section?['fields'] as List? ?? [];
-    final sectionLabel = widget.section?['label'] as String? ?? widget.moduleLabel;
-    final moduleColor = _getModuleColor();
+    final fields = widget.section['fields'] as List;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF020617),
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (_, scrollController) {
+        return Column(
           children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(_getModuleIcon(), color: moduleColor, size: 20),
-                const SizedBox(width: 8),
-                Text(widget.moduleLabel),
-              ],
-            ),
-            Text(
-              sectionLabel,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white.withOpacity(0.5)),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          if (widget.existingEntry == null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() => _quickEntryMode = !_quickEntryMode);
-                },
-                icon: Icon(
-                  _quickEntryMode ? Icons.toggle_on : Icons.toggle_off,
-                  color: _quickEntryMode ? const Color(0xFF22C55E) : Colors.white38,
-                ),
-                label: Text(
-                  'Entrada rapida',
-                  style: TextStyle(
-                    color: _quickEntryMode ? const Color(0xFF22C55E) : Colors.white54,
-                    fontSize: 12,
-                  ),
-                ),
+            _buildHeader(),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _buildFieldGrid(fields),
+                ],
               ),
             ),
+            _buildFooter(),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Validacion Smart-Fill',
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: OmniTheme.textPrimary,
+                ),
+              ),
+              Text(
+                '${widget.moduleLabel} - ${widget.section['label']}'.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: OmniTheme.textMuted,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              const Text('Modo rapido', style: TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+              const SizedBox(width: 8),
+              Switch(
+                value: _quickEntryMode,
+                onChanged: (v) => setState(() => _quickEntryMode = v),
+                activeColor: OmniTheme.accentBlue,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF020617), Color(0xFF0F172A)],
-          ),
+    );
+  }
+
+  Widget _buildFieldGrid(List fields) {
+    final List<Widget> rows = [];
+
+    for (int i = 0; i < fields.length; i += 2) {
+      final f1 = fields[i];
+      final f2 = (i + 1 < fields.length) ? fields[i + 1] : null;
+
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _buildField(f1)),
+            if (f2 != null) ...[
+              const SizedBox(width: 12),
+              Expanded(child: _buildField(f2)),
+            ] else
+              const SizedBox(width: 12),
+          ],
         ),
-        child: _saving
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
-            : Form(
-                key: _formKey,
-                child: Column(
+      );
+
+      if (i + 2 < fields.length) {
+        rows.add(const SizedBox(height: 12));
+      }
+    }
+
+    return Column(children: rows);
+  }
+
+  Widget _buildField(dynamic f) {
+    final key = f['key'] as String;
+    final label = f['label'] as String;
+    final type = f['type'] as String;
+    final required = f['required'] as bool? ?? false;
+    final options = f['options'] as List?;
+    final unit = f['unit'] as String?;
+    final multiline = f['multiline'] as bool? ?? false;
+    final controller = _controllers[key]!;
+
+    return Form(
+      key: _formKeys[key],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: OmniTheme.textMuted,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              if (required)
+                const Text(
+                  ' *',
+                  style: TextStyle(color: OmniTheme.red400, fontSize: 10),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (type == 'select' && options != null)
+            DropdownButtonFormField<String>(
+              value: controller.text.isEmpty ? null : controller.text,
+              items: options.map<DropdownMenuItem<String>>((opt) {
+                return DropdownMenuItem<String>(
+                  value: opt.toString(),
+                  child: Text(opt.toString(), style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary)),
+                );
+              }).toList(),
+              onChanged: (v) {
+                controller.text = v ?? '';
+                setState(() => _formData[key] = v);
+              },
+              decoration: const InputDecoration(
+                hintText: '— Seleccionar —',
+              ),
+            )
+          else if (type == 'date')
+            InkWell(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: DateTime.now(),
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2030),
+                  builder: (context, child) {
+                    return Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.dark(
+                          primary: OmniTheme.accentBlue,
+                          onPrimary: Colors.white,
+                          surface: OmniTheme.bg900,
+                          onSurface: OmniTheme.textPrimary,
+                        ),
+                      ),
+                      child: child!,
+                    );
+                  },
+                );
+                if (picked != null) {
+                  controller.text = picked.toIso8601String().split('T')[0];
+                  setState(() => _formData[key] = controller.text);
+                }
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(),
+                child: Row(
                   children: [
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_quickEntryMode)
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(bottom: 16),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF22C55E).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFF22C55E).withOpacity(0.3)),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.fast_forward, color: Color(0xFF22C55E), size: 18),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Modo entrada rapida: despues de guardar, el formulario se mantendra abierto con los campos prellenados',
-                                        style: const TextStyle(color: Color(0xFF22C55E), fontSize: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ..._groupFields(fields.map((f) => f as Map<String, dynamic>).toList()),
-                            const SizedBox(height: 8),
-                          ],
+                      child: Text(
+                        controller.text.isNotEmpty ? controller.text : 'Seleccionar fecha',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.bg700,
                         ),
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F172A),
-                        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.06))),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                                side: BorderSide(color: Colors.white.withOpacity(0.15)),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 2,
-                            child: ElevatedButton(
-                              onPressed: () => _save(andContinue: _quickEntryMode),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size.fromHeight(48),
-                                backgroundColor: moduleColor,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.save, color: Colors.white, size: 20),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    widget.existingEntry != null ? 'Actualizar' : (_quickEntryMode ? 'Guardar y Continuar' : 'Guardar Registro'),
-                                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const Icon(Icons.calendar_today, size: 16, color: OmniTheme.textMuted),
                   ],
                 ),
               ),
+            )
+          else if (type == 'time')
+            InkWell(
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay.now(),
+                  builder: (context, child) {
+                    return Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.dark(
+                          primary: OmniTheme.accentBlue,
+                          onPrimary: Colors.white,
+                          surface: OmniTheme.bg900,
+                          onSurface: OmniTheme.textPrimary,
+                        ),
+                      ),
+                      child: child!,
+                    );
+                  },
+                );
+                if (picked != null) {
+                  controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                  setState(() => _formData[key] = controller.text);
+                }
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        controller.text.isNotEmpty ? controller.text : 'Seleccionar hora',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.bg700,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.access_time, size: 16, color: OmniTheme.textMuted),
+                  ],
+                ),
+              ),
+            )
+          else
+            TextFormField(
+              controller: controller,
+              maxLines: multiline ? 3 : 1,
+              keyboardType: type == 'number' ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+              style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary),
+              decoration: InputDecoration(
+                suffixText: unit,
+                suffixStyle: const TextStyle(color: OmniTheme.textMuted, fontSize: 12),
+              ),
+              onChanged: (v) => _formData[key] = v,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: OmniTheme.bg800)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _saveError != null
+                ? Text('❌ $_saveError', style: const TextStyle(fontSize: 12, color: OmniTheme.red400))
+                : _saveSuccess
+                    ? const Text('✅ Guardado correctamente', style: TextStyle(fontSize: 12, color: OmniTheme.green400))
+                    : const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            onPressed: _isSaving ? null : () => Navigator.pop(context),
+            child: const Text('Descartar'),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _isSaving || _saveSuccess ? null : _save,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('CONFIRMAR E IMPORTAR'),
+          ),
+        ],
       ),
     );
   }

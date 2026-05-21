@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
+import 'dart:convert';
 import '../../data/db.dart';
-import '../../sync/sync_engine.dart';
-import '../../data/repositories/form_repository_impl.dart';
-import '../../domain/entities/form_entry.dart';
+import '../../theme/omni_theme.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -13,574 +10,278 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProviderStateMixin {
-  final LocalDatabase _localDb = LocalDatabase.instance;
-  final FormRepositoryImpl _formRepo = FormRepositoryImpl();
-  late DateTime _currentMonth;
+class _CalendarScreenState extends State<CalendarScreen> {
+  DateTime _focusedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   Map<String, int> _entryCounts = {};
-  Map<String, String> _dayStatus = {};
-  bool _loading = false;
-  late AnimationController _animationController;
-
+  Map<String, List<Map<String, dynamic>>> _dayEntries = {};
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _currentMonth = DateTime.now();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _loadMonth();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadMonth() async {
-    setState(() => _loading = true);
-    await _loadMonthData();
-    setState(() => _loading = false);
+    _loadMonthData();
   }
 
   Future<void> _loadMonthData() async {
+    setState(() => _loading = true);
     try {
-      final db = await _localDb.database;
-      final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
-      final lastDay = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
-      final firstStr = DateFormat('yyyy-MM-dd').format(firstDay);
-      final lastStr = DateFormat('yyyy-MM-dd').format(lastDay);
+      final db = await LocalDatabase.instance.database;
+      final year = _focusedMonth.year;
+      final month = _focusedMonth.month;
+      final start = '$year-${month.toString().padLeft(2, '0')}-01';
+      final daysInMonth = DateTime(year, month + 1, 0).day;
+      final end = '$year-${month.toString().padLeft(2, '0')}-${daysInMonth.toString().padLeft(2, '0')}';
 
       final entries = await db.query(
         'form_entries',
         where: 'date >= ? AND date <= ?',
-        whereArgs: [firstStr, lastStr],
+        whereArgs: [start, end],
+        orderBy: 'date ASC',
       );
 
-      final closures = await db.query(
-        'day_closures',
-        where: 'date >= ? AND date <= ?',
-        whereArgs: [firstStr, lastStr],
-      );
+      final counts = <String, int>{};
+      final dayEntries = <String, List<Map<String, dynamic>>>{};
 
-      final Map<String, int> counts = {};
-      final Map<String, String> status = {};
-
-      for (int day = 1; day <= lastDay.day; day++) {
-        final date = DateTime(_currentMonth.year, _currentMonth.month, day);
-        final dateStr = DateFormat('yyyy-MM-dd').format(date);
-
-        final dayEntries = entries.where((e) => e['date'] == dateStr).toList();
-        counts[dateStr] = dayEntries.length;
-
-        final dayClosures = closures.where((c) => c['date'] == dateStr).toList();
-        if (dayClosures.isNotEmpty) {
-          status[dateStr] = dayClosures.first['status'] as String;
-        } else if (dayEntries.isNotEmpty) {
-          final hasPending = dayEntries.any((e) => e['status'] != 'synced');
-          status[dateStr] = hasPending ? 'PENDIENTE' : 'COMPLETO';
-        } else {
-          status[dateStr] = 'SIN_REGISTRO';
-        }
+      for (final entry in entries) {
+        final date = entry['date']?.toString() ?? '';
+        final dateKey = date.length >= 10 ? date.substring(0, 10) : date;
+        counts[dateKey] = (counts[dateKey] ?? 0) + 1;
+        dayEntries.putIfAbsent(dateKey, () => []).add(entry);
       }
 
       if (mounted) {
         setState(() {
           _entryCounts = counts;
-          _dayStatus = status;
+          _dayEntries = dayEntries;
+          _loading = false;
         });
       }
     } catch (e) {
       debugPrint('Calendar load error: $e');
-      if (mounted) {
-        setState(() {
-          _entryCounts = {};
-          _dayStatus = {};
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _goToPreviousMonth() {
-    setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1));
-    _loadMonth();
+  void _prevMonth() {
+    setState(() {
+      _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month - 1, 1);
+    });
+    _loadMonthData();
   }
 
-  void _goToNextMonth() {
-    setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1));
-    _loadMonth();
+  void _nextMonth() {
+    setState(() {
+      _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + 1, 1);
+    });
+    _loadMonthData();
   }
 
   void _goToToday() {
-    setState(() => _currentMonth = DateTime.now());
-    _loadMonth();
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'CERRADO':
-      case 'COMPLETO':
-        return const Color(0xFF22C55E);
-      case 'CERRADO_CON_OBSERVACION':
-      case 'CERRADO_OBSERVACION':
-        return const Color(0xFF3B82F6);
-      case 'PENDIENTE':
-        return const Color(0xFFF59E0B);
-      case 'REABIERTO':
-        return const Color(0xFFF97316);
-      default:
-        return Colors.transparent;
-    }
-  }
-
-  void _showDayDetail(String dateStr) {
-    final entryCount = _entryCounts[dateStr] ?? 0;
-    final status = _dayStatus[dateStr] ?? 'SIN_REGISTRO';
-    final statusColor = _getStatusColor(status);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F172A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          entryCount > 0 ? Icons.event_note : Icons.event_busy,
-                          color: statusColor,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              DateFormat('EEEE, dd MMMM yyyy', 'es').format(DateTime.parse(dateStr)),
-                              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: statusColor,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _getStatusLabel(status),
-                                  style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF3B82F6).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '$entryCount registro${entryCount != 1 ? 's' : ''}',
-                          style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  if (entryCount > 0) ...[
-                    Text(
-                      'Registros del dia',
-                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 8),
-                    FutureBuilder<List<FormEntry>>(
-                      future: _getEntriesForDate(dateStr),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
-                        }
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const SizedBox();
-                        }
-                        final entries = snapshot.data!;
-                        return ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: entries.length,
-                          separatorBuilder: (context, index) => const Divider(color: Colors.white10, height: 1),
-                          itemBuilder: (context, index) {
-                            final entry = entries[index];
-                            return _buildEntryTile(entry);
-                          },
-                        );
-                      },
-                    ),
-                  ] else ...[
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Column(
-                          children: [
-                            Icon(Icons.inbox_outlined, size: 48, color: Colors.white.withOpacity(0.15)),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Sin registros para este dia',
-                              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<List<FormEntry>> _getEntriesForDate(String dateStr) async {
-    final db = await _localDb.database;
-    final rows = await db.query(
-      'form_entries',
-      where: 'date = ?',
-      whereArgs: [dateStr],
-      orderBy: 'created_at DESC',
-    );
-    return rows.map((row) {
-      return FormEntry(
-        id: row['id'] as String,
-        module: row['module'] as String,
-        subModule: row['sub_module'] as String?,
-        date: row['date'] as String,
-        userId: row['user_id'] as String,
-        deviceId: row['device_id'] as String,
-        version: row['version'] as int,
-        data: {},
-        status: row['status'] as String,
-        createdAt: row['created_at'] as String,
-        updatedAt: row['updated_at'] as String,
-      );
-    }).toList();
-  }
-
-  Widget _buildEntryTile(FormEntry entry) {
-    final moduleColor = _getModuleColor(entry.module);
-    final moduleIcon = _getModuleIcon(entry.module);
-    final moduleLabel = _getModuleLabel(entry.module);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: moduleColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(moduleIcon, size: 18, color: moduleColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  moduleLabel,
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                if (entry.subModule != null)
-                  Text(
-                    entry.subModule!,
-                    style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                  ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _getEntryStatusColor(entry.status).withOpacity(0.15),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              entry.status.toUpperCase(),
-              style: TextStyle(color: _getEntryStatusColor(entry.status), fontSize: 10, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getStatusLabel(String status) {
-    switch (status) {
-      case 'CERRADO':
-        return 'Dia Cerrado';
-      case 'CERRADO_CON_OBSERVACION':
-      case 'CERRADO_OBSERVACION':
-        return 'Cerrado con Observaciones';
-      case 'COMPLETO':
-        return 'Completo';
-      case 'PENDIENTE':
-        return 'Pendiente';
-      case 'REABIERTO':
-        return 'Reabierto';
-      default:
-        return 'Sin Registro';
-    }
-  }
-
-  Color _getModuleColor(String module) {
-    switch (module) {
-      case 'incubadoras':
-        return const Color(0xFFFF6B6B);
-      case 'autoclaves':
-        return const Color(0xFFFFA94D);
-      case 'ultracongeladores':
-        return const Color(0xFF4DABF7);
-      case 'equipos':
-        return const Color(0xFF69DB7C);
-      case 'procesamiento':
-        return const Color(0xFFB197FC);
-      case 'bitacora':
-        return const Color(0xFFE91E63);
-      default:
-        return const Color(0xFF3B82F6);
-    }
-  }
-
-  IconData _getModuleIcon(String module) {
-    switch (module) {
-      case 'incubadoras':
-        return Icons.thermostat;
-      case 'autoclaves':
-        return Icons.local_fire_department;
-      case 'ultracongeladores':
-        return Icons.ac_unit;
-      case 'equipos':
-        return Icons.precision_manufacturing;
-      case 'procesamiento':
-        return Icons.biotech;
-      case 'bitacora':
-        return Icons.book;
-      default:
-        return Icons.folder;
-    }
-  }
-
-  String _getModuleLabel(String module) {
-    switch (module) {
-      case 'incubadoras':
-        return 'Incubadoras';
-      case 'autoclaves':
-        return 'Autoclaves';
-      case 'ultracongeladores':
-        return 'Ultracongeladores';
-      case 'equipos':
-        return 'Equipos';
-      case 'procesamiento':
-        return 'Procesamiento';
-      case 'bitacora':
-        return 'Bitacora General';
-      default:
-        return module;
-    }
-  }
-
-  Color _getEntryStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'saved':
-        return const Color(0xFF22C55E);
-      case 'synced':
-        return const Color(0xFF3B82F6);
-      case 'pending':
-        return const Color(0xFFF59E0B);
-      default:
-        return Colors.white54;
-    }
+    setState(() {
+      _focusedMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    });
+    _loadMonthData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
-    final lastDay = DateTime(_currentMonth.year, _currentMonth.month + 1, 0);
-    final startWeekday = (firstDay.weekday) % 7;
-    final daysInMonth = lastDay.day;
+    final year = _focusedMonth.year;
+    final month = _focusedMonth.month;
+    final monthName = _getMonthName(month);
+    final firstDayOfWeek = DateTime(year, month, 1).weekday;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
     final today = DateTime.now();
-    final isCurrentMonth = _currentMonth.year == today.year && _currentMonth.month == today.month;
+    final isCurrentMonth = today.year == year && today.month == month;
+
+    final dayHeaders = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: OmniTheme.bg950,
       appBar: AppBar(
-        title: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
-          ).createShader(bounds),
-          child: const Text(
-            'Calendario Operativo',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => Navigator.pop(context),
         ),
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          Consumer<SyncEngine>(
-            builder: (context, sync, _) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: sync.isOnline ? const Color(0xFF22C55E).withOpacity(0.15) : const Color(0xFFEF4444).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  sync.isOnline ? Icons.wifi : Icons.wifi_off,
-                  color: sync.isOnline ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
-                  size: 16,
-                ),
-              ),
-            ),
-          ),
-        ],
+        title: const Text('Calendario Operativo'),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF020617), Color(0xFF0F172A)],
-          ),
-        ),
-        child: Column(
-          children: [
-            _buildMonthSelector(isCurrentMonth),
-            _buildLegend(),
-            const Divider(color: Colors.white10, height: 1),
-            _buildWeekdays(),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)))
-                  : _buildGrid(daysInMonth, startWeekday, today),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                _buildMonthHeader(monthName, year, isCurrentMonth),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: dayHeaders.map((d) => Expanded(
+                      child: Center(
+                        child: Text(
+                          d,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: OmniTheme.textMuted,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(8),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 7,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: 42,
+                    itemBuilder: (context, index) {
+                      final dayOffset = index - (firstDayOfWeek - 1);
+                      if (dayOffset < 1 || dayOffset > daysInMonth) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final day = dayOffset;
+                      final dateStr = '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+                      final entryCount = _entryCounts[dateStr] ?? 0;
+                      final isToday = isCurrentMonth && day == today.day;
+
+                      return GestureDetector(
+                        onTap: entryCount > 0 ? () => _showDayEntries(dateStr) : null,
+                        child: Container(
+                          margin: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: isToday
+                                ? OmniTheme.accentBlue.withOpacity(0.15)
+                                : entryCount > 0
+                                    ? OmniTheme.bg800
+                                    : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: isToday
+                                ? Border.all(color: OmniTheme.accentBlue, width: 1.5)
+                                : null,
+                          ),
+                          child: Stack(
+                            children: [
+                              Center(
+                                child: Text(
+                                  '$day',
+                                  style: TextStyle(
+                                    fontFamily: 'Outfit',
+                                    fontWeight: isToday ? FontWeight.bold : FontWeight.w500,
+                                    fontSize: 14,
+                                    color: isToday
+                                        ? OmniTheme.accentBlue
+                                        : entryCount > 0
+                                            ? OmniTheme.textPrimary
+                                            : OmniTheme.textMuted,
+                                  ),
+                                ),
+                              ),
+                              if (entryCount > 0)
+                                Positioned(
+                                  bottom: 4,
+                                  left: 0,
+                                  right: 0,
+                                  child: Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: OmniTheme.green400.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        '$entryCount',
+                                        style: const TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          color: OmniTheme.green400,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                _buildLegend(),
+              ],
             ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildMonthSelector(bool isCurrentMonth) {
+  Widget _buildMonthHeader(String monthName, int year, bool isCurrentMonth) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.all(16),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left, size: 28),
-            onPressed: _goToPreviousMonth,
-            color: Colors.white,
+            icon: const Icon(Icons.chevron_left, size: 24),
+            onPressed: _prevMonth,
           ),
-          Column(
-            children: [
-              Text(
-                DateFormat('MMMM yyyy', 'es').format(_currentMonth),
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
-              ),
-              if (isCurrentMonth)
-                Text(
-                  'Mes actual',
-                  style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+          Expanded(
+            child: Center(
+              child: Text(
+                '$monthName $year',
+                style: const TextStyle(
+                  fontFamily: 'Outfit',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: OmniTheme.textPrimary,
                 ),
-            ],
-          ),
-          Row(
-            children: [
-              if (!isCurrentMonth)
-                TextButton(
-                  onPressed: _goToToday,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  child: const Text('Hoy', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w600)),
-                ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right, size: 28),
-                onPressed: _goToNextMonth,
-                color: Colors.white,
               ),
-            ],
+            ),
           ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, size: 24),
+            onPressed: _nextMonth,
+          ),
+          if (!isCurrentMonth) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _goToToday,
+              child: const Text(
+                'HOY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: OmniTheme.accentBlue,
+                  letterSpacing: 1,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildLegend() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: OmniTheme.bg800)),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _legendItem(const Color(0xFF22C55E), 'Completo'),
-          const SizedBox(width: 16),
-          _legendItem(const Color(0xFFF59E0B), 'Pendiente'),
-          const SizedBox(width: 16),
-          _legendItem(const Color(0xFF3B82F6), 'C/Observ.'),
-          const SizedBox(width: 16),
-          _legendItem(Colors.white24, 'Sin Registro'),
+          _legendItem('Con registros', OmniTheme.green400),
+          const SizedBox(width: 24),
+          _legendItem('Hoy', OmniTheme.accentBlue),
         ],
       ),
     );
   }
 
-  Widget _legendItem(Color color, String label) {
+  Widget _legendItem(String label, Color color) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 8,
@@ -591,115 +292,143 @@ class _CalendarScreenState extends State<CalendarScreen> with SingleTickerProvid
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+        Text(label, style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
       ],
     );
   }
 
-  Widget _buildWeekdays() {
-    const weekdays = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: weekdays.map((d) => Expanded(
-          child: Center(
-            child: Text(
-              d,
-              style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11, fontWeight: FontWeight.w600),
-            ),
-          ),
-        )).toList(),
+  void _showDayEntries(String dateStr) {
+    final entries = _dayEntries[dateStr] ?? [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.8,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, scrollController) {
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      dateStr,
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: OmniTheme.textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${entries.length} registros',
+                      style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    Map<String, dynamic> data = {};
+                    try {
+                      data = jsonDecode(entry['data_json'] as String);
+                    } catch (_) {}
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 4,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: entry['status'] == 'synced'
+                                        ? OmniTheme.green400
+                                        : OmniTheme.orange400,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  entry['module']?.toString().toUpperCase() ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: OmniTheme.textMuted,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ...data.entries.take(4).map((e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    '${e.key}: ',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: OmniTheme.textMuted,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      e.value?.toString() ?? '-',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: OmniTheme.textPrimary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildGrid(int daysInMonth, int startWeekday, DateTime today) {
-    final totalCells = startWeekday + daysInMonth;
-    final rows = (totalCells / 7).ceil();
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      itemCount: rows,
-      itemBuilder: (context, rowIndex) {
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: List.generate(7, (colIndex) {
-            final cellIndex = rowIndex * 7 + colIndex;
-            if (cellIndex < startWeekday || cellIndex >= totalCells) {
-              return const Expanded(child: SizedBox());
-            }
-
-            final day = cellIndex - startWeekday + 1;
-            final dateStr = '${_currentMonth.year}-${_currentMonth.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-            final entryCount = _entryCounts[dateStr] ?? 0;
-            final status = _dayStatus[dateStr] ?? 'SIN_REGISTRO';
-            final isToday = dateStr == '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-            final statusColor = _getStatusColor(status);
-            final hasEntries = entryCount > 0;
-
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => _showDayDetail(dateStr),
-                child: Container(
-                  margin: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: isToday
-                        ? const Color(0xFF3B82F6).withOpacity(0.15)
-                        : hasEntries
-                            ? statusColor.withOpacity(0.08)
-                            : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isToday
-                          ? const Color(0xFF3B82F6).withOpacity(0.4)
-                          : hasEntries
-                              ? statusColor.withOpacity(0.2)
-                              : Colors.white.withOpacity(0.04),
-                      width: isToday ? 1.5 : 1,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$day',
-                          style: TextStyle(
-                            color: isToday ? const Color(0xFF3B82F6) : Colors.white.withOpacity(0.7),
-                            fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (hasEntries)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '$entryCount',
-                                style: TextStyle(
-                                  color: statusColor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        );
-      },
-    );
+  String _getMonthName(int month) {
+    const names = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    return names[month - 1];
   }
 }
