@@ -14,30 +14,72 @@ import 'presentation/screens/login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final prefs = await SharedPreferences.getInstance();
-  var deviceId = prefs.getString('device_id');
-  if (deviceId == null) {
-    deviceId = const Uuid().v4();
-    await prefs.setString('device_id', deviceId);
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('Flutter error: ${details.exception}');
+    debugPrint('Stack: ${details.stack}');
+  };
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    var deviceId = prefs.getString('device_id');
+    if (deviceId == null) {
+      deviceId = const Uuid().v4();
+      await prefs.setString('device_id', deviceId);
+    }
+
+    final authRepo = AuthRepositoryImpl();
+    final authService = AuthService(authRepo);
+    final syncEngine = SyncEngine();
+    final formRepo = FormRepositoryImpl();
+    final updateService = UpdateService();
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthService>.value(value: authService),
+          ChangeNotifierProvider<SyncEngine>.value(value: syncEngine),
+          ChangeNotifierProvider<UpdateService>.value(value: updateService),
+          Provider<FormRepositoryImpl>.value(value: formRepo),
+        ],
+        child: const BioLabApp(),
+      ),
+    );
+  } catch (e, stack) {
+    debugPrint('Fatal init error: $e');
+    debugPrint('Stack: $stack');
+    runApp(const _ErrorApp());
   }
+}
 
-  final authRepo = AuthRepositoryImpl();
-  final authService = AuthService(authRepo);
-  final syncEngine = SyncEngine();
-  final formRepo = FormRepositoryImpl();
-  final updateService = UpdateService();
+class _ErrorApp extends StatelessWidget {
+  const _ErrorApp();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AuthService>.value(value: authService),
-        ChangeNotifierProvider<SyncEngine>.value(value: syncEngine),
-        ChangeNotifierProvider<UpdateService>.value(value: updateService),
-        Provider<FormRepositoryImpl>.value(value: formRepo),
-      ],
-      child: const BioLabApp(),
-    ),
-  );
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFF001020),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                'Error al iniciar la aplicacion',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Revisa la consola para mas detalles',
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class BioLabApp extends StatefulWidget {

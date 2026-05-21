@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../data/db.dart';
@@ -327,7 +326,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsCard() {
-    final today = DateFormat('dd/MM/yyyy', 'es').format(DateTime.now());
+    final now = DateTime.now();
+    final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
     return Container(
       margin: const EdgeInsets.all(16),
