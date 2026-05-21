@@ -33,15 +33,14 @@ jobs:
 
       - name: Create installer
         run: |
-          mkdir -p build/installer
+          mkdir -p build/installer/BioLab-LABSYNC
           xcopy build\windows\x64\runner\Release\ build\installer\BioLab-LABSYNC\ /E /I /Y
-          copy windows\runner\resources\app_icon.ico build\installer\BioLab-LABSYNC\ 2>nul || true
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: BioLab-LABSYNC-Windows
-          path: frontend_flutter/build/installer/
+          path: frontend_flutter/build/installer/BioLab-LABSYNC/
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -71,7 +70,7 @@ jobs:
       - name: Build Linux
         run: flutter build linux --release
 
-      - name: Create AppImage structure
+      - name: Create installer
         run: |
           mkdir -p build/installer/BioLab-LABSYNC
           cp -r build/linux/x64/release/bundle/* build/installer/BioLab-LABSYNC/
@@ -80,7 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BioLab-LABSYNC-Linux
-          path: frontend_flutter/build/installer/
+          path: frontend_flutter/build/installer/BioLab-LABSYNC/
 
   build-web:
     runs-on: ubuntu-22.04
@@ -136,16 +135,16 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release
 
-      - name: Create DMG structure
+      - name: Create installer
         run: |
-          mkdir -p build/installer
-          cp -r build/macos/Build/Products/Release/biolab_labsync.app build/installer/
+          mkdir -p build/installer/BioLab-LABSYNC
+          cp -r build/macos/Build/Products/Release/biolab_labsync.app build/installer/BioLab-LABSYNC/
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: BioLab-LABSYNC-macOS
-          path: frontend_flutter/build/installer/
+          path: frontend_flutter/build/installer/BioLab-LABSYNC/
 
   create-release:
     needs: [build-windows, build-linux, build-web, build-macos]
