@@ -16,18 +16,28 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
   int _pendingCount = 0;
   int _todayEntries = 0;
   int _totalEntries = 0;
   String _todayClosureStatus = 'ABIERTO';
-  String? _error;
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    debugPrint('DashboardScreen initState called');
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _animationController.forward();
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStats() async {
@@ -81,6 +91,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     {"module": "ultracongeladores", "label": "Ultracongeladores", "icon": Icons.ac_unit, "color": Color(0xFF4DABF7)},
     {"module": "equipos", "label": "Equipos", "icon": Icons.precision_manufacturing, "color": Color(0xFF69DB7C)},
     {"module": "procesamiento", "label": "Procesamiento", "icon": Icons.biotech, "color": Color(0xFFB197FC)},
+    {"module": "bitacora", "label": "Bitacora General", "icon": Icons.book, "color": Color(0xFFE91E63)},
   ];
 
   @override
@@ -92,7 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       sync = context.watch<SyncEngine>();
     } catch (e) {
       return Scaffold(
-        backgroundColor: const Color(0xFF001020),
+        backgroundColor: const Color(0xFF020617),
         body: Center(
           child: Text('Error: $e', style: const TextStyle(color: Colors.red)),
         ),
@@ -100,63 +111,88 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF001020),
+      backgroundColor: const Color(0xFF020617),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('BioLab'),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+              ).createShader(bounds),
+              child: const Text(
+                'BioLab',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
             Text(
               auth.currentUser?.nombre ?? 'Dashboard',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.normal),
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF004A99),
+        backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  sync.isOnline ? Icons.wifi : Icons.wifi_off,
-                  color: sync.isOnline ? Colors.greenAccent : Colors.redAccent,
-                  size: 20,
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: sync.isOnline ? const Color(0xFF22C55E).withOpacity(0.15) : const Color(0xFFEF4444).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    sync.isOnline ? Icons.wifi : Icons.wifi_off,
+                    color: sync.isOnline ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+                    size: 16,
+                  ),
                 ),
                 if (_pendingCount > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(10),
+                      gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFEF4444)]),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       '$_pendingCount',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                   ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.sync),
+            icon: const Icon(Icons.sync, size: 20),
             onPressed: () async {
               try {
                 final success = await sync.synchronize();
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(success
-                        ? 'Sincronizacion completada'
-                        : 'Sin conexion. Datos guardados localmente')),
+                    SnackBar(
+                      content: Text(success ? 'Sincronizacion completada' : 'Sin conexion. Datos guardados localmente'),
+                      backgroundColor: success ? const Color(0xFF1E293B) : const Color(0xFF1E293B),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   );
                   _loadStats();
                 }
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Modo offline activo')),
+                  SnackBar(
+                    content: const Text('Modo offline activo'),
+                    backgroundColor: const Color(0xFF1E293B),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                   );
                 }
               }
@@ -164,7 +200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             tooltip: 'Sincronizar',
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings, size: 20),
             onPressed: () {
               Navigator.push(
                 context,
@@ -173,7 +209,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, size: 20),
             onPressed: () {
               try {
                 sync.stopPeriodicSync();
@@ -192,143 +228,205 @@ class _DashboardScreenState extends State<DashboardScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF001020), Color(0xFF000810)],
+            colors: [Color(0xFF020617), Color(0xFF0F172A)],
           ),
         ),
         child: RefreshIndicator(
           onRefresh: _loadStats,
-          color: const Color(0xFF004A99),
+          color: const Color(0xFF3B82F6),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildStatsCard(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const CalendarScreen()),
-                      ),
-                      icon: const Icon(Icons.calendar_month),
-                      label: const Text('Calendario Operativo'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0066CC),
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(56),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     children: [
                       Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => Navigator.push(
+                        child: _buildActionButton(
+                          icon: Icons.calendar_month,
+                          label: 'Calendario',
+                          onTap: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (context) => const AuditScreen()),
-                          ),
-                          icon: const Icon(Icons.history),
-                          label: const Text('Auditoria'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF001830),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(48),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => const CalendarScreen(),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Modulo en desarrollo')),
-                            );
-                          },
-                          icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text('Reportes'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF001830),
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(48),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: _buildActionButton(
+                          icon: Icons.history,
+                          label: 'Auditoria',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const AuditScreen()),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'Modulos de Bitacora',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.2,
-                  ),
-                  itemCount: _modules.length,
-                  itemBuilder: (context, index) {
-                    final m = _modules[index];
-                    return Card(
-                      color: const Color(0xFF001830),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => FormEntryScreen(
-                                module: m['module'] as String,
-                                moduleLabel: m['label'] as String,
-                              ),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(m['icon'] as IconData, size: 40, color: m['color'] as Color),
-                              const SizedBox(height: 12),
-                              Text(
-                                m['label'] as String,
-                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 3,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(colors: [Color(0xFF3B82F6), Color(0xFF6366F1)]),
+                          borderRadius: BorderRadius.all(Radius.circular(2)),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Modulos de Bitacora',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AnimatedBuilder(
+                  animation: _animationController,
+                  builder: (context, child) {
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 1.25,
+                      ),
+                      itemCount: _modules.length,
+                      itemBuilder: (context, index) {
+                        final m = _modules[index];
+                        final delay = index * 0.08;
+                        final animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+                          CurvedAnimation(
+                            parent: _animationController,
+                            curve: Interval(delay, (delay + 0.3).clamp(0.0, 1.0), curve: Curves.easeOutCubic),
+                          ),
+                        );
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+                              CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
+                            ),
+                            child: _buildModuleCard(m),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
                 const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: const Color(0xFF3B82F6)),
+              const SizedBox(width: 8),
+              Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModuleCard(Map<String, dynamic> m) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => FormEntryScreen(
+                module: m['module'] as String,
+                moduleLabel: m['label'] as String,
+              ),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 300),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF0F172A),
+                (m['color'] as Color).withOpacity(0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: (m['color'] as Color).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(m['icon'] as IconData, size: 24, color: m['color'] as Color),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  m['label'] as String,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -342,12 +440,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
 
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF001830),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF3B82F6).withOpacity(0.05),
+            blurRadius: 20,
+            spreadRadius: 0,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,33 +466,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Text(
                 today,
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _getClosureStatusColor(_todayClosureStatus),
-                  borderRadius: BorderRadius.circular(12),
+                  color: _getClosureStatusColor(_todayClosureStatus).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _getClosureStatusColor(_todayClosureStatus).withOpacity(0.3)),
                 ),
-                child: Text(
-                  _todayClosureStatus,
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _getClosureStatusColor(_todayClosureStatus),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _todayClosureStatus,
+                      style: TextStyle(
+                        color: _getClosureStatusColor(_todayClosureStatus),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Row(
             children: [
-              Expanded(
-                child: _statItem('Registros Hoy', '$_todayEntries', Icons.today),
-              ),
-              Expanded(
-                child: _statItem('Total Registros', '$_totalEntries', Icons.folder),
-              ),
-              Expanded(
-                child: _statItem('Pendientes Sync', '$_pendingCount', Icons.sync),
-              ),
+              Expanded(child: _statItem('Registros Hoy', '$_todayEntries', Icons.today_outlined)),
+              const SizedBox(width: 12),
+              Expanded(child: _statItem('Total', '$_totalEntries', Icons.folder_outlined)),
+              const SizedBox(width: 12),
+              Expanded(child: _statItem('Pendientes', '$_pendingCount', Icons.sync_outlined)),
             ],
           ),
         ],
@@ -392,37 +516,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _statItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: const Color(0xFF004A99), size: 24),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
-          textAlign: TextAlign.center,
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: const Color(0xFF3B82F6), size: 20),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w500),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
   Color _getClosureStatusColor(String status) {
     switch (status) {
       case 'CERRADO':
-        return Colors.green;
+        return const Color(0xFF22C55E);
       case 'CERRADO_CON_OBSERVACION':
       case 'CERRADO_OBSERVACION':
-        return Colors.blue;
+        return const Color(0xFF3B82F6);
       case 'COMPLETO':
-        return Colors.green.shade700;
+        return const Color(0xFF22C55E);
       case 'PENDIENTE':
-        return Colors.orange;
+        return const Color(0xFFF59E0B);
       case 'REABIERTO':
-        return Colors.orange.shade300;
+        return const Color(0xFFF97316);
       default:
         return Colors.grey;
     }

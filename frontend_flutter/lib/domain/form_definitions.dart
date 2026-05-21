@@ -231,6 +231,29 @@ final List<FormModuleDef> formModules = [
       },
     ],
   },
+  {
+    'module': 'bitacora',
+    'label': 'Bitacora General',
+    'icon': 'book',
+    'color': '0xFFE91E63',
+    'sections': [
+      {
+        'key': 'registro',
+        'label': 'Registro de Actividad',
+        'fields': [
+          {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
+          {'key': 'hora_inicio', 'label': 'Hora Inicio', 'type': 'time', 'required': true},
+          {'key': 'hora_fin', 'label': 'Hora Fin', 'type': 'time', 'required': true},
+          {'key': 'responsable', 'label': 'Responsable', 'type': 'text', 'required': true},
+          {'key': 'tipo_actividad', 'label': 'Tipo de Actividad', 'type': 'select', 'options': ['Cultivo celular', 'Procesamiento', 'Mantenimiento', 'Control de calidad', 'Aislamiento', 'Otro'], 'required': true},
+          {'key': 'actividad', 'label': 'Actividad', 'type': 'text', 'multiline': true, 'required': true},
+          {'key': 'equipos_usados', 'label': 'Equipos Usados', 'type': 'text', 'multiline': true},
+          {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'multiline': true},
+          {'key': 'firma_responsable', 'label': 'Firma Responsable', 'type': 'text', 'required': true},
+        ],
+      },
+    ],
+  },
 ];
 
 FormModuleDef findModule(String module) {
