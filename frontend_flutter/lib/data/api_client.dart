@@ -8,8 +8,12 @@ class ApiClient {
   ApiClient({this.baseUrl = "http://localhost:8000"});
 
   Future<String?> _getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('jwt_token');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('jwt_token');
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<Map<String, String>> _getHeaders({bool requiresAuth = false}) async {
@@ -26,7 +30,7 @@ class ApiClient {
   Future<http.Response> get(
     String path, {
     bool requiresAuth = false,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     final headers = await _getHeaders(requiresAuth: requiresAuth);
     return await http.get(
@@ -39,7 +43,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     final headers = await _getHeaders(requiresAuth: requiresAuth);
     return await http.post(
@@ -53,7 +57,7 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? body,
     bool requiresAuth = false,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     final headers = await _getHeaders(requiresAuth: requiresAuth);
     return await http.put(
@@ -66,7 +70,7 @@ class ApiClient {
   Future<http.Response> delete(
     String path, {
     bool requiresAuth = false,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     final headers = await _getHeaders(requiresAuth: requiresAuth);
     return await http.delete(

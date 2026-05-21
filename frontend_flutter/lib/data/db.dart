@@ -1,14 +1,13 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi/sqflite_common_ffi.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path_provider/path_provider.dart';
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
   static Database? _database;
-  static bool _ffiInitialized = false;
 
   LocalDatabase._init();
 
@@ -19,26 +18,22 @@ class LocalDatabase {
   }
 
   Future<Database> _initDB(String filePath) async {
-    if (!_ffiInitialized) {
-      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        sqfliteFfiInit();
-        databaseFactory = databaseFactoryFfi;
-        _ffiInitialized = true;
-      }
+    if (kIsWeb) {
+      final factory = databaseFactoryFfiWeb;
+      return await factory.openDatabase(
+        filePath,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: _createDB,
+        ),
+      );
     }
 
-    Directory appDir;
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      appDir = await getApplicationSupportDirectory();
-    } else {
-      appDir = await getApplicationDocumentsDirectory();
-    }
-
-    final dbPath = appDir.path;
-    final path = join(dbPath, filePath);
+    final appDir = await getApplicationSupportDirectory();
+    final dbPath = join(appDir.path, filePath);
 
     return await openDatabase(
-      path,
+      dbPath,
       version: 1,
       onCreate: _createDB,
     );

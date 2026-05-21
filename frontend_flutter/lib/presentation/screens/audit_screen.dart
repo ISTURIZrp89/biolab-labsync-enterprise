@@ -87,6 +87,50 @@ class _AuditScreenState extends State<AuditScreen> {
     }
   }
 
+  Widget _buildLogItem(Map<String, dynamic> log) {
+    final action = log['action'] as String;
+    final userId = log['user_id'] as String? ?? 'Sistema';
+    final deviceId = log['device_id'] as String? ?? '';
+    final timestamp = log['timestamp'] as String;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      color: const Color(0xFF001830),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: _getActionColor(action).withOpacity(0.2),
+          child: Icon(
+            _getActionIcon(action),
+            color: _getActionColor(action),
+            size: 20,
+          ),
+        ),
+        title: Text(
+          action,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Usuario: $userId',
+              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+            ),
+            if (deviceId.isNotEmpty)
+              Text(
+                'Device: ${deviceId.substring(0, deviceId.length > 8 ? 8 : deviceId.length)}...',
+                style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+              ),
+          ],
+        ),
+        trailing: Text(
+          _formatTimestamp(timestamp),
+          style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,79 +153,37 @@ class _AuditScreenState extends State<AuditScreen> {
             colors: [Color(0xFF001020), Color(0xFF000810)],
           ),
         ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _logs.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history, size: 64, color: Colors.white.withOpacity(0.3)),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Sin registros de auditoria',
-                          style: TextStyle(color: Colors.white.withOpacity(0.5)),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _logs.length,
-                    itemBuilder: (context, index) {
-                      final log = _logs[index];
-                      final action = log['action'] as String;
-                      final userId = log['user_id'] as String? ?? 'Sistema';
-                      final deviceId = log['device_id'] as String? ?? '';
-                      final timestamp = log['timestamp'] as String;
-                      final detailsJson = log['details_json'] as String? ?? '{}';
+        child: _buildBody(),
+      ),
+    );
+  }
 
-                      Map<String, dynamic> details = {};
-                      try {
-                        details = Map<String, dynamic>.from(
-                          DateTime.parse(timestamp).millisecondsSinceEpoch != 0
-                              ? {}
-                              : {},
-                        );
-                      } catch (_) {}
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        color: const Color(0xFF001830),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _getActionColor(action).withOpacity(0.2),
-                            child: Icon(
-                              _getActionIcon(action),
-                              color: _getActionColor(action),
-                              size: 20,
-                            ),
-                          ),
-                          title: Text(
-                            action,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Usuario: $userId',
-                                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
-                              ),
-                              if (deviceId.isNotEmpty)
-                                Text(
-                                  'Device: ${deviceId.substring(0, deviceId.length > 8 ? 8 : deviceId.length)}...',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                                ),
-                            ],
-                          ),
-                          trailing: Text(
-                            _formatTimestamp(timestamp),
-                            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+    if (_logs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history, size: 64, color: Colors.white.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Sin registros de auditoria',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _logs.length,
+      itemBuilder: (context, index) {
+        return _buildLogItem(_logs[index]);
+      },
     );
   }
 }

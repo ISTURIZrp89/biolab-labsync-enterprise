@@ -4,17 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io';
 import '../../sync/sync_engine.dart';
+import '../../services/update_service.dart';
 
 String _getPlatformName() {
-  if (kIsWeb) return 'Web';
-  if (Platform.isWindows) return 'Windows';
-  if (Platform.isMacOS) return 'macOS';
-  if (Platform.isLinux) return 'Linux (Ubuntu)';
-  if (Platform.isAndroid) return 'Android';
-  if (Platform.isIOS) return 'iOS (iPhone/iPad)';
-  return 'Unknown';
+  if (kIsWeb) return 'Web (navegador)';
+  return 'Desktop';
 }
 
 class SettingsScreen extends StatefulWidget {
@@ -81,58 +76,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _checkForUpdates() async {
-    try {
-      final res = await http.get(
-        Uri.parse('$_backendUrl/api/updates/check?current_version=$_appVersion'),
-      ).timeout(const Duration(seconds: 5));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (mounted) {
-          if (data['has_update'] == true) {
-            showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: const Color(0xFF001830),
-                title: const Text('Actualizacion Disponible', style: TextStyle(color: Colors.white)),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Version: ${data['latest_version']}', style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 8),
-                    Text(data['release_notes'] ?? '', style: const TextStyle(color: Colors.white54)),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Descargando actualizacion...')),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF004A99)),
-                    child: const Text('Actualizar', style: TextStyle(color: Colors.white)),
-                  ),
-                ],
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('La aplicacion esta actualizada')),
-            );
-          }
-        }
-      }
-    } catch (_) {
-      if (mounted) {
+    final updateService = context.read<UpdateService>();
+    await updateService.checkForUpdates();
+    if (mounted) {
+      if (updateService.hasUpdate) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo verificar actualizaciones')),
+          SnackBar(content: Text('Nueva version: v${updateService.latestVersion}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('La aplicacion esta actualizada')),
         );
       }
     }
@@ -281,18 +234,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 32),
             Center(
-              child: Column(
-                children: [
-                  Text(
-                    'LABSYNC Enterprise v$_appVersion',
-                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Compatible: Windows, macOS, Linux, iOS, Android',
-                    style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10),
-                  ),
-                ],
+              child: Text(
+                'LABSYNC Enterprise v$_appVersion',
+                style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
               ),
             ),
           ],

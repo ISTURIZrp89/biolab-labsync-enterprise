@@ -3,14 +3,12 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
-import '../../services/update_service.dart';
 import '../../data/db.dart';
 import 'form_list_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
 import 'audit_screen.dart';
 import 'settings_screen.dart';
-import '../widgets/update_dialog.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,6 +22,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _todayEntries = 0;
   int _totalEntries = 0;
   String _todayClosureStatus = 'ABIERTO';
+  String? _error;
 
   @override
   void initState() {
@@ -32,34 +31,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadStats() async {
-    final db = await LocalDatabase.instance.database;
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    try {
+      final db = await LocalDatabase.instance.database;
+      final today = DateTime.now().toIso8601String().split('T')[0];
 
-    final todayEntries = await db.query(
-      'form_entries',
-      where: 'date = ?',
-      whereArgs: [today],
-    );
+      final todayEntries = await db.query(
+        'form_entries',
+        where: 'date = ?',
+        whereArgs: [today],
+      );
 
-    final totalEntries = await db.query('form_entries');
+      final totalEntries = await db.query('form_entries');
 
-    final closures = await db.query(
-      'day_closures',
-      where: 'date = ?',
-      whereArgs: [today],
-    );
+      final closures = await db.query(
+        'day_closures',
+        where: 'date = ?',
+        whereArgs: [today],
+      );
 
-    final syncEngine = context.read<SyncEngine>();
-    final pending = await syncEngine.getPendingCount();
+      final syncEngine = context.read<SyncEngine>();
+      final pending = await syncEngine.getPendingCount();
 
-    setState(() {
-      _pendingCount = pending;
-      _todayEntries = todayEntries.length;
-      _totalEntries = totalEntries.length;
-      _todayClosureStatus = closures.isNotEmpty
-          ? closures.first['status'] as String
-          : 'ABIERTO';
-    });
+      if (mounted) {
+        setState(() {
+          _pendingCount = pending;
+          _todayEntries = todayEntries.length;
+          _totalEntries = totalEntries.length;
+          _todayClosureStatus = closures.isNotEmpty
+              ? closures.first['status'] as String
+              : 'ABIERTO';
+        });
+      }
+    } catch (e) {
+      debugPrint('Dashboard load error (offline mode): $e');
+      if (mounted) {
+        setState(() {
+          _pendingCount = 0;
+          _todayEntries = 0;
+          _totalEntries = 0;
+          _todayClosureStatus = 'ABIERTO';
+        });
+      }
+    }
   }
 
   static const _modules = [
@@ -76,11 +89,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final sync = context.watch<SyncEngine>();
 
     return Scaffold(
+      backgroundColor: const Color(0xFF001020),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('BioLab'),
+            const Text('BioLab'),
             Text(
               auth.currentUser?.nombre ?? 'Dashboard',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
@@ -100,13 +114,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: sync.isOnline ? Colors.greenAccent : Colors.redAccent,
                   size: 20,
                 ),
-                const SizedBox(width: 4),
-                if (sync.isSyncing)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  ),
                 if (_pendingCount > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -125,49 +132,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.sync),
             onPressed: () async {
-              final success = await sync.synchronize();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(success
-                      ? 'Sincronizacion completada'
-                      : 'Error al sincronizar. Datos guardados localmente')),
-                );
-                _loadStats();
+              try {
+                final success = await sync.synchronize();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(success
+                        ? 'Sincronizacion completada'
+                        : 'Sin conexion. Datos guardados localmente')),
+                  );
+                  _loadStats();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Modo offline activo')),
+                  );
+                }
               }
             },
             tooltip: 'Sincronizar',
-          ),
-          Consumer<UpdateService>(
-            builder: (context, update, _) {
-              if (!update.hasUpdate) return const SizedBox.shrink();
-              return Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.system_update),
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        barrierDismissible: !update.isMandatory,
-                        builder: (ctx) => const UpdateDialog(),
-                      );
-                    },
-                    tooltip: 'Actualizacion disponible',
-                  ),
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
           ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -181,7 +164,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
-              sync.stopPeriodicSync();
+              try {
+                sync.stopPeriodicSync();
+              } catch (_) {}
               auth.logout();
               Navigator.pushReplacement(
                 context,

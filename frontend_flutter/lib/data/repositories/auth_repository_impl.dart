@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/repositories/auth_repository.dart';
-import 'api_client.dart';
+import '../api_client.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final ApiClient _api;

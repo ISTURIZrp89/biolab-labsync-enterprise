@@ -27,6 +27,7 @@ dependencies:
   connectivity_plus: ^5.0.0 # Deteccion de red multiplataforma
   flutter_localizations:
     sdk: flutter
+  sqflite_common_ffi_web: ^0.4.5+4
 
 dev_dependencies:
   flutter_test:
