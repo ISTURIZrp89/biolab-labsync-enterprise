@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+*.db
+*.sqlite
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.mode
+*.ipr
+*.iws
+*.swp
+*~
+*.lock
+
+# Node / JS Tools
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema y Reportes locales
+C:\Users\HP\Documents\BioLab_Reportes/
+Reportes/
+*.csv
+*.html
+*.txt
+*.zip
+.DS_Store
+Thumbs.db
+
+# Archivos privados de laboratorio (NO subir al repo)
+*.xlsx
+*.xls
+*.docx
+*.doc
+*.pdf
+
+# Carpetas temporales de desarrollo
+scratch/
+backup/
