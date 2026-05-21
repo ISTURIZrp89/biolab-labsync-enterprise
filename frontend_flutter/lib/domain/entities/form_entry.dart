@@ -1,6 +1,7 @@
 class FormEntry {
   final String id;
   final String module;
+  final String? subModule;
   final String date;
   final String userId;
   final String deviceId;
@@ -13,6 +14,7 @@ class FormEntry {
   FormEntry({
     required this.id,
     required this.module,
+    this.subModule,
     required this.date,
     required this.userId,
     required this.deviceId,
@@ -28,6 +30,7 @@ class FormEntry {
     return FormEntry(
       id: json['id'] ?? '',
       module: json['module'] ?? '',
+      subModule: json['sub_module'],
       date: json['date'] ?? '',
       userId: json['user_id'] ?? '',
       deviceId: json['device_id'] ?? '',
@@ -42,6 +45,7 @@ class FormEntry {
   Map<String, dynamic> toJson() => {
     'id': id,
     'module': module,
+    'sub_module': subModule,
     'date': date,
     'user_id': userId,
     'device_id': deviceId,

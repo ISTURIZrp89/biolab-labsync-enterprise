@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../data/db.dart';
-import 'form_list_screen.dart';
+import 'form_entry_screen.dart';
 import 'calendar_screen.dart';
 import 'login_screen.dart';
 import 'audit_screen.dart';
@@ -302,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => FormListScreen(
+                              builder: (context) => FormEntryScreen(
                                 module: m['module'] as String,
                                 moduleLabel: m['label'] as String,
                               ),

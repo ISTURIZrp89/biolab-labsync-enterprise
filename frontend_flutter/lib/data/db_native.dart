@@ -8,12 +8,13 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 1,
+    version: 2,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
           id TEXT PRIMARY KEY,
           module TEXT NOT NULL,
+          sub_module TEXT,
           date TEXT NOT NULL,
           user_id TEXT NOT NULL,
           device_id TEXT NOT NULL,
@@ -65,6 +66,13 @@ Future<Database> openLocalDatabase(String filePath) async {
           value TEXT NOT NULL
         )
       ''');
+    },
+    onUpgrade: (db, oldVersion, newVersion) async {
+      if (oldVersion < 2) {
+        await db.execute(
+          'ALTER TABLE form_entries ADD COLUMN sub_module TEXT',
+        );
+      }
     },
   );
 }

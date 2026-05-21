@@ -22,6 +22,7 @@ class FormRepositoryImpl implements FormRepository {
       return FormEntry(
         id: row['id'] as String,
         module: row['module'] as String,
+        subModule: row['sub_module'] as String?,
         date: row['date'] as String,
         userId: row['user_id'] as String,
         deviceId: row['device_id'] as String,
@@ -47,6 +48,32 @@ class FormRepositoryImpl implements FormRepository {
       return FormEntry(
         id: row['id'] as String,
         module: row['module'] as String,
+        subModule: row['sub_module'] as String?,
+        date: row['date'] as String,
+        userId: row['user_id'] as String,
+        deviceId: row['device_id'] as String,
+        version: row['version'] as int,
+        data: jsonDecode(row['data_json'] as String),
+        status: row['status'] as String,
+        createdAt: row['created_at'] as String,
+        updatedAt: row['updated_at'] as String,
+      );
+    }).toList();
+  }
+
+  Future<List<FormEntry>> getEntriesByModuleAndSubModule(String module, String subModule) async {
+    final db = await _db.database;
+    final rows = await db.query(
+      'form_entries',
+      where: 'module = ? AND sub_module = ?',
+      whereArgs: [module, subModule],
+      orderBy: 'date DESC',
+    );
+    return rows.map((row) {
+      return FormEntry(
+        id: row['id'] as String,
+        module: row['module'] as String,
+        subModule: row['sub_module'] as String?,
         date: row['date'] as String,
         userId: row['user_id'] as String,
         deviceId: row['device_id'] as String,
@@ -72,6 +99,7 @@ class FormRepositoryImpl implements FormRepository {
     return FormEntry(
       id: row['id'] as String,
       module: row['module'] as String,
+      subModule: row['sub_module'] as String?,
       date: row['date'] as String,
       userId: row['user_id'] as String,
       deviceId: row['device_id'] as String,
@@ -91,6 +119,7 @@ class FormRepositoryImpl implements FormRepository {
       {
         'id': entry.id,
         'module': entry.module,
+        'sub_module': entry.subModule,
         'date': entry.date,
         'user_id': entry.userId,
         'device_id': entry.deviceId,
@@ -112,6 +141,7 @@ class FormRepositoryImpl implements FormRepository {
 
   Future<FormEntry> createEntry({
     required String module,
+    String? subModule,
     required String date,
     required String userId,
     required String deviceId,
@@ -121,6 +151,7 @@ class FormRepositoryImpl implements FormRepository {
     final entry = FormEntry(
       id: _uuid.v4(),
       module: module,
+      subModule: subModule,
       date: date,
       userId: userId,
       deviceId: deviceId,
