@@ -11,6 +11,64 @@ permissions:
   contents: write
 
 jobs:
+  build-docker-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t biolab-labsync:latest .
+
+      - name: Test Docker container
+        run: |
+          docker run -d --name test-web -p 8080:80 biolab-labsync:latest
+          sleep 5
+          curl -f http://localhost:8080 || exit 1
+          docker stop test-web && docker rm test-web
+
+      - name: Save Docker image
+        run: docker save biolab-labsync:latest | gzip > biolab-labsync-web.tar.gz
+
+      - name: Upload Docker artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BioLab-LABSYNC-Docker
+          path: biolab-labsync-web.tar.gz
+
+  build-linux:
+    runs-on: ubuntu-latest
+    container: ghcr.io/cirruslabs/flutter:3.24.5
+    defaults:
+      run:
+        working-directory: frontend_flutter
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          apt-get update
+          apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create installer
+        run: |
+          mkdir -p build/installer/BioLab-LABSYNC
+          cp -r build/linux/x64/release/bundle/* build/installer/BioLab-LABSYNC/
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BioLab-LABSYNC-Linux
+          path: frontend_flutter/build/installer/BioLab-LABSYNC/
+
   build-windows:
     runs-on: windows-latest
     defaults:
@@ -41,79 +99,6 @@ jobs:
         with:
           name: BioLab-LABSYNC-Windows
           path: frontend_flutter/build/installer/BioLab-LABSYNC/
-
-  build-linux:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: frontend_flutter
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.24.0'
-          cache: true
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
-
-      - name: Install Flutter dependencies
-        run: flutter pub get
-
-      - name: Enable Linux desktop
-        run: flutter config --enable-linux-desktop
-
-      - name: Build Linux
-        run: flutter build linux --release
-
-      - name: Create installer
-        run: |
-          mkdir -p build/installer/BioLab-LABSYNC
-          cp -r build/linux/x64/release/bundle/* build/installer/BioLab-LABSYNC/
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BioLab-LABSYNC-Linux
-          path: frontend_flutter/build/installer/BioLab-LABSYNC/
-
-  build-web:
-    runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: frontend_flutter
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.24.0'
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Setup sqflite web binaries
-        run: dart run sqflite_common_ffi_web:setup
-
-      - name: Build Web
-        run: flutter build web --release
-
-      - name: Copy sqflite binaries to build
-        run: |
-          cp web/sqflite_sw.js build/web/
-          cp web/sqlite3.wasm build/web/
-
-      - name: Upload Web artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BioLab-LABSYNC-Web
-          path: frontend_flutter/build/web/
 
   build-macos:
     runs-on: macos-latest
@@ -147,7 +132,7 @@ jobs:
           path: frontend_flutter/build/installer/BioLab-LABSYNC/
 
   create-release:
-    needs: [build-windows, build-linux, build-web, build-macos]
+    needs: [build-docker-web, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -161,16 +146,15 @@ jobs:
           zip -r BioLab-LABSYNC-Windows.zip BioLab-LABSYNC-Windows/
           zip -r BioLab-LABSYNC-Linux.zip BioLab-LABSYNC-Linux/
           zip -r BioLab-LABSYNC-macOS.zip BioLab-LABSYNC-macOS/
-          zip -r BioLab-LABSYNC-Web.zip BioLab-LABSYNC-Web/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            artifacts/BioLab-LABSYNC-Docker/biolab-labsync-web.tar.gz
             artifacts/BioLab-LABSYNC-Windows.zip
             artifacts/BioLab-LABSYNC-Linux.zip
             artifacts/BioLab-LABSYNC-macOS.zip
-            artifacts/BioLab-LABSYNC-Web.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
