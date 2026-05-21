@@ -75,39 +75,18 @@ jobs:
       - name: Build Linux
         run: flutter build linux --release
 
-      - name: Download AppImageTool
+      - name: Create Linux bundle
         run: |
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
-          chmod +x /usr/local/bin/appimagetool
-
-      - name: Create AppImage
-        run: |
-          mkdir -p build/installer/BioLab-LABSYNC.AppDir
-          cp -r build/linux/x64/release/bundle/* build/installer/BioLab-LABSYNC.AppDir/
-          cp linux/runner/my_application.cc build/installer/BioLab-LABSYNC.AppDir/.DirIcon 2>/dev/null || true
-          cat > build/installer/BioLab-LABSYNC.AppDir/BioLab-LABSYNC.desktop << 'EOF'
-          [Desktop Entry]
-          Name=BioLab LABSYNC
-          Exec=biolab_labsync
-          Icon=biolab_labsync
-          Type=Application
-          Categories=Utility;
-          EOF
-          cat > build/installer/BioLab-LABSYNC.AppDir/AppRun << 'EOF'
-          #!/bin/bash
-          SELF=$(readlink -f "$0")
-          HERE=${SELF%/*}
-          exec "$HERE/biolab_labsync" "$@"
-          EOF
-          chmod +x build/installer/BioLab-LABSYNC.AppDir/AppRun
+          mkdir -p build/installer/BioLab-LABSYNC
+          cp -r build/linux/x64/release/bundle/* build/installer/BioLab-LABSYNC/
           cd build/installer
-          appimagetool BioLab-LABSYNC.AppDir BioLab-LABSYNC-Linux.AppImage
+          tar -czf ../../BioLab-LABSYNC-Linux.tar.gz BioLab-LABSYNC/
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: BioLab-LABSYNC-Linux
-          path: frontend_flutter/build/installer/BioLab-LABSYNC-Linux.AppImage
+          path: frontend_flutter/BioLab-LABSYNC-Linux.tar.gz
 
   build-macos:
     runs-on: macos-latest
@@ -155,7 +134,7 @@ jobs:
         with:
           files: |
             artifacts/BioLab-LABSYNC-Windows/BioLab-LABSYNC-Windows.zip
-            artifacts/BioLab-LABSYNC-Linux/BioLab-LABSYNC-Linux.AppImage
+            artifacts/BioLab-LABSYNC-Linux/BioLab-LABSYNC-Linux.tar.gz
             artifacts/BioLab-LABSYNC-macOS/BioLab-LABSYNC-macOS.dmg
           generate_release_notes: true
         env:
