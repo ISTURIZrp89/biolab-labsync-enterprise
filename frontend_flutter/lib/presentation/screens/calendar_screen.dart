@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import '../../data/db.dart';
+import '../../domain/form_definitions.dart';
 import '../../theme/omni_theme.dart';
+import 'form_entry_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -150,7 +152,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       final isToday = isCurrentMonth && day == today.day;
 
                       return GestureDetector(
-                        onTap: entryCount > 0 ? () => _showDayEntries(dateStr) : null,
+                        onTap: () => _showDayEntries(dateStr),
                         child: Container(
                           margin: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
@@ -335,6 +337,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     const SizedBox(width: 12),
                     IconButton(
+                      icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
+                      tooltip: 'Nuevo registro',
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _navigateToCreateEntry(dateStr);
+                      },
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.close, size: 20),
                       onPressed: () => Navigator.pop(context),
                     ),
@@ -342,7 +352,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
               ),
               Expanded(
-                child: ListView.builder(
+                child: entries.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox_outlined, size: 40, color: OmniTheme.bg700),
+                            const SizedBox(height: 8),
+                            const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Nuevo registro'),
+                              onPressed: () { Navigator.pop(context); _navigateToCreateEntry(dateStr); },
+                              style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
                   controller: scrollController,
                   padding: const EdgeInsets.all(16),
                   itemCount: entries.length,
@@ -420,6 +448,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  void _navigateToCreateEntry(String dateStr) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Seleccionar modulo', style: TextStyle(fontSize: 14, color: OmniTheme.textPrimary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: formModules.map((m) {
+              final label = m['label'] as String? ?? m['module'] as String;
+              return ListTile(
+                dense: true,
+                title: Text(label, style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: m['module'] as String, moduleLabel: label)));
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: OmniTheme.textMuted))),
+        ],
       ),
     );
   }

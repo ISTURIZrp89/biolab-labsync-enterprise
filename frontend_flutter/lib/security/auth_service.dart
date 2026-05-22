@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/entities/user.dart';
@@ -32,8 +33,25 @@ class AuthService extends ChangeNotifier {
       debugPrint('Backend login failed: $e');
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final usersRaw = prefs.getString('users_list');
+    if (usersRaw != null) {
+      try {
+        final List users = jsonDecode(usersRaw);
+        for (final u in users) {
+          if (u['pin'] == pin) {
+            await prefs.setString('jwt_token', 'local-offline-session');
+            _currentUser = User(id: u['pin'] as String, nombre: u['nombre'] as String, rol: u['rol'] as String, cargo: u['cargo'] as String? ?? '');
+            _isAuthenticated = true;
+            _isLoading = false;
+            notifyListeners();
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+
     if (pin == "1234") {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', 'local-offline-session');
       _currentUser = User(id: userId, nombre: "Admin (Offline)", rol: "ADMIN");
       _isAuthenticated = true;
@@ -43,7 +61,6 @@ class AuthService extends ChangeNotifier {
     }
 
     if (pin == "0000") {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', 'local-offline-session');
       _currentUser = User(id: userId, nombre: "Jefe (Offline)", rol: "JEFE");
       _isAuthenticated = true;
@@ -53,7 +70,6 @@ class AuthService extends ChangeNotifier {
     }
 
     if (pin == "1111") {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', 'local-offline-session');
       _currentUser = User(id: userId, nombre: "Tecnico (Offline)", rol: "LABORATORIO");
       _isAuthenticated = true;
@@ -63,7 +79,6 @@ class AuthService extends ChangeNotifier {
     }
 
     if (pin == "2222") {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', 'local-offline-session');
       _currentUser = User(id: userId, nombre: "Auditor (Offline)", rol: "AUDITOR");
       _isAuthenticated = true;
@@ -73,7 +88,6 @@ class AuthService extends ChangeNotifier {
     }
 
     if (pin == "3333") {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', 'local-offline-session');
       _currentUser = User(id: userId, nombre: "Dueno (Offline)", rol: "DUEÑO");
       _isAuthenticated = true;

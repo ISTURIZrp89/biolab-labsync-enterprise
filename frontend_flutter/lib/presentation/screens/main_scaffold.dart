@@ -26,6 +26,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   static const _navItems = [
     _NavItem('Inicio', Icons.dashboard_outlined, Icons.dashboard),
+    _NavItem('Reportes diarios', Icons.bar_chart_outlined, Icons.bar_chart),
     _NavItem('Incubadoras', Icons.thermostat_outlined, Icons.thermostat),
     _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
     _NavItem('Ultracongeladores', Icons.ac_unit_outlined, Icons.ac_unit),
@@ -33,12 +34,12 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Bitacora', Icons.book_outlined, Icons.book),
     _NavItem('Calendario', Icons.calendar_month_outlined, Icons.calendar_month),
-    _NavItem('Reportes', Icons.bar_chart_outlined, Icons.bar_chart),
   ];
 
-  static const _moduleKeys = ['', 'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', '', ''];
+  static const _moduleKeys = ['', '', 'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', ''];
   static const _moduleColors = [
     null,
+    Color(0xFF34D399),
     OmniTheme.red400,
     OmniTheme.orange400,
     OmniTheme.accentBlue,
@@ -46,7 +47,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     Color(0xFFB197FC),
     Color(0xFFF472B6),
     null,
-    Color(0xFF34D399),
   ];
 
   @override
@@ -90,7 +90,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     Widget content;
     if (_selectedIndex == 0) {
       content = _buildDashboard();
-    } else if (_selectedIndex == 7) {
+    } else if (_selectedIndex == 8) {
       content = const CalendarScreen();
     } else {
       content = const SizedBox.shrink();
@@ -120,10 +120,10 @@ class _MainScaffoldState extends State<MainScaffold> {
     return NavigationRail(
       selectedIndex: _selectedIndex.clamp(0, _navItems.length - 1),
       onDestinationSelected: (i) {
-        if (i == 0 || i == 7) {
+        if (i == 0 || i == 8) {
           setState(() => _selectedIndex = i);
           if (i == 0) _loadStats();
-        } else if (i == 8) {
+        } else if (i == 1) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
         } else {
           _openModule(_moduleKeys[i], _navItems[i].label);
@@ -143,10 +143,11 @@ class _MainScaffoldState extends State<MainScaffold> {
                 gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.biotech, color: Colors.white, size: 20),
+              child: const Icon(Icons.person, color: Colors.white, size: 20),
             ),
             const SizedBox(height: 4),
-            Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, color: OmniTheme.textMuted), overflow: TextOverflow.ellipsis),
+            Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis),
+            Text(auth.currentUser?.rol ?? '', style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis),
           ],
         ),
       ),

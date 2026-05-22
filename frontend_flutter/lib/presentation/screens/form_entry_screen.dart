@@ -523,6 +523,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     final today = now.toIso8601String().split('T')[0];
     final nowTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     _totalRequired = fields.where((f) => f['required'] == true).length;
+    final userName = context.read<AuthService>().currentUser?.nombre ?? '';
 
     if (_isTableMode) {
       for (final f in fields) {
@@ -530,7 +531,9 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         final type = f['type'] as String;
         if (type == 'date') _formData[key] = today;
         else if (type == 'time') _formData[key] = nowTime;
-        else _formData[key] = '';
+        else if (key == 'responsable' || key == 'usuario' || key == 'nombre' || key == 'operador' || key == 'firma_responsable') {
+          _formData[key] = userName;
+        } else _formData[key] = '';
         _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
       }
       _tableRows = [{}];
@@ -544,7 +547,9 @@ class _SmartFillModalState extends State<_SmartFillModal> {
 
         if (type == 'date') _formData[key] = today;
         else if (type == 'time') _formData[key] = nowTime;
-        else _formData[key] = '';
+        else if (key == 'responsable' || key == 'usuario' || key == 'nombre' || key == 'operador' || key == 'firma_responsable') {
+          _formData[key] = userName;
+        } else _formData[key] = '';
         _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
       }
     }
@@ -1249,6 +1254,69 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     );
   }
 
+  void _showPreview() {
+    final fields = widget.section['fields'] as List;
+    for (final f in fields) {
+      final key = f['key'] as String;
+      final controller = _controllers[key];
+      if (controller != null) _formData[key] = controller.text;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: Row(
+          children: [
+            const Icon(Icons.preview, size: 20, color: OmniTheme.accentBlue),
+            const SizedBox(width: 8),
+            Text('Vista previa - ${widget.moduleLabel}', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary)),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ...fields.map((f) {
+                final key = f['key'] as String;
+                final label = f['label'] as String? ?? key;
+                final val = _formData[key]?.toString() ?? '';
+                if (val.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 130, child: Text('$label:', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
+                      Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary))),
+                    ],
+                  ),
+                );
+              }),
+              if (_isTableMode && _tableRows.isNotEmpty) ...[
+                const Divider(color: OmniTheme.bg800),
+                Text('${_tableRows.length} filas en tabla', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
+                ..._tableRows.map((row) => Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(row.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Editar', style: TextStyle(color: OmniTheme.textMuted))),
+          ElevatedButton(
+            onPressed: () { Navigator.pop(ctx); _save(); },
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400, foregroundColor: Colors.white),
+            child: const Text('GUARDAR'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFooter() {
     final rowCount = _isTableMode ? _tableRows.length : 1;
     return Container(
@@ -1274,7 +1342,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
           ),
           const SizedBox(width: 8),
           ElevatedButton(
-            onPressed: _isSaving || _saveSuccess ? null : _save,
+            onPressed: _isSaving || _saveSuccess ? null : _showPreview,
             style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
             child: _isSaving
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
