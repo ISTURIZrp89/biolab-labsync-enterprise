@@ -11,6 +11,8 @@ import '../../domain/form_definitions.dart';
 import '../../domain/entities/form_entry.dart';
 import '../widgets/smart_form_field.dart';
 import '../../security/auth_service.dart';
+import '../../security/edit_lock_service.dart';
+import '../../ai/ai_service.dart';
 import '../../services/user_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -151,7 +153,7 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     final actividades = data['_actividades'] as List? ?? [];
     final recursos = data['_recursos'] as List? ?? [];
     final incidencias = data['incidencias'] as String? ?? '';
-    final String? lockHolder;
+    String? lockHolder;
     try {
       final lockSvc = context.read<EditLockService>();
       lockHolder = lockSvc.getLockHolder(entry.id);

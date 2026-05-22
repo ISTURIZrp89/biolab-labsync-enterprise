@@ -570,8 +570,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     switch (status) {
       case 'CERRADO': return OmniTheme.green400;
       case 'REABIERTO': return OmniTheme.orange400;
-      case 'ABIERTO': return null;
-      default: return null;
+      default: return OmniTheme.textMuted;
     }
   }
 
@@ -612,7 +611,7 @@ class _MainScaffoldState extends State<MainScaffold> {
 
                   Color? bgColor;
                   String statusIcon = '';
-                  Color statusIconColor = OmniTheme.blue400;
+                  Color statusIconColor = OmniTheme.accentBlue;
                   if (closureStatus == 'CERRADO') {
                     bgColor = OmniTheme.green400.withOpacity(0.15);
                     statusIcon = '✓';
@@ -626,9 +625,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                     statusIcon = '●';
                     statusIconColor = OmniTheme.accentBlue;
                   } else if (entryCount > 0) {
-                    bgColor = OmniTheme.blue400.withOpacity(0.1);
+                    bgColor = OmniTheme.accentBlue.withOpacity(0.1);
                     statusIcon = '$entryCount';
-                    statusIconColor = OmniTheme.blue400;
+                    statusIconColor = OmniTheme.accentBlue;
                   }
 
                   return GestureDetector(
@@ -663,10 +662,8 @@ class _MainScaffoldState extends State<MainScaffold> {
               const SizedBox(width: 12),
               _legendDot(OmniTheme.orange400, 'Reabierto'),
               const SizedBox(width: 12),
-              _legendDot(OmniTheme.blue400, 'Datos'),
+              _legendDot(OmniTheme.accentBlue, 'Datos'),
               const SizedBox(width: 12),
-              _legendDot(OmniTheme.accentBlue, 'Hoy'),
-              const SizedBox(width: 16),
               _legendDot(OmniTheme.accentBlue, 'Hoy'),
             ]),
           ],

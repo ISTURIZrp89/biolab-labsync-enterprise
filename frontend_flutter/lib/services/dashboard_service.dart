@@ -35,6 +35,8 @@ class ModuleDayStatus {
     'entry_count': entryCount,
   };
 
+  static const List<String> statuses = ['pendiente', 'completado', 'incidencia', 'no_laborado', 'justificado'];
+
   static String statusLabel(String s) {
     switch (s) {
       case 'borrador': return 'Borrador';

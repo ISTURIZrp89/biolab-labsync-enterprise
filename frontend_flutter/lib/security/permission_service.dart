@@ -101,9 +101,9 @@ class PermissionService extends ChangeNotifier {
     // This is handled at the settings screen level
   }
 
-  List _tryDecodeList(dynamic raw) {
+  List<dynamic> _tryDecodeList(dynamic raw) {
     try {
-      if (raw is String) return const JsonDecoder().convert(raw) as List;
+      if (raw is String) return (jsonDecode(raw) as List<dynamic>);
       if (raw is List) return raw;
     } catch (_) {}
     return [];

@@ -191,7 +191,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ]),
         ),
         build: (ctx) => [
-          pw.Header(text: 'REPORTE DE ACTIVIDADES', level: 0, separator: true),
+          pw.Header(text: 'REPORTE DE ACTIVIDADES', level: 0),
           pw.SizedBox(height: 8),
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
@@ -224,7 +224,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ]),
           ),
           pw.SizedBox(height: 20),
-          pw.Header(text: 'Resumen por módulo', level: 1, separator: true),
+          pw.Header(text: 'Resumen por módulo', level: 1),
           pw.TableHelper.fromTextArray(
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
@@ -237,7 +237,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             }).toList(),
           ),
           pw.SizedBox(height: 20),
-          pw.Header(text: 'Detalle de registros', level: 1, separator: true),
+          pw.Header(text: 'Detalle de registros', level: 1),
           ..._buildPdfEntryTable(pdf, fmt),
         ],
       ));

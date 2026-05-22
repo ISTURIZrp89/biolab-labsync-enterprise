@@ -154,7 +154,7 @@ class ClosureService extends ChangeNotifier {
           closedBy: mRows.first['closed_by'] as String? ?? '',
           closedAt: mRows.first['closed_at'] as String?,
           notes: mRows.first['notes'] as String?,
-          daysOpen: daysInMonth - (mRows.first['days_closed'] as int? ?? 0),
+          daysOpen: lastDay - (mRows.first['days_closed'] as int? ?? 0),
           daysClosed: mRows.first['days_closed'] as int? ?? 0,
         );
       }
@@ -238,10 +238,18 @@ class ClosureService extends ChangeNotifier {
 
     existing.reopenLog.add(reopenEntry);
     existing.status = 'REABIERTO';
-    existing.closedBy = user.nombre;
+    final updated = ClosureInfo(
+      id: existing.id,
+      date: existing.date,
+      status: 'REABIERTO',
+      closedBy: user.nombre,
+      closedAt: DateTime.now().toUtc().toIso8601String(),
+      notes: existing.notes,
+      reopenLog: List.from(existing.reopenLog),
+    );
 
-    await db.insert('day_closures', existing.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-    _dailyClosures[date] = existing;
+    await db.insert('day_closures', updated.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+    _dailyClosures[date] = updated;
 
     await _localDb.queueSyncAction(
       action: 'UPDATE',
