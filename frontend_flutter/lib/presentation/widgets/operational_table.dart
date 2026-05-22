@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../theme/omni_theme.dart';
 
 typedef TableColumnDef = Map<String, dynamic>;
@@ -25,12 +26,21 @@ class _OperationalTableState extends State<OperationalTable> {
   late List<Map<String, dynamic>> _rows;
   final Map<String, TextEditingController> _controllers = {};
   final ScrollController _horizontalScroll = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+  final FocusNode _tableFocus = FocusNode();
+
+  static const double _rowHeight = 44.0;
+  static const double _headerHeight = 40.0;
+  double _viewportHeight = 400;
+  double _totalWidth = 0;
 
   @override
   void initState() {
     super.initState();
     _rows = widget.rows.map((r) => Map<String, dynamic>.from(r)).toList();
     _initControllers();
+    _calcTotalWidth();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _updateViewport());
   }
 
   @override
@@ -42,6 +52,7 @@ class _OperationalTableState extends State<OperationalTable> {
       _rows = widget.rows.map((r) => Map<String, dynamic>.from(r)).toList();
       _disposeControllers();
       _initControllers();
+      _calcTotalWidth();
     }
   }
 
@@ -49,7 +60,25 @@ class _OperationalTableState extends State<OperationalTable> {
   void dispose() {
     _disposeControllers();
     _horizontalScroll.dispose();
+    _verticalScroll.dispose();
+    _tableFocus.dispose();
     super.dispose();
+  }
+
+  void _updateViewport() {
+    if (!mounted) return;
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox != null && renderBox.hasSize) {
+      setState(() => _viewportHeight = renderBox.size.height - 60);
+    }
+  }
+
+  void _calcTotalWidth() {
+    double w = 0;
+    for (final col in widget.columns) {
+      w += col['width'] as double? ?? 120;
+    }
+    _totalWidth = w + 70;
   }
 
   void _disposeControllers() {
@@ -81,8 +110,16 @@ class _OperationalTableState extends State<OperationalTable> {
         _controllers[_cellKey(rowIdx, key)] = TextEditingController(text: initial);
       }
       _rows.add(row);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     });
     widget.onChanged(List.from(_rows));
+  }
+
+  void _scrollToBottom() {
+    if (_rows.length * _rowHeight > _viewportHeight) {
+      final maxScroll = _rows.length * _rowHeight - _viewportHeight;
+      _verticalScroll.animateTo(maxScroll, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    }
   }
 
   void _duplicateRow(int index) {
@@ -134,55 +171,137 @@ class _OperationalTableState extends State<OperationalTable> {
     }
   }
 
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      if (data == null || data.text == null || data.text!.trim().isEmpty) return;
+
+      final lines = data.text!
+          .split(RegExp(r'[\r\n]+'))
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      if (lines.isEmpty) return;
+
+      setState(() {
+        for (final line in lines) {
+          final values = line.split('\t');
+          final row = <String, dynamic>{};
+          final rowIdx = _rows.length;
+          for (int c = 0; c < widget.columns.length; c++) {
+            final key = widget.columns[c]['key'] as String;
+            final val = c < values.length ? values[c].trim() : '';
+            row[key] = val;
+            _controllers[_cellKey(rowIdx, key)] = TextEditingController(text: val);
+          }
+          _rows.add(row);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      });
+      widget.onChanged(List.from(_rows));
+    } catch (_) {}
+  }
+
+  bool _isRowVisible(int index) {
+    final scrollOffset = _verticalScroll.offset;
+    final start = scrollOffset / _rowHeight - 2;
+    final end = (scrollOffset + _viewportHeight) / _rowHeight + 2;
+    return index >= start.floor() && index <= end.ceil();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Row(
-              children: [
-                Text(widget.label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: OmniTheme.accentBlue.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-                  child: Text('${_rows.length}', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
-                ),
-                const Spacer(),
-                _buildActionChip(Icons.add, 'Agregar', _addRow),
-                const SizedBox(width: 4),
-              ],
+    return Focus(
+      focusNode: _tableFocus,
+      child: Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(
+                children: [
+                  Text(widget.label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: OmniTheme.accentBlue.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                    child: Text('${_rows.length}', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
+                  ),
+                  const Spacer(),
+                  _buildActionChip(Icons.add, 'Agregar', _addRow),
+                  const SizedBox(width: 4),
+                  _buildActionChip(Icons.content_paste, 'Pegar', _pasteFromClipboard),
+                  const SizedBox(width: 4),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            controller: _horizontalScroll,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(OmniTheme.bg800),
-              dataRowColor: WidgetStateProperty.all(Colors.transparent),
-              dataRowMinHeight: 36,
-              dataRowMaxHeight: 48,
-              horizontalMargin: 8,
-              columnSpacing: 4,
-              columns: [
-                ...widget.columns.map((col) {
-                  final label = col['label'] as String? ?? col['key'] as String;
-                  final width = col['width'] as double? ?? 120;
-                  return DataColumn(
-                    label: SizedBox(
-                      width: width,
-                      child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: OmniTheme.textMuted), overflow: TextOverflow.ellipsis),
-                    ),
+            const Divider(height: 1),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (ctx, constraints) {
+                  _viewportHeight = constraints.maxHeight;
+                  return NotificationListener<ScrollNotification>(
+                    onNotification: (_) { setState(() {}); return false; },
+                    child: _buildVirtualizedTable(),
                   );
-                }),
-                DataColumn(label: SizedBox(width: 60, child: Text('ACCIÓN', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)))),
-              ],
-              rows: List.generate(_rows.length, (i) => _buildRow(i)),
+                },
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVirtualizedTable() {
+    final visibleCount = (_viewportHeight / _rowHeight).ceil() + 4;
+    final firstVisible = (_verticalScroll.offset / _rowHeight).floor().clamp(0, _rows.length - 1);
+    final lastVisible = (firstVisible + visibleCount).clamp(0, _rows.length);
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      controller: _horizontalScroll,
+      child: SizedBox(
+        width: _totalWidth,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: ListView.builder(
+                controller: _verticalScroll,
+                itemCount: _rows.length,
+                itemExtent: _rowHeight,
+                itemBuilder: (ctx, i) => _buildRow(i),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      height: _headerHeight,
+      color: OmniTheme.bg800,
+      child: Row(
+        children: [
+          ...widget.columns.map((col) {
+            final label = col['label'] as String? ?? col['key'] as String;
+            final width = col['width'] as double? ?? 120;
+            return SizedBox(
+              width: width,
+              child: Center(
+                child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: OmniTheme.textMuted), overflow: TextOverflow.ellipsis),
+              ),
+            );
+          }),
+          SizedBox(
+            width: 70,
+            child: Center(child: Text('ACCIÓN', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: OmniTheme.textMuted))),
           ),
         ],
       ),
@@ -211,13 +330,14 @@ class _OperationalTableState extends State<OperationalTable> {
     );
   }
 
-  DataRow _buildRow(int rowIdx) {
-    final cells = <DataCell>[];
+  Widget _buildRow(int rowIdx) {
+    final cells = <Widget>[];
 
     for (final col in widget.columns) {
       final key = col['key'] as String;
       final type = col['type'] as String? ?? 'text';
       final options = col['options'] as List?;
+      final width = col['width'] as double? ?? 120;
       final ctrlKey = _cellKey(rowIdx, key);
       final controller = _controllers[ctrlKey] ?? TextEditingController();
 
@@ -247,11 +367,12 @@ class _OperationalTableState extends State<OperationalTable> {
         );
       }
 
-      cells.add(DataCell(cell));
+      cells.add(SizedBox(width: width, child: cell));
     }
 
-    cells.add(DataCell(
-      Row(
+    cells.add(SizedBox(
+      width: 70,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(onTap: () => _duplicateRow(rowIdx), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.copy, size: 14, color: OmniTheme.accentBlue))),
@@ -260,6 +381,12 @@ class _OperationalTableState extends State<OperationalTable> {
       ),
     ));
 
-    return DataRow(cells: cells);
+    return Container(
+      height: _rowHeight,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: OmniTheme.bg800, width: 0.5)),
+      ),
+      child: Row(children: cells),
+    );
   }
 }

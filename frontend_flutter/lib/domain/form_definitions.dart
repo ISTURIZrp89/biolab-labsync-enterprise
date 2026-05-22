@@ -289,6 +289,8 @@ final List<FormModuleDef> formModules = [
           {'key': 'equipos_usados', 'label': 'Equipos Usados', 'type': 'text', 'multiline': true},
           {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'multiline': true},
           {'key': 'firma_responsable', 'label': 'Firma Responsable', 'type': 'text', 'required': true},
+          {'key': 'recursos_utilizados', 'label': 'Recursos Utilizados', 'type': 'text', 'multiline': true},
+          {'key': 'incidencias', 'label': 'Incidencias', 'type': 'text', 'multiline': true},
         ],
       },
     ],

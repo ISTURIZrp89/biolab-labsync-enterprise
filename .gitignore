@@ -75,3 +75,32 @@ logs/
 Desktop.ini
 Thumbs.db
 *.lnk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Frontend Flutter
+frontend_flutter/.flutter-plugins
+frontend_flutter/.flutter-plugins-dependencies
+frontend_flutter/android/.gradle/
+frontend_flutter/android/local.properties
+frontend_flutter/ios/Pods/
+frontend_flutter/ios/.symlinks/
+frontend_flutter/ios/Flutter/Flutter.framework
+frontend_flutter/ios/Flutter/Flutter.podspec
+frontend_flutter/macos/Pods/
+frontend_flutter/linux/flutter/ephemeral/
+frontend_flutter/windows/flutter/ephemeral/
+frontend_flutter/web/manifest.json
+frontend_flutter/.packages
+frontend_flutter/.dart_tool/
+
+# Backend Python
+backend/__pycache__/
+backend/.venv/
+backend/venv/
+backend/*.db
+backend/*.sqlite

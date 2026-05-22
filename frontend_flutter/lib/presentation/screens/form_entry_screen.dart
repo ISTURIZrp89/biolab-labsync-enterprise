@@ -72,6 +72,78 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     }
   }
 
+  Future<void> _copyYesterdayEntries() async {
+    try {
+      final repo = context.read<FormRepositoryImpl>();
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yStr = yesterday.toIso8601String().split('T')[0];
+      final entries = await repo.getEntriesByModule(widget.module);
+      final yesterdayEntries = entries.where((e) => e.date.startsWith(yStr)).toList();
+      if (yesterdayEntries.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay registros de ayer')));
+        return;
+      }
+      final db = await LocalDatabase.instance.database;
+      final now = DateTime.now().toUtc().toIso8601String();
+      final todayStr = DateTime.now().toIso8601String().split('T')[0];
+      int copied = 0;
+      for (final e in yesterdayEntries) {
+        final data = e.data;
+        data['fecha'] = todayStr;
+        await db.insert('form_entries', {
+          'id': 'cpy-${DateTime.now().microsecondsSinceEpoch}-$copied',
+          'module': widget.module,
+          'sub_module': e.subModule,
+          'date': todayStr,
+          'user_id': e.userId,
+          'device_id': e.deviceId,
+          'version': 1,
+          'data_json': jsonEncode(data),
+          'status': 'saved',
+          'created_at': now,
+          'updated_at': now,
+        });
+        copied++;
+      }
+      _loadEntries();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$copied registros copiados de ayer')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
+    }
+  }
+
+  Widget _buildQuickAction(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(6)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: OmniTheme.textMuted),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildChip(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(4)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 12, color: OmniTheme.accentBlue),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue)),
+        ]),
+      ),
+    );
+  }
+
   FormSectionDef? _getCurrentSection() {
     if (_moduleDef == null) return null;
     final sections = _moduleDef!['sections'] as List;
@@ -143,17 +215,32 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Text(
-                  '${_entries.length} registros',
-                  style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+                Row(
+                  children: [
+                    Text(
+                      '${_entries.length} registros',
+                      style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+                    ),
+                    const Spacer(),
+                    _buildQuickAction(Icons.content_copy, 'Copiar ayer', _copyYesterdayEntries),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: _openForm,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('NUEVO'),
+                      style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
+                    ),
+                  ],
                 ),
-                const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: _openForm,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('NUEVO REGISTRO'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _buildChip(Icons.flash_on, 'Registro rapido', _openForm),
+                    const SizedBox(width: 8),
+                    _buildChip(Icons.content_paste, 'Pegar de ayer', _copyYesterdayEntries),
+                  ],
                 ),
               ],
             ),
