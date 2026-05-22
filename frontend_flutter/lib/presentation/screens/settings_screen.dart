@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/db.dart';
 import '../../sync/sync_engine.dart';
@@ -34,6 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _lastSync = 'Nunca';
   bool _autoSync = true;
   String _savePath = '';
+  String _backupPath = '';
+  bool _encryptLocal = true;
   List<Map<String, String>> _equipmentList = [];
   List<Map<String, String>> _users = [];
   bool _isAdmin = false;
@@ -59,6 +63,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final autoSync = prefs.getBool('auto_sync') ?? true;
     final lastSync = prefs.getString('last_sync_timestamp');
     final savePath = prefs.getString('save_path') ?? '';
+    final backupPath = prefs.getString('backup_path') ?? '';
+    final encryptLocal = prefs.getBool('encrypt_local') ?? true;
     final lanSync = prefs.getBool('lan_sync_enabled') ?? false;
     final broadcast = prefs.getBool('lan_broadcast_discovery') ?? true;
     final lanPort = prefs.getString('lan_port') ?? '8765';
@@ -69,6 +75,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _autoSync = autoSync;
       _lastSync = lastSync != null ? _formatTimestamp(lastSync) : 'Nunca';
       _savePath = savePath;
+      _backupPath = backupPath;
+      _encryptLocal = encryptLocal;
       _lanSyncEnabled = lanSync;
       _broadcastDiscovery = broadcast;
       _lanPort = lanPort;
@@ -203,6 +211,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _changePathDialog(String prefKey, String title, String description, String currentValue, void Function(String) setValue) async {
+    final controller = TextEditingController(text: currentValue.isNotEmpty ? currentValue : '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(description, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: prefKey == 'save_path' ? r'C:\Users\...\Google Drive\BioLab_Reportes' : r'C:\Users\...\Google Drive\BioLab_Backups',
+                hintStyle: const TextStyle(color: Colors.white38),
+                prefixIcon: const Icon(Icons.folder, color: Colors.white54),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.folder_open, color: OmniTheme.accentBlue),
+                  onPressed: () {
+                    Navigator.pop(ctx, '__PICKER__$prefKey');
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(prefKey, result);
+      setValue(result);
+      setState(() {});
+    }
+  }
+
   Future<void> _changeBackendUrl() async {
     final controller = TextEditingController(text: _backendUrl);
     final newUrl = await showDialog<String>(
@@ -297,27 +353,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'auto_sync': prefs.getBool('auto_sync'),
         'device_id': prefs.getString('device_id'),
         'save_path': prefs.getString('save_path'),
+        'backup_path': prefs.getString('backup_path'),
         'equipment_list': prefs.getString('equipment_list'),
         'users_list': prefs.getString('users_list'),
+        'encrypt_local': prefs.getBool('encrypt_local'),
+        'lan_sync_enabled': prefs.getBool('lan_sync_enabled'),
+        'lan_port': prefs.getString('lan_port'),
       };
       final json = const JsonEncoder.withIndent('  ').convert(backup);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Backup exportado (${json.length} bytes)'),
-          action: SnackBarAction(label: 'Copiar', onPressed: () {
-            // In a real app, this would save to a file
-          }),
-        ),
-      );
-
       final blob = utf8.encode(json);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Backup: ${blob.length} datos guardados'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final backupDir = _backupPath.isNotEmpty ? _backupPath : '.';
+      final dir = Directory(backupDir);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final file = File('${dir.path}/LABSYNC_Backup_$ts.json');
+      await file.writeAsBytes(blob);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup guardado: ${file.path} (${blob.length} bytes)'),
+            backgroundColor: OmniTheme.green400,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -633,6 +692,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: Text(_backendUrl, style: const TextStyle(color: OmniTheme.textMuted)),
                 trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
                 onTap: _changeBackendUrl,
+              ),
+            ]),
+            const SizedBox(height: 16),
+            _buildSection('Almacenamiento', [
+              ListTile(
+                leading: const Icon(Icons.folder, color: OmniTheme.accentBlue),
+                title: const Text('Carpeta de Reportes', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_savePath.isNotEmpty ? _savePath : 'No configurada (usar carpeta por defecto)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () => _changePathDialog('save_path', 'Carpeta de Reportes', 'Ruta en Google Drive para guardar PDF/Excel', _savePath, (v) => _savePath = v),
+              ),
+              ListTile(
+                leading: const Icon(Icons.backup, color: OmniTheme.green400),
+                title: const Text('Carpeta de Respaldos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_backupPath.isNotEmpty ? _backupPath : 'No configurada (usar carpeta por defecto)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () => _changePathDialog('backup_path', 'Carpeta de Respaldos', 'Ruta en Google Drive para guardar backups JSON', _backupPath, (v) => _backupPath = v),
+              ),
+              SwitchListTile(
+                title: const Text('Cifrado local de datos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_encryptLocal ? 'Base de datos cifrada (SQLCipher)' : 'Sin cifrado', style: const TextStyle(color: OmniTheme.textMuted)),
+                value: _encryptLocal,
+                activeColor: OmniTheme.accentBlue,
+                onChanged: (v) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('encrypt_local', v);
+                  setState(() => _encryptLocal = v);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(v ? 'Cifrado activado. Los datos locales estan protegidos.' : 'Cifrado desactivado'),
+                    ));
+                  }
+                },
               ),
             ]),
             const SizedBox(height: 16),

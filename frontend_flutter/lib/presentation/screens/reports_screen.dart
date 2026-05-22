@@ -7,7 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:excel/excel.dart' hide Border;
-import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
@@ -110,6 +110,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  Future<String> _getReportsDir() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savePath = prefs.getString('save_path');
+    if (savePath != null && savePath.isNotEmpty) {
+      final dir = Directory(savePath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return savePath;
+    }
+    return '.';
+  }
+
   Future<void> _exportPdf() async {
     try {
       final pdf = pw.Document();
@@ -151,9 +162,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ],
       ));
 
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await _getReportsDir();
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final file = File('${dir.path}/LABSYNC_Reporte_$ts.pdf');
+      final file = File('$dir/LABSYNC_Reporte_$ts.pdf');
       await file.writeAsBytes(await pdf.save());
 
       if (mounted) {
@@ -230,9 +241,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
         rowIdx++;
       }
 
-      final dir = await getApplicationDocumentsDirectory();
+      final dir = await _getReportsDir();
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final filePath = '${dir.path}/LABSYNC_Reporte_$ts.xlsx';
+      final filePath = '$dir/LABSYNC_Reporte_$ts.xlsx';
       final excelBytes = excel.encode();
       if (excelBytes != null) {
         await File(filePath).writeAsBytes(excelBytes);
