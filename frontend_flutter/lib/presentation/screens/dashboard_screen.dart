@@ -262,15 +262,15 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 16),
-            const Row(
+            Row(
               children: [
-                Expanded(child: _StatusCard(title: 'Registros Hoy', value: '0', status: 'OK', color: OmniTheme.green400)),
-                SizedBox(width: 12),
-                Expanded(child: _StatusCard(title: 'Total Registros', value: '0', status: 'OK', color: OmniTheme.green400)),
-                SizedBox(width: 12),
-                Expanded(child: _StatusCard(title: 'Pendientes Sync', value: '0', status: 'Clear', color: OmniTheme.textMuted)),
-                SizedBox(width: 12),
-                Expanded(child: _StatusCard(title: 'Cierre del Dia', value: 'ABIERTO', status: 'Active', color: OmniTheme.accentBlue)),
+                Expanded(child: _StatusCard(title: 'Registros Hoy', value: '$_todayEntries', status: _todayEntries > 0 ? 'OK' : 'Vacio', color: _todayEntries > 0 ? OmniTheme.green400 : OmniTheme.textMuted)),
+                const SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Total Registros', value: '$_totalEntries', status: 'Total', color: OmniTheme.accentBlue)),
+                const SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Pendientes Sync', value: '$_pendingCount', status: _pendingCount > 0 ? 'Pendiente' : 'Sincronizado', color: _pendingCount > 0 ? OmniTheme.yellow400 : OmniTheme.green400)),
+                const SizedBox(width: 12),
+                Expanded(child: _StatusCard(title: 'Cierre del Dia', value: _todayClosureStatus == 'CERRADO' ? 'Cerrado' : 'Abierto', status: _todayClosureStatus == 'CERRADO' ? 'OK' : 'Pendiente', color: _todayClosureStatus == 'CERRADO' ? OmniTheme.green400 : OmniTheme.red400)),
               ],
             ),
           ],
@@ -281,46 +281,91 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
 
   Widget _buildActivitySection() {
     return Card(
-      child: SizedBox(
-        height: 200,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
-              ),
-              child: const Row(
-                children: [
-                  Text(
-                    'Actividad Reciente',
-                    style: TextStyle(
-                      fontFamily: 'Outfit',
-                      fontWeight: FontWeight.w500,
-                      fontSize: 14,
-                      color: OmniTheme.textPrimary,
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+            ),
+            child: Row(
+              children: [
+                const Text(
+                  'Resumen del Dia',
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                    color: OmniTheme.textPrimary,
                   ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.inbox_outlined, size: 32, color: OmniTheme.bg700),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'No hay actividad reciente en el pipeline.',
-                      style: TextStyle(color: OmniTheme.bg700, fontSize: 12, fontStyle: FontStyle.italic),
-                    ),
-                  ],
                 ),
-              ),
+                const Spacer(),
+                Text(
+                  _todayClosureStatus == 'CERRADO'
+                      ? 'Cerrado'
+                      : '${_todayEntries}/${_modules.length} modulos',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _todayClosureStatus == 'CERRADO'
+                        ? OmniTheme.green400
+                        : _todayEntries >= _modules.length
+                            ? OmniTheme.green400
+                            : OmniTheme.yellow400,
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: _modules.map((m) {
+                return _buildModuleStatusRow(
+                  m['label'] as String,
+                  m['icon'] as IconData,
+                  m['color'] as Color,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModuleStatusRow(String label, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 14, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: OmniTheme.textSecondary),
+            ),
+          ),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 0.5),
+            ),
+          ),
+        ],
       ),
     );
   }

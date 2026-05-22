@@ -46,6 +46,32 @@ Thumbs.db
 *.doc
 *.pdf
 
+# Datos sensibles de laboratorio
+Descargas/
+Bitacoras/
+reportes_reales/
+datos_sensibles/
+
+# Configuracion local y secretos
+.env
+.env.local
+*.key
+*.pem
+*.cert
+secrets/
+
+# Backups y exportaciones locales
+backup/
+exports/
+reportes/
+
 # Carpetas temporales de desarrollo
 scratch/
-backup/
+temp/
+logs/
+*.log
+
+# Archivos de sistema Windows
+Desktop.ini
+Thumbs.db
+*.lnk

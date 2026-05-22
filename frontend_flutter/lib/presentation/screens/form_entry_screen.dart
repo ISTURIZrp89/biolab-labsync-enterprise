@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
+import '../../domain/entities/form_entry.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -395,10 +397,14 @@ class _SmartFillModalState extends State<_SmartFillModal> {
   final Map<String, dynamic> _formData = {};
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, GlobalKey<FormState>> _formKeys = {};
+  final Map<String, FocusNode> _focusNodes = {};
   bool _isSaving = false;
   bool _saveSuccess = false;
   String? _saveError;
   bool _quickEntryMode = false;
+  Timer? _autoSaveTimer;
+  int _completedFields = 0;
+  int _totalRequired = 0;
 
   @override
   void initState() {
@@ -408,8 +414,12 @@ class _SmartFillModalState extends State<_SmartFillModal> {
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
     for (final c in _controllers.values) {
       c.dispose();
+    }
+    for (final f in _focusNodes.values) {
+      f.dispose();
     }
     super.dispose();
   }
@@ -419,11 +429,14 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     final now = DateTime.now();
     final today = now.toIso8601String().split('T')[0];
     final nowTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    _totalRequired = fields.where((f) => f['required'] == true).length;
 
-    for (final f in fields) {
+    for (int i = 0; i < fields.length; i++) {
+      final f = fields[i];
       final key = f['key'] as String;
       final type = f['type'] as String;
       _formKeys[key] = GlobalKey<FormState>();
+      _focusNodes[key] = FocusNode();
 
       if (type == 'date') {
         _formData[key] = today;
@@ -436,7 +449,53 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     }
   }
 
-  Future<void> _save() async {
+  void _onFieldChanged(String key) {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 3), () => _save(auto: true));
+
+    final fields = widget.section['fields'] as List;
+    int completed = 0;
+    for (final f in fields) {
+      final k = f['key'] as String;
+      final c = _controllers[k];
+      final isRequired = f['required'] == true;
+      if (c != null && c.text.isNotEmpty) {
+        if (isRequired || !isRequired) completed++;
+      }
+    }
+    setState(() => _completedFields = completed);
+  }
+
+  Future<void> _copyLastEntry() async {
+    try {
+      final repo = context.read<FormRepositoryImpl>();
+      final entries = await repo.getEntriesByModule(widget.module);
+      if (entries.isEmpty) return;
+      final lastEntry = entries.first;
+      final lastData = lastEntry.data;
+      final fields = widget.section['fields'] as List;
+      for (final f in fields) {
+        final key = f['key'] as String;
+        final type = f['type'] as String;
+        if (type == 'date') continue;
+        if (type == 'time') continue;
+        if (lastData.containsKey(key)) {
+          final val = lastData[key]?.toString() ?? '';
+          _formData[key] = val;
+          _controllers[key]?.text = val;
+        }
+      }
+      setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Datos copiados del ultimo registro')),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _save({bool auto = false}) async {
+    if (_isSaving) return;
     setState(() {
       _isSaving = true;
       _saveError = null;
@@ -469,10 +528,20 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         data: _formData,
       );
 
-      await sync.synchronize();
+      if (!auto) {
+        await sync.synchronize();
+      }
 
       if (mounted) {
         setState(() => _saveSuccess = true);
+
+        if (auto) {
+          await Future.delayed(const Duration(milliseconds: 1500));
+          if (mounted) setState(() => _saveSuccess = false);
+          _isSaving = false;
+          if (mounted) setState(() {});
+          return;
+        }
 
         await Future.delayed(const Duration(milliseconds: 800));
 
@@ -493,7 +562,10 @@ class _SmartFillModalState extends State<_SmartFillModal> {
             }
             _controllers[key]?.text = _formData[key]?.toString() ?? '';
           }
-          setState(() => _saveSuccess = false);
+          setState(() {
+            _saveSuccess = false;
+            _completedFields = 0;
+          });
         } else {
           widget.onSave();
           Navigator.pop(context);
@@ -505,7 +577,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         setState(() => _saveError = e.toString());
       }
     } finally {
-      if (mounted) {
+      if (mounted && !auto) {
         setState(() => _isSaving = false);
       }
     }
@@ -516,7 +588,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     final fields = widget.section['fields'] as List;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.85,
+      initialChildSize: 0.9,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       expand: false,
@@ -524,6 +596,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         return Column(
           children: [
             _buildHeader(),
+            if (_totalRequired > 0) _buildProgressBar(),
             const Divider(height: 1),
             Expanded(
               child: ListView(
@@ -541,6 +614,35 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     );
   }
 
+  Widget _buildProgressBar() {
+    final pct = _totalRequired > 0 ? (_completedFields / _totalRequired) : 0.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pct.clamp(0.0, 1.0),
+                backgroundColor: OmniTheme.bg800,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  pct >= 1.0 ? OmniTheme.green400 : OmniTheme.accentBlue,
+                ),
+                minHeight: 4,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$_completedFields/$_totalRequired',
+            style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -550,7 +652,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Validacion Smart-Fill',
+                'Registro',
                 style: TextStyle(
                   fontFamily: 'Outfit',
                   fontWeight: FontWeight.bold,
@@ -572,18 +674,50 @@ class _SmartFillModalState extends State<_SmartFillModal> {
           const Spacer(),
           Row(
             children: [
-              const Text('Modo rapido', style: TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
-              const SizedBox(width: 8),
-              Switch(
-                value: _quickEntryMode,
-                onChanged: (v) => setState(() => _quickEntryMode = v),
-                activeColor: OmniTheme.accentBlue,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              IconButton(
+                icon: const Icon(Icons.content_copy, size: 18),
+                tooltip: 'Copiar del ultimo registro',
+                onPressed: _copyLastEntry,
+                color: OmniTheme.textMuted,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () => setState(() => _quickEntryMode = !_quickEntryMode),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.2) : OmniTheme.bg800,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.3) : OmniTheme.bg700,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _quickEntryMode ? Icons.flash_on : Icons.flash_off,
+                        size: 14,
+                        color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Rapido',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.close, size: 20),
                 onPressed: () => Navigator.pop(context),
+                color: OmniTheme.textMuted,
               ),
             ],
           ),
@@ -603,10 +737,10 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _buildField(f1)),
+            Expanded(child: _buildField(f1, i, fields.length)),
             if (f2 != null) ...[
               const SizedBox(width: 12),
-              Expanded(child: _buildField(f2)),
+              Expanded(child: _buildField(f2, i + 1, fields.length)),
             ] else
               const SizedBox(width: 12),
           ],
@@ -621,7 +755,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     return Column(children: rows);
   }
 
-  Widget _buildField(dynamic f) {
+  Widget _buildField(dynamic f, int index, int totalFields) {
     final key = f['key'] as String;
     final label = f['label'] as String;
     final type = f['type'] as String;
@@ -630,6 +764,16 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     final unit = f['unit'] as String?;
     final multiline = f['multiline'] as bool? ?? false;
     final controller = _controllers[key]!;
+    final isLast = index == totalFields - 1;
+
+    void _nextField() {
+      final nextIndex = index + 1;
+      if (nextIndex < totalFields) {
+        final nextFields = widget.section['fields'] as List;
+        final nextKey = nextFields[nextIndex]['key'] as String;
+        _focusNodes[nextKey]?.requestFocus();
+      }
+    }
 
     return Form(
       key: _formKeys[key],
@@ -658,6 +802,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
           if (type == 'select' && options != null)
             DropdownButtonFormField<String>(
               value: controller.text.isEmpty ? null : controller.text,
+              focusNode: _focusNodes[key],
               items: options.map<DropdownMenuItem<String>>((opt) {
                 return DropdownMenuItem<String>(
                   value: opt.toString(),
@@ -666,14 +811,17 @@ class _SmartFillModalState extends State<_SmartFillModal> {
               }).toList(),
               onChanged: (v) {
                 controller.text = v ?? '';
-                setState(() => _formData[key] = v);
+                _formData[key] = v;
+                _onFieldChanged(key);
+                if (!isLast) _nextField();
               },
               decoration: const InputDecoration(
-                hintText: '— Seleccionar —',
+                hintText: 'Seleccionar',
               ),
             )
           else if (type == 'date')
             InkWell(
+              focusNode: _focusNodes[key],
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
@@ -696,7 +844,9 @@ class _SmartFillModalState extends State<_SmartFillModal> {
                 );
                 if (picked != null) {
                   controller.text = picked.toIso8601String().split('T')[0];
-                  setState(() => _formData[key] = controller.text);
+                  _formData[key] = controller.text;
+                  _onFieldChanged(key);
+                  if (!isLast) _nextField();
                 }
               },
               child: InputDecorator(
@@ -719,6 +869,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
             )
           else if (type == 'time')
             InkWell(
+              focusNode: _focusNodes[key],
               onTap: () async {
                 final picked = await showTimePicker(
                   context: context,
@@ -739,7 +890,9 @@ class _SmartFillModalState extends State<_SmartFillModal> {
                 );
                 if (picked != null) {
                   controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-                  setState(() => _formData[key] = controller.text);
+                  _formData[key] = controller.text;
+                  _onFieldChanged(key);
+                  if (!isLast) _nextField();
                 }
               },
               child: InputDecorator(
@@ -763,14 +916,23 @@ class _SmartFillModalState extends State<_SmartFillModal> {
           else
             TextFormField(
               controller: controller,
+              focusNode: _focusNodes[key],
               maxLines: multiline ? 3 : 1,
               keyboardType: type == 'number' ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+              textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
               style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary),
               decoration: InputDecoration(
                 suffixText: unit,
                 suffixStyle: const TextStyle(color: OmniTheme.textMuted, fontSize: 12),
               ),
-              onChanged: (v) => _formData[key] = v,
+              onChanged: (v) {
+                _formData[key] = v;
+                _onFieldChanged(key);
+              },
+              onFieldSubmitted: (_) {
+                SmartFormFieldHistory.saveValue(key, controller.text);
+                if (!isLast) _nextField();
+              },
             ),
         ],
       ),
