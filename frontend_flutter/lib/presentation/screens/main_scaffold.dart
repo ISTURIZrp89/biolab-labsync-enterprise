@@ -686,46 +686,47 @@ class _MainScaffoldState extends State<MainScaffold> {
     final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
     final moduleLabels = ['Incubadoras', 'Autoclaves', 'Ultracongeladores', 'Equipos', 'Procesamiento', 'Bitacora'];
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: OmniTheme.bg900,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        maxChildSize: 0.8,
-        minChildSize: 0.3,
-        expand: false,
-        builder: (_, scrollController) {
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+    final isDesktop = MediaQuery.of(context).size.width > 800;
+
+    if (isDesktop) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: OmniTheme.bg900,
+          contentPadding: EdgeInsets.zero,
+          content: SizedBox(
+            width: 600,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                      const Spacer(),
+                      Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                      const SizedBox(width: 12),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
+                        tooltip: 'Nuevo registro',
+                        color: OmniTheme.bg800,
+                        onSelected: (module) {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
+                        },
+                        itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
+                      ),
+                      IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                    ],
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
-                    const Spacer(),
-                    Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                    const SizedBox(width: 12),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
-                      tooltip: 'Nuevo registro',
-                      color: OmniTheme.bg800,
-                      onSelected: (module) {
-                        Navigator.pop(context);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
-                      },
-                      itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
-                    ),
-                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: entries.isEmpty
-                    ? Center(
+                entries.isEmpty
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -735,49 +736,144 @@ class _MainScaffoldState extends State<MainScaffold> {
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: entries.length,
-                        itemBuilder: (ctx, index) {
-                          final entry = entries[index];
-                          Map<String, dynamic> data = {};
-                          try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(children: [
-                                    Container(width: 4, height: 16, decoration: BoxDecoration(
-                                      color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
-                                      borderRadius: BorderRadius.circular(2),
-                                    )),
-                                    const SizedBox(width: 8),
-                                    Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
-                                  ]),
-                                  const SizedBox(height: 8),
-                                  ...data.entries.take(4).map((e) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: Row(children: [
-                                      Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                                      Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    : SizedBox(
+                        height: 400,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: entries.length,
+                          itemBuilder: (ctx, index) {
+                            final entry = entries[index];
+                            Map<String, dynamic> data = {};
+                            try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(children: [
+                                      Container(width: 4, height: 16, decoration: BoxDecoration(
+                                        color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                                        borderRadius: BorderRadius.circular(2),
+                                      )),
+                                      const SizedBox(width: 8),
+                                      Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
                                     ]),
-                                  )),
-                                ],
+                                    const SizedBox(height: 8),
+                                    ...data.entries.take(4).map((e) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Row(children: [
+                                        Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                                        Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                      ]),
+                                    )),
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: OmniTheme.bg900,
+        builder: (_) => DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          maxChildSize: 0.8,
+          minChildSize: 0.3,
+          expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                      const Spacer(),
+                      Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                      const SizedBox(width: 12),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
+                        tooltip: 'Nuevo registro',
+                        color: OmniTheme.bg800,
+                        onSelected: (module) {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
+                        },
+                        itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
+                      ),
+                      IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: entries.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.inbox_outlined, size: 40, color: OmniTheme.bg700),
+                              const SizedBox(height: 8),
+                              const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: entries.length,
+                          itemBuilder: (ctx, index) {
+                            final entry = entries[index];
+                            Map<String, dynamic> data = {};
+                            try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(children: [
+                                      Container(width: 4, height: 16, decoration: BoxDecoration(
+                                        color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                                        borderRadius: BorderRadius.circular(2),
+                                      )),
+                                      const SizedBox(width: 8),
+                                      Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
+                                    ]),
+                                    const SizedBox(height: 8),
+                                    ...data.entries.take(4).map((e) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Row(children: [
+                                        Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                                        Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                      ]),
+                                    )),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
   }
 
   Widget _buildDailyStatus() {
