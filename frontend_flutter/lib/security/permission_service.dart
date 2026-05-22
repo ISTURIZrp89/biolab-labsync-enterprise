@@ -42,7 +42,7 @@ class PermissionService extends ChangeNotifier {
     bool found = false;
 
     if (raw != null) {
-      final list = (raw is List ? raw : _tryDecodeList(raw));
+      final list = _tryDecodeList(raw);
       for (final u in list) {
         if (u['pin'] == user.id || u['id'] == user.id) {
           final p = (u as Map)['permisos'] as String? ?? '';
