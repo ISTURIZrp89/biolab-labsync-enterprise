@@ -10,8 +10,8 @@ import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
 import '../../domain/entities/form_entry.dart';
 import '../widgets/smart_form_field.dart';
-import '../widgets/operational_table.dart';
 import '../../security/auth_service.dart';
+import '../../services/user_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
 
@@ -28,7 +28,7 @@ class FormEntryScreen extends StatefulWidget {
 class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProviderStateMixin {
   FormModuleDef? _moduleDef;
   int _activeSectionIndex = 0;
-  List<Map<String, dynamic>> _entries = [];
+  List<FormEntry> _entries = [];
   bool _loading = true;
   late TabController _tabController;
 
@@ -37,10 +37,7 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     super.initState();
     _moduleDef = findModule(widget.module);
     if (_moduleDef != null && (_moduleDef!['sections'] as List).length > 1) {
-      _tabController = TabController(
-        length: (_moduleDef!['sections'] as List).length,
-        vsync: this,
-      );
+      _tabController = TabController(length: (_moduleDef!['sections'] as List).length, vsync: this);
     }
     _loadEntries();
   }
@@ -55,93 +52,12 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     setState(() => _loading = true);
     try {
       final repo = context.read<FormRepositoryImpl>();
-      final section = _getCurrentSection();
-      final sectionKey = section?['key'] as String?;
-      final entries = sectionKey != null
-          ? await repo.getEntriesByModuleAndSubModule(widget.module, sectionKey)
-          : await repo.getEntriesByModule(widget.module);
-      if (mounted) {
-        setState(() {
-          _entries = entries.map((e) => e.toJson()).toList();
-          _loading = false;
-        });
-      }
+      final entries = await repo.getEntriesByModule(widget.module);
+      if (mounted) setState(() { _entries = entries; _loading = false; });
     } catch (e) {
       debugPrint('Load entries error: $e');
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _copyYesterdayEntries() async {
-    try {
-      final repo = context.read<FormRepositoryImpl>();
-      final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final yStr = yesterday.toIso8601String().split('T')[0];
-      final entries = await repo.getEntriesByModule(widget.module);
-      final yesterdayEntries = entries.where((e) => e.date.startsWith(yStr)).toList();
-      if (yesterdayEntries.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay registros de ayer')));
-        return;
-      }
-      final db = await LocalDatabase.instance.database;
-      final now = DateTime.now().toUtc().toIso8601String();
-      final todayStr = DateTime.now().toIso8601String().split('T')[0];
-      int copied = 0;
-      for (final e in yesterdayEntries) {
-        final data = e.data;
-        data['fecha'] = todayStr;
-        await db.insert('form_entries', {
-          'id': 'cpy-${DateTime.now().microsecondsSinceEpoch}-$copied',
-          'module': widget.module,
-          'sub_module': e.subModule,
-          'date': todayStr,
-          'user_id': e.userId,
-          'device_id': e.deviceId,
-          'version': 1,
-          'data_json': jsonEncode(data),
-          'status': 'saved',
-          'created_at': now,
-          'updated_at': now,
-        });
-        copied++;
-      }
-      _loadEntries();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$copied registros copiados de ayer')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
-    }
-  }
-
-  Widget _buildQuickAction(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(6)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: OmniTheme.textMuted),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildChip(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(4)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 12, color: OmniTheme.accentBlue),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue)),
-        ]),
-      ),
-    );
   }
 
   FormSectionDef? _getCurrentSection() {
@@ -154,20 +70,14 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
   void _openForm() {
     final section = _getCurrentSection();
     if (section == null) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: OmniTheme.bg900,
-      builder: (_) => _SmartFillModal(
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _DailyLogForm(
         module: widget.module,
         moduleLabel: widget.moduleLabel,
         section: section,
-        onSave: () {
-          _loadEntries();
-        },
+        onSave: _loadEntries,
       ),
-    );
+    ));
   }
 
   @override
@@ -178,523 +88,316 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     return Scaffold(
       backgroundColor: OmniTheme.bg950,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(_getModuleIcon(), color: Colors.white, size: 18),
+        leading: IconButton(icon: const Icon(Icons.arrow_back, size: 20), onPressed: () => Navigator.pop(context)),
+        title: Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
+              borderRadius: BorderRadius.circular(6),
             ),
-            const SizedBox(width: 12),
-            Text(widget.moduleLabel),
-          ],
-        ),
+            child: const Icon(Icons.edit_note, color: Colors.white, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Text(widget.moduleLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ]),
+        backgroundColor: OmniTheme.bg900,
+        elevation: 0,
+        actions: [
+          IconButton(icon: const Icon(Icons.add, size: 20), tooltip: 'Nuevo registro', onPressed: _openForm, color: OmniTheme.accentBlue),
+        ],
         bottom: hasTabs
             ? TabBar(
                 controller: _tabController,
                 onTap: (i) => setState(() => _activeSectionIndex = i),
-                tabs: sections.map<Tab>((s) {
-                  final sec = s as FormSectionDef;
-                  return Tab(text: (sec['label'] as String).toUpperCase());
-                }).toList(),
+                tabs: sections.map<Widget>((s) => Tab(text: (s['label'] as String).toUpperCase())).toList(),
               )
             : null,
       ),
-      body: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      '${_entries.length} registros',
-                      style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
-                    ),
-                    const Spacer(),
-                    _buildQuickAction(Icons.content_copy, 'Copiar ayer', _copyYesterdayEntries),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: _openForm,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('NUEVO'),
-                      style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _buildChip(Icons.flash_on, 'Registro rapido', _openForm),
-                    const SizedBox(width: 8),
-                    _buildChip(Icons.content_paste, 'Pegar de ayer', _copyYesterdayEntries),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _entries.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.inbox_outlined, size: 48, color: OmniTheme.bg700),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Sin registros para esta seccion.',
-                              style: TextStyle(color: OmniTheme.textMuted, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _entries.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final entry = _entries[index];
-                          return _EntryCard(entry: entry, onDelete: _loadEntries);
-                        },
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _entries.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 48, color: OmniTheme.bg700),
+                      const SizedBox(height: 12),
+                      const Text('Sin registros', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Nuevo registro'),
+                        onPressed: _openForm,
+                        style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
                       ),
-          ),
-        ],
-      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _entries.length,
+                  itemBuilder: (ctx, i) => _buildEntryCard(_entries[i]),
+                ),
     );
   }
 
-  IconData _getModuleIcon() {
-    switch (widget.module) {
-      case 'incubadoras': return Icons.thermostat_outlined;
-      case 'autoclaves': return Icons.local_fire_department_outlined;
-      case 'ultracongeladores': return Icons.ac_unit_outlined;
-      case 'equipos': return Icons.precision_manufacturing_outlined;
-      case 'procesamiento': return Icons.biotech_outlined;
-      case 'bitacora': return Icons.book_outlined;
-      default: return Icons.folder_outlined;
-    }
-  }
-}
-
-class _EntryCard extends StatelessWidget {
-  final Map<String, dynamic> entry;
-  final VoidCallback onDelete;
-
-  const _EntryCard({required this.entry, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    Map<String, dynamic> data = {};
-    try {
-      data = jsonDecode(entry['data_json'] as String);
-    } catch (_) {}
-
-    final date = entry['date']?.toString() ?? '';
-    final status = entry['status']?.toString() ?? 'pending';
+  Widget _buildEntryCard(FormEntry entry) {
+    final data = entry.data;
+    final fecha = data['fecha'] as String? ?? entry.date;
+    final responsable = data['responsable'] as String? ?? data['usuario'] as String? ?? '-';
+    final horaInicio = data['hora_inicio'] as String? ?? '';
+    final horaFin = data['hora_fin'] as String? ?? '';
+    final actividades = data['_actividades'] as List? ?? [];
+    final recursos = data['_recursos'] as List? ?? [];
+    final incidencias = data['incidencias'] as String? ?? '';
 
     return Card(
+      margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
-        onTap: () => _showDetail(context, data, date, status),
-        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => _DailyLogForm(
+              module: widget.module,
+              moduleLabel: widget.moduleLabel,
+              section: _getCurrentSection()!,
+              existingEntry: entry,
+              onSave: _loadEntries,
+            ),
+          ));
+        },
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 4,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      date.length >= 10 ? date.substring(0, 10) : date,
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: OmniTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _getSummary(data),
-                      style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: status == 'synced'
-                      ? OmniTheme.green400.withOpacity(0.1)
-                      : OmniTheme.orange400.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  status == 'synced' ? 'SYNCED' : 'PENDING',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
-                    letterSpacing: 1,
+              Row(children: [
+                Container(
+                  width: 4, height: 20,
+                  decoration: BoxDecoration(
+                    color: entry.status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(fecha, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary))),
+                if (horaInicio.isNotEmpty)
+                  Text('$horaInicio${horaFin.isNotEmpty ? ' - $horaFin' : ''}', style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: entry.status == 'synced' ? OmniTheme.green400.withOpacity(0.15) : OmniTheme.orange400.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(entry.status.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: entry.status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400)),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              Text(responsable, style: const TextStyle(fontSize: 11, color: OmniTheme.textSecondary)),
+              if (actividades.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('${actividades.length} actividades', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue)),
+              ],
+              if (incidencias.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.warning_amber, size: 12, color: OmniTheme.orange400),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(incidencias, style: const TextStyle(fontSize: 10, color: OmniTheme.orange400), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                ]),
+              ],
             ],
           ),
         ),
       ),
     );
   }
-
-  String _getSummary(Map<String, dynamic> data) {
-    final keys = ['usuario', 'operador', 'responsable', 'nombre', 'paciente', 'equipo', 'modelo'];
-    for (final k in keys) {
-      if (data[k] != null && data[k].toString().isNotEmpty) {
-        return data[k].toString();
-      }
-    }
-    return data.entries.take(2).map((e) => '${e.value}').join(' / ');
-  }
-
-  void _showDetail(BuildContext context, Map<String, dynamic> data, String date, String status) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: OmniTheme.bg900,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (_, scrollController) {
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
-                ),
-                child: Row(
-                  children: [
-                    const Text(
-                      'Detalle del Registro',
-                      style: TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: OmniTheme.textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(
-                      date.length >= 10 ? date.substring(0, 10) : date,
-                      style: const TextStyle(
-                        fontFamily: 'Outfit',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: OmniTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ...data.entries.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            (e.key as String).toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: OmniTheme.textMuted,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            e.value?.toString() ?? '-',
-                            style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary),
-                          ),
-                        ],
-                      ),
-                    )),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 }
 
-class _SmartFillModal extends StatefulWidget {
+class _DailyLogForm extends StatefulWidget {
   final String module;
   final String moduleLabel;
   final FormSectionDef section;
+  final FormEntry? existingEntry;
   final VoidCallback onSave;
 
-  const _SmartFillModal({
+  const _DailyLogForm({
     required this.module,
     required this.moduleLabel,
     required this.section,
+    this.existingEntry,
     required this.onSave,
   });
 
   @override
-  State<_SmartFillModal> createState() => _SmartFillModalState();
+  State<_DailyLogForm> createState() => _DailyLogFormState();
 }
 
-class _SmartFillModalState extends State<_SmartFillModal> {
+class _DailyLogFormState extends State<_DailyLogForm> {
   final Map<String, dynamic> _formData = {};
   final Map<String, TextEditingController> _controllers = {};
-  final Map<String, GlobalKey<FormState>> _formKeys = {};
   final Map<String, FocusNode> _focusNodes = {};
   bool _isSaving = false;
   bool _saveSuccess = false;
   String? _saveError;
-  bool _quickEntryMode = false;
-  Timer? _autoSaveTimer;
-  int _completedFields = 0;
-  int _totalRequired = 0;
-  List<Map<String, dynamic>> _tableRows = [];
-  bool _isTableMode = false;
+  List<Map<String, dynamic>> _activities = [];
+  List<Map<String, dynamic>> _resources = [];
+  final Map<String, List<String>> _historyCache = {};
+  final ScrollController _fieldsScroll = ScrollController();
+  final ScrollController _activitiesScrollH = ScrollController();
+  final ScrollController _resourcesScrollH = ScrollController();
+
+  List<Map<String, dynamic>> get _generalFields => (widget.section['general_fields'] as List?) ?? [];
+  Map<String, dynamic>? get _activitiesTable => widget.section['activities_table'] as Map<String, dynamic>?;
+  Map<String, dynamic>? get _resourcesTable => widget.section['resources_table'] as Map<String, dynamic>?;
+  List<Map<String, dynamic>> get _extraFields => (widget.section['fields'] as List?) ?? [];
 
   @override
   void initState() {
     super.initState();
-    _isTableMode = widget.section['mode'] == 'table';
     _initForm();
   }
 
   @override
   void dispose() {
-    _autoSaveTimer?.cancel();
-    for (final c in _controllers.values) {
-      c.dispose();
-    }
-    for (final f in _focusNodes.values) {
-      f.dispose();
-    }
+    _fieldsScroll.dispose();
+    _activitiesScrollH.dispose();
+    _resourcesScrollH.dispose();
+    for (final c in _controllers.values) { c.dispose(); }
+    for (final f in _focusNodes.values) { f.dispose(); }
     super.dispose();
   }
 
   void _initForm() {
-    final fields = widget.section['fields'] as List;
     final now = DateTime.now();
     final today = now.toIso8601String().split('T')[0];
     final nowTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    _totalRequired = fields.where((f) => f['required'] == true).length;
-    final userName = context.read<AuthService>().currentUser?.nombre ?? '';
+    final autofill = context.read<UserService>().getAutofill();
+    final historyKeys = <String>{};
 
-    if (_isTableMode) {
-      for (final f in fields) {
-        final key = f['key'] as String;
-        final type = f['type'] as String;
-        if (type == 'date') _formData[key] = today;
-        else if (type == 'time') _formData[key] = nowTime;
-        else if (key == 'responsable' || key == 'usuario' || key == 'nombre' || key == 'operador' || key == 'firma_responsable') {
-          _formData[key] = userName;
-        } else _formData[key] = '';
-        _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
-      }
-      _tableRows = [{}];
-    } else {
-      for (int i = 0; i < fields.length; i++) {
-        final f = fields[i];
-        final key = f['key'] as String;
-        final type = f['type'] as String;
-        _formKeys[key] = GlobalKey<FormState>();
-        _focusNodes[key] = FocusNode();
-
-        if (type == 'date') _formData[key] = today;
-        else if (type == 'time') _formData[key] = nowTime;
-        else if (key == 'responsable' || key == 'usuario' || key == 'nombre' || key == 'operador' || key == 'firma_responsable') {
-          _formData[key] = userName;
-        } else _formData[key] = '';
-        _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
-      }
-    }
-  }
-
-  void _onFieldChanged(String key) {
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer(const Duration(seconds: 3), () => _save(auto: true));
-
-    final fields = widget.section['fields'] as List;
-    int completed = 0;
-    for (final f in fields) {
-      final k = f['key'] as String;
-      final c = _controllers[k];
-      final isRequired = f['required'] == true;
-      if (c != null && c.text.isNotEmpty) {
-        if (isRequired || !isRequired) completed++;
-      }
-    }
-    setState(() => _completedFields = completed);
-  }
-
-  Future<void> _copyLastEntry() async {
-    try {
-      final repo = context.read<FormRepositoryImpl>();
-      final entries = await repo.getEntriesByModule(widget.module);
-      if (entries.isEmpty) return;
-      final lastEntry = entries.first;
-      final lastData = lastEntry.data;
-
-      if (_isTableMode) {
-        final tableData = lastData['_table_rows'] as List? ?? [];
-        if (tableData.isNotEmpty) {
-          final lastRows = tableData.map((r) => Map<String, dynamic>.from(r as Map)).toList();
-          setState(() => _tableRows = lastRows);
-        }
-        for (final entry in lastData.entries) {
-          final key = entry.key;
-          if (key == '_table_rows' || key == 'fecha') continue;
-          if (_controllers.containsKey(key)) {
-            final val = entry.value?.toString() ?? '';
-            _controllers[key]?.text = val;
-            _formData[key] = val;
-          }
-        }
+    for (final f in _generalFields) {
+      final key = f['key'] as String;
+      final type = f['type'] as String;
+      final existing = widget.existingEntry?.data[key];
+      if (existing != null && existing.toString().isNotEmpty) {
+        _formData[key] = existing;
+      } else if (type == 'date') {
+        _formData[key] = today;
+      } else if (type == 'time') {
+        _formData[key] = nowTime;
+      } else if (type == 'autofill' && autofill.containsKey(key)) {
+        _formData[key] = autofill[key] ?? '';
       } else {
-        final fields = widget.section['fields'] as List;
-        for (final f in fields) {
-          final key = f['key'] as String;
-          final type = f['type'] as String;
-          if (type == 'date') continue;
-          if (type == 'time') continue;
-          if (lastData.containsKey(key)) {
-            final val = lastData[key]?.toString() ?? '';
-            _formData[key] = val;
-            _controllers[key]?.text = val;
-          }
-        }
+        _formData[key] = '';
       }
-      setState(() {});
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Datos copiados del ultimo registro')),
-        );
+      _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
+      _focusNodes[key] = FocusNode();
+    }
+
+    if (widget.existingEntry != null) {
+      final acts = widget.existingEntry!.data['_actividades'] as List? ?? [];
+      _activities = acts.map((a) => Map<String, dynamic>.from(a as Map)).toList();
+      final res = widget.existingEntry!.data['_recursos'] as List? ?? [];
+      _resources = res.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+    }
+
+    if (_activities.isEmpty && _activitiesTable != null) {
+      _activities = [{}];
+    }
+    if (_resources.isEmpty && _resourcesTable != null) {
+      _resources = [{}];
+    }
+
+    if (_activitiesTable != null) {
+      for (final col in (_activitiesTable!['columns'] as List?) ?? []) {
+        if (col['history'] == true) historyKeys.add(col['key'] as String);
       }
-    } catch (_) {}
+    }
+    if (_resourcesTable != null) {
+      for (final col in (_resourcesTable!['columns'] as List?) ?? []) {
+        if (col['history'] == true) historyKeys.add(col['key'] as String);
+      }
+    }
+    for (final key in historyKeys) {
+      _loadHistory(key);
+    }
   }
 
-  Future<void> _copyYesterday() async {
+  Future<void> _loadHistory(String fieldKey) async {
     try {
-      final repo = context.read<FormRepositoryImpl>();
-      final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final yStr = yesterday.toIso8601String().split('T')[0];
-      final entries = await repo.getEntriesByModule(widget.module);
-      final yesterdayEntries = entries.where((e) => e.date.startsWith(yStr)).toList();
-
-      if (_isTableMode) {
-        final rows = <Map<String, dynamic>>[];
-        for (final e in yesterdayEntries) {
-          final data = e.data;
-          final tableData = data['_table_rows'] as List?;
-          if (tableData != null) {
-            rows.addAll(tableData.map((r) => Map<String, dynamic>.from(r as Map)));
-          } else {
-            final row = <String, dynamic>{};
-            for (final col in (widget.section['table_columns'] as List?) ?? []) {
-              final k = col['key'] as String;
-              if (data.containsKey(k)) row[k] = data[k];
-            }
-            if (row.isNotEmpty) rows.add(row);
-          }
-        }
-        if (rows.isNotEmpty) setState(() => _tableRows = rows);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Copiados ${yesterdayEntries.length} registros de ayer')),
-        );
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('field_history_$fieldKey');
+      if (raw != null) {
+        final list = (jsonDecode(raw) as List).cast<String>();
+        if (mounted) setState(() => _historyCache[fieldKey] = list);
       }
     } catch (_) {}
   }
 
-  Future<void> _save({bool auto = false}) async {
+  Future<void> _saveHistory(String fieldKey, String value) async {
+    if (value.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('field_history_$fieldKey');
+      final list = raw != null ? (jsonDecode(raw) as List).cast<String>() : <String>[];
+      list.remove(value);
+      list.insert(0, value);
+      if (list.length > 20) list.removeLast();
+      await prefs.setString('field_history_$fieldKey', jsonEncode(list));
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
     if (_isSaving) return;
-    setState(() {
-      _isSaving = true;
-      _saveError = null;
-      _saveSuccess = false;
-    });
+    setState(() { _isSaving = true; _saveError = null; _saveSuccess = false; });
 
     try {
       final auth = context.read<AuthService>();
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString('device_id') ?? '';
       final repo = context.read<FormRepositoryImpl>();
-      final sync = context.read<SyncEngine>();
 
-      if (_isTableMode) {
-        final fields = widget.section['fields'] as List;
-        for (final f in fields) {
-          final key = f['key'] as String;
-          final controller = _controllers[key];
-          if (controller != null) _formData[key] = controller.text;
-        }
-        for (final row in _tableRows) {
-          final data = Map<String, dynamic>.from(_formData);
-          data.addAll(row);
-          await repo.createEntry(
-            module: widget.module,
-            subModule: widget.section['key'] as String?,
-            date: _formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0],
-            userId: auth.currentUser?.id ?? 'offline',
-            deviceId: deviceId,
-            data: data,
-          );
-        }
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        final c = _controllers[key];
+        if (c != null) _formData[key] = c.text;
+      }
+      _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+      _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
+
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        final val = _controllers[key]?.text ?? '';
+        if (val.isNotEmpty && f['type'] == 'autofill') _saveHistory(key, val);
+      }
+
+      final version = (widget.existingEntry?.version ?? 0) + 1;
+      final now = DateTime.now().toUtc().toIso8601String();
+
+      if (widget.existingEntry != null) {
+        final db = await LocalDatabase.instance.database;
+        final existing = widget.existingEntry!;
+        final oldData = existing.data;
+        await db.update(
+          'form_entries',
+          {
+            'data_json': jsonEncode(_formData),
+            'version': version,
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: [existing.id],
+        );
+        await db.insert('audit_log', {
+          'id': const Uuid().v4(),
+          'action': 'UPDATE',
+          'user_id': auth.currentUser?.id ?? 'offline',
+          'device_id': deviceId,
+          'timestamp': now,
+          'details_json': jsonEncode({'entry_id': existing.id, 'old_data': oldData}),
+        });
       } else {
-        final fields = widget.section['fields'] as List;
-        for (final f in fields) {
-          final key = f['key'] as String;
-          final controller = _controllers[key];
-          if (controller != null) _formData[key] = controller.text;
-        }
-
         await repo.createEntry(
           module: widget.module,
           subModule: widget.section['key'] as String?,
@@ -705,601 +408,67 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         );
       }
 
-      if (!auto) await sync.synchronize();
-
       if (mounted) {
         setState(() => _saveSuccess = true);
-
-        if (auto) {
-          await Future.delayed(const Duration(milliseconds: 1500));
-          if (mounted) setState(() => _saveSuccess = false);
-          _isSaving = false;
-          if (mounted) setState(() {});
-          return;
-        }
-
-        await Future.delayed(const Duration(milliseconds: 800));
-
-        if (_quickEntryMode && !_isTableMode) {
-          final fields = widget.section['fields'] as List;
-          final skipKeys = {'usuario', 'operador', 'responsable', 'nombre', 'equipo', 'modelo'};
-          for (final f in fields) {
-            final key = f['key'] as String;
-            final type = f['type'] as String;
-            if (skipKeys.contains(key)) continue;
-            if (type == 'date') {
-              _formData[key] = DateTime.now().toIso8601String().split('T')[0];
-            } else if (type == 'time') {
-              final now = DateTime.now();
-              _formData[key] = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-            } else {
-              _formData[key] = '';
-            }
-            _controllers[key]?.text = _formData[key]?.toString() ?? '';
-          }
-          setState(() {
-            _saveSuccess = false;
-            _completedFields = 0;
-          });
-        } else {
-          widget.onSave();
-          Navigator.pop(context);
-        }
+        await Future.delayed(const Duration(milliseconds: 600));
+        widget.onSave();
+        if (mounted) Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint('Save error: $e');
-      if (mounted) {
-        setState(() => _saveError = e.toString());
-      }
-    } finally {
-      if (mounted && !auto) {
-        setState(() => _isSaving = false);
-      }
+      if (mounted) setState(() { _saveError = e.toString(); _isSaving = false; });
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fields = widget.section['fields'] as List;
-
-    return CallbackShortcuts(
-      bindings: {
-        SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _save(),
-        SingleActivator(LogicalKeyboardKey.keyD, control: true): () => _isTableMode ? null : _copyLastEntry(),
-        SingleActivator(LogicalKeyboardKey.enter, control: true): () => _save(),
-      },
-      child: Focus(
-        autofocus: true,
-        child: DraggableScrollableSheet(
-          initialChildSize: _isTableMode ? 0.95 : 0.9,
-          maxChildSize: 0.95,
-          minChildSize: 0.5,
-          expand: false,
-          builder: (_, scrollController) {
-            return Column(
-              children: [
-                _buildHeader(),
-                if (!_isTableMode && _totalRequired > 0) _buildProgressBar(),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      if (_isTableMode) ...[
-                        _buildTableHeaderFields(fields),
-                        const SizedBox(height: 16),
-                        _buildTableWidget(),
-                      ] else
-                        _buildFieldGrid(fields),
-                    ],
-                  ),
-                ),
-                _buildFooter(),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressBar() {
-    final pct = _totalRequired > 0 ? (_completedFields / _totalRequired) : 0.0;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: pct.clamp(0.0, 1.0),
-                backgroundColor: OmniTheme.bg800,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  pct >= 1.0 ? OmniTheme.green400 : OmniTheme.accentBlue,
-                ),
-                minHeight: 4,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            '$_completedFields/$_totalRequired',
-            style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.section['label'] as String? ?? 'Registro',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary),
-                ),
-                Text(
-                  '${widget.moduleLabel}'.toUpperCase(),
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5),
-                ),
-              ],
-            ),
-          ),
-          _buildQuickActions(),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.close, size: 20),
-            onPressed: () => Navigator.pop(context),
-            color: OmniTheme.textMuted,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildActionBtn(Icons.content_copy, 'Copiar ultimo', _copyLastEntry),
-        const SizedBox(width: 4),
-        _buildActionBtn(Icons.calendar_view_day, 'Copiar ayer', _copyYesterday),
-        if (!_isTableMode) ...[
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => setState(() => _quickEntryMode = !_quickEntryMode),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.2) : OmniTheme.bg800,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.3) : OmniTheme.bg700),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_quickEntryMode ? Icons.flash_on : Icons.flash_off, size: 14, color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted),
-                  const SizedBox(width: 4),
-                  Text(_quickEntryMode ? 'Rapido' : 'Simple', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildActionBtn(IconData icon, String tooltip, VoidCallback onTap) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            border: Border.all(color: OmniTheme.bg700),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, size: 16, color: OmniTheme.textMuted),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTableHeaderFields(List fields) {
-    final dateField = fields.firstWhere(
-      (f) => (f as Map)['type'] == 'date',
-      orElse: () => <String, dynamic>{'key': 'fecha', 'label': 'Fecha'},
-    ) as Map<String, dynamic>;
-    final dateKey = dateField['key'] as String? ?? 'fecha';
-    final dateLabel = dateField['label'] as String? ?? 'Fecha';
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 160,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dateLabel.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
-              const SizedBox(height: 4),
-              InkWell(
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2030),
-                    builder: (context, child) => Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: const ColorScheme.dark(primary: OmniTheme.accentBlue, onPrimary: Colors.white, surface: OmniTheme.bg900, onSurface: OmniTheme.textPrimary),
-                      ),
-                      child: child!,
-                    ),
-                  );
-                  if (picked != null) {
-                    final val = picked.toIso8601String().split('T')[0];
-                    _controllers[dateKey]?.text = val;
-                    _formData[dateKey] = val;
-                    setState(() {});
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(4)),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(_controllers[dateKey]?.text.isNotEmpty == true ? _controllers[dateKey]!.text : 'Seleccionar', style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary))),
-                      const Icon(Icons.calendar_today, size: 14, color: OmniTheme.textMuted),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('REGISTROS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: OmniTheme.accentBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-              child: Text('${_tableRows.length} filas', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
-            ),
-          ],
-        ),
-        const Spacer(),
-        _buildActionBtn(Icons.auto_fix_high, 'Atajos: Ctrl+S Guardar, Ctrl+D Copiar', () => _showShortcutsInfo()),
-      ],
-    );
-  }
-
-  void _showShortcutsInfo() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: OmniTheme.bg900,
-        title: const Text('Atajos de Teclado', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _shortcutRow('Ctrl + S', 'Guardar'),
-            _shortcutRow('Ctrl + Enter', 'Guardar'),
-            _shortcutRow('Ctrl + D', 'Copiar ultimo registro'),
-            _shortcutRow('Tab', 'Siguiente campo'),
-            _shortcutRow('Enter', 'Siguiente campo'),
-            const SizedBox(height: 12),
-            const Text('En tablas operativas:', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
-            _shortcutRow('Click +', 'Agregar fila'),
-            _shortcutRow('Icono copia', 'Duplicar fila'),
-          ],
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(color: Colors.white54)))],
-      ),
-    );
-  }
-
-  Widget _shortcutRow(String key, String desc) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(4)),
-            child: Text(key, style: const TextStyle(fontSize: 11, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 12),
-          Text(desc, style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTableWidget() {
-    final columns = (widget.section['table_columns'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-
-    return OperationalTable(
-      label: '${widget.section['label'] ?? 'Registros'}',
-      columns: columns,
-      rows: _tableRows,
-      onChanged: (rows) => _tableRows = rows,
-    );
-  }
-
-  Widget _buildFieldGrid(List fields) {
-    final List<Widget> rows = [];
-
-    for (int i = 0; i < fields.length; i += 2) {
-      final f1 = fields[i];
-      final f2 = (i + 1 < fields.length) ? fields[i + 1] : null;
-
-      rows.add(
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _buildField(f1, i, fields.length)),
-            if (f2 != null) ...[
-              const SizedBox(width: 12),
-              Expanded(child: _buildField(f2, i + 1, fields.length)),
-            ] else
-              const SizedBox(width: 12),
-          ],
-        ),
-      );
-
-      if (i + 2 < fields.length) {
-        rows.add(const SizedBox(height: 12));
-      }
-    }
-
-    return Column(children: rows);
-  }
-
-  Widget _buildField(dynamic f, int index, int totalFields) {
-    final key = f['key'] as String;
-    final label = f['label'] as String;
-    final type = f['type'] as String;
-    final required = f['required'] as bool? ?? false;
-    final options = f['options'] as List?;
-    final unit = f['unit'] as String?;
-    final multiline = f['multiline'] as bool? ?? false;
-    final controller = _controllers[key]!;
-    final isLast = index == totalFields - 1;
-
-    void _nextField() {
-      final nextIndex = index + 1;
-      if (nextIndex < totalFields) {
-        final nextFields = widget.section['fields'] as List;
-        final nextKey = nextFields[nextIndex]['key'] as String;
-        _focusNodes[nextKey]?.requestFocus();
-      }
-    }
-
-    return Form(
-      key: _formKeys[key],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: OmniTheme.textMuted,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              if (required)
-                const Text(
-                  ' *',
-                  style: TextStyle(color: OmniTheme.red400, fontSize: 10),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          if (type == 'select' && options != null)
-            DropdownButtonFormField<String>(
-              value: controller.text.isEmpty ? null : controller.text,
-              focusNode: _focusNodes[key],
-              items: options.map<DropdownMenuItem<String>>((opt) {
-                return DropdownMenuItem<String>(
-                  value: opt.toString(),
-                  child: Text(opt.toString(), style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary)),
-                );
-              }).toList(),
-              onChanged: (v) {
-                controller.text = v ?? '';
-                _formData[key] = v;
-                _onFieldChanged(key);
-                if (!isLast) _nextField();
-              },
-              decoration: const InputDecoration(
-                hintText: 'Seleccionar',
-              ),
-            )
-          else if (type == 'date')
-            InkWell(
-              focusNode: _focusNodes[key],
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2030),
-                  builder: (context, child) {
-                    return Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: const ColorScheme.dark(
-                          primary: OmniTheme.accentBlue,
-                          onPrimary: Colors.white,
-                          surface: OmniTheme.bg900,
-                          onSurface: OmniTheme.textPrimary,
-                        ),
-                      ),
-                      child: child!,
-                    );
-                  },
-                );
-                if (picked != null) {
-                  controller.text = picked.toIso8601String().split('T')[0];
-                  _formData[key] = controller.text;
-                  _onFieldChanged(key);
-                  if (!isLast) _nextField();
-                }
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        controller.text.isNotEmpty ? controller.text : 'Seleccionar fecha',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.bg700,
-                        ),
-                      ),
-                    ),
-                    const Icon(Icons.calendar_today, size: 16, color: OmniTheme.textMuted),
-                  ],
-                ),
-              ),
-            )
-          else if (type == 'time')
-            InkWell(
-              focusNode: _focusNodes[key],
-              onTap: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                  builder: (context, child) {
-                    return Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: const ColorScheme.dark(
-                          primary: OmniTheme.accentBlue,
-                          onPrimary: Colors.white,
-                          surface: OmniTheme.bg900,
-                          onSurface: OmniTheme.textPrimary,
-                        ),
-                      ),
-                      child: child!,
-                    );
-                  },
-                );
-                if (picked != null) {
-                  controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
-                  _formData[key] = controller.text;
-                  _onFieldChanged(key);
-                  if (!isLast) _nextField();
-                }
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        controller.text.isNotEmpty ? controller.text : 'Seleccionar hora',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.bg700,
-                        ),
-                      ),
-                    ),
-                    const Icon(Icons.access_time, size: 16, color: OmniTheme.textMuted),
-                  ],
-                ),
-              ),
-            )
-          else
-            TextFormField(
-              controller: controller,
-              focusNode: _focusNodes[key],
-              maxLines: multiline ? 3 : 1,
-              keyboardType: type == 'number' ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-              textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
-              style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary),
-              decoration: InputDecoration(
-                suffixText: unit,
-                suffixStyle: const TextStyle(color: OmniTheme.textMuted, fontSize: 12),
-              ),
-              onChanged: (v) {
-                _formData[key] = v;
-                _onFieldChanged(key);
-              },
-              onFieldSubmitted: (_) {
-                SmartFormFieldHistory.saveValue(key, controller.text);
-                if (!isLast) _nextField();
-              },
-            ),
-        ],
-      ),
-    );
   }
 
   void _showPreview() {
-    final fields = widget.section['fields'] as List;
-    for (final f in fields) {
+    for (final f in _generalFields) {
       final key = f['key'] as String;
-      final controller = _controllers[key];
-      if (controller != null) _formData[key] = controller.text;
+      final c = _controllers[key];
+      if (c != null) _formData[key] = c.text;
     }
+    _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+    _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: OmniTheme.bg900,
-        title: Row(
-          children: [
-            const Icon(Icons.preview, size: 20, color: OmniTheme.accentBlue),
-            const SizedBox(width: 8),
-            Text('Vista previa - ${widget.moduleLabel}', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary)),
-          ],
-        ),
+        title: Row(children: [
+          const Icon(Icons.preview, size: 20, color: OmniTheme.accentBlue),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Vista previa - ${widget.moduleLabel}', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary))),
+        ]),
         content: SizedBox(
-          width: 500,
+          width: 600,
           child: ListView(
             shrinkWrap: true,
             children: [
-              ...fields.map((f) {
+              ..._generalFields.map((f) {
                 final key = f['key'] as String;
                 final label = f['label'] as String? ?? key;
                 final val = _formData[key]?.toString() ?? '';
                 if (val.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 130, child: Text('$label:', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
-                      Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary))),
-                    ],
-                  ),
-                );
+                return Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 130, child: Text('$label:', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
+                    Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary))),
+                  ],
+                ));
               }),
-              if (_isTableMode && _tableRows.isNotEmpty) ...[
+              if (_activities.isNotEmpty && _activities[0].isNotEmpty) ...[
                 const Divider(color: OmniTheme.bg800),
-                Text('${_tableRows.length} filas en tabla', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
-                ..._tableRows.map((row) => Padding(
+                Text('${_activitiesTable?['label'] ?? 'Actividades'}: ${_activities.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
+                ..._activities.map((a) => Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(row.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                  child: Text(a.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                )),
+              ],
+              if (_resources.isNotEmpty && _resources[0].isNotEmpty) ...[
+                const Divider(color: OmniTheme.bg800),
+                Text('${_resourcesTable?['label'] ?? 'Recursos'}: ${_resources.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.green400)),
+                ..._resources.map((r) => Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(r.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
                 )),
               ],
             ],
@@ -1307,49 +476,416 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Editar', style: TextStyle(color: OmniTheme.textMuted))),
-          ElevatedButton(
-            onPressed: () { Navigator.pop(ctx); _save(); },
-            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400, foregroundColor: Colors.white),
-            child: const Text('GUARDAR'),
+          ElevatedButton(onPressed: () { Navigator.pop(ctx); _save(); }, style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400, foregroundColor: Colors.white), child: const Text('GUARDAR')),
+        ],
+      ),
+    );
+  }
+
+  void _addRow(List<Map<String, dynamic>> list, List<Map<String, dynamic>>? columns) {
+    setState(() {
+      final row = <String, dynamic>{};
+      if (columns != null) {
+        for (final col in columns) {
+          final key = col['key'] as String;
+          final initial = col['initial'] as String? ?? '';
+          row[key] = initial;
+        }
+      }
+      list.add(row);
+    });
+  }
+
+  void _duplicateRow(List<Map<String, dynamic>> list, int index) {
+    if (index >= list.length) return;
+    setState(() => list.insert(index + 1, Map<String, dynamic>.from(list[index])));
+  }
+
+  void _removeRow(List<Map<String, dynamic>> list, int index) {
+    if (list.length <= 1) return;
+    setState(() => list.removeAt(index));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: OmniTheme.bg950,
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back, size: 20), onPressed: () => Navigator.pop(context)),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(widget.moduleLabel, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          Text(widget.section['label'] as String? ?? '', style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+        ]),
+        backgroundColor: OmniTheme.bg900,
+        elevation: 0,
+        actions: [
+          if (_saveSuccess)
+            const Icon(Icons.check_circle, color: OmniTheme.green400, size: 20)
+          else
+            IconButton(icon: const Icon(Icons.visibility, size: 20), tooltip: 'Vista previa', onPressed: _showPreview, color: OmniTheme.textMuted),
+          if (_saveSuccess)
+            const Padding(padding: EdgeInsets.only(right: 16), child: Text('Guardado', style: TextStyle(fontSize: 11, color: OmniTheme.green400))),
+        ],
+      ),
+      body: CallbackShortcuts(
+        bindings: {
+          SingleActivator(LogicalKeyboardKey.keyS, control: true): _showPreview,
+        },
+        child: Focus(
+          autofocus: true,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _fieldsScroll,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_generalFields.isNotEmpty) ...[
+                        _buildSectionHeader('Informacion General'),
+                        const SizedBox(height: 8),
+                        ...List.generate(_generalFields.length, (i) => _buildAutofillField(i)),
+                      ],
+                      if (_activitiesTable != null) ...[
+                        const SizedBox(height: 20),
+                        _buildTableSection(
+                          _activitiesTable!['label'] as String? ?? 'Actividades',
+                          _activitiesTable!['columns'] as List? ?? [],
+                          _activities,
+                          _activitiesScrollH,
+                        ),
+                      ],
+                      if (_resourcesTable != null) ...[
+                        const SizedBox(height: 20),
+                        _buildTableSection(
+                          _resourcesTable!['label'] as String? ?? 'Recursos',
+                          _resourcesTable!['columns'] as List? ?? [],
+                          _resources,
+                          _resourcesScrollH,
+                        ),
+                      ],
+                      if (_extraFields.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildSectionHeader('Observaciones e Incidencias'),
+                        const SizedBox(height: 8),
+                        ...List.generate(_extraFields.length, (i) => _buildExtraField(i)),
+                      ],
+                      const SizedBox(height: 100),
+                    ],
+                  ),
+                ),
+              ),
+              _buildFooter(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Row(children: [
+      Container(width: 3, height: 16, decoration: BoxDecoration(color: OmniTheme.accentBlue, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 8),
+      Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary, letterSpacing: 1)),
+    ]);
+  }
+
+  Widget _buildAutofillField(int index) {
+    final f = _generalFields[index];
+    final key = f['key'] as String;
+    final label = f['label'] as String? ?? key;
+    final type = f['type'] as String;
+    final required = f['required'] as bool? ?? false;
+    final controller = _controllers[key]!;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(width: 140, child: Text('$label${required ? ' *' : ''}', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
+          const SizedBox(width: 8),
+          Expanded(
+            child: type == 'date'
+                ? InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                        builder: (ctx, child) => Theme(data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.dark(primary: OmniTheme.accentBlue, onPrimary: Colors.white, surface: OmniTheme.bg900, onSurface: OmniTheme.textPrimary),
+                        ), child: child!),
+                      );
+                      if (picked != null) {
+                        controller.text = picked.toIso8601String().split('T')[0];
+                        _formData[key] = controller.text;
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(6)),
+                      child: Row(children: [
+                        Expanded(child: Text(controller.text.isNotEmpty ? controller.text : 'Seleccionar', style: TextStyle(fontSize: 13, color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.textMuted))),
+                        const Icon(Icons.calendar_today, size: 14, color: OmniTheme.textMuted),
+                      ]),
+                    ),
+                  )
+                : type == 'time'
+                    ? InkWell(
+                        onTap: () async {
+                          final picked = await showTimePicker(
+                            context: context,
+                            initialTime: TimeOfDay.now(),
+                            builder: (ctx, child) => Theme(data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.dark(primary: OmniTheme.accentBlue, onPrimary: Colors.white, surface: OmniTheme.bg900, onSurface: OmniTheme.textPrimary),
+                            ), child: child!),
+                          );
+                          if (picked != null) {
+                            controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                            _formData[key] = controller.text;
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(6)),
+                          child: Row(children: [
+                            Expanded(child: Text(controller.text.isNotEmpty ? controller.text : 'Seleccionar', style: TextStyle(fontSize: 13, color: controller.text.isNotEmpty ? OmniTheme.textPrimary : OmniTheme.textMuted))),
+                            const Icon(Icons.access_time, size: 14, color: OmniTheme.textMuted),
+                          ]),
+                        ),
+                      )
+                    : type == 'select'
+                        ? DropdownButtonFormField<String>(
+                            value: controller.text.isEmpty ? null : controller.text,
+                            items: (f['options'] as List?)?.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)))).toList(),
+                            onChanged: (v) { controller.text = v ?? ''; _formData[key] = v; },
+                            dropdownColor: OmniTheme.bg800,
+                            style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
+                            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                          )
+                        : TextFormField(
+                            controller: controller,
+                            focusNode: _focusNodes[key],
+                            style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
+                              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              isDense: true,
+                            ),
+                            onChanged: (v) { _formData[key] = v; },
+                          ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFooter() {
-    final rowCount = _isTableMode ? _tableRows.length : 1;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: OmniTheme.bg800)),
+  Widget _buildTableSection(String label, List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows, ScrollController scrollH) {
+    if (columns.isEmpty) return const SizedBox.shrink();
+
+    double totalWidth = 70;
+    for (final col in columns) { totalWidth += (col['width'] as num?)?.toDouble() ?? 120; }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          _buildSectionHeader(label),
+          const Spacer(),
+          Text('${rows.length}', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          _tableAction(Icons.add, () => _addRow(rows, columns)),
+          const SizedBox(width: 4),
+          _tableAction(Icons.content_paste, _pasteFromClipboard),
+        ]),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg800), borderRadius: BorderRadius.circular(8)),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              controller: scrollH,
+              child: SizedBox(
+                width: totalWidth,
+                child: Column(
+                  children: [
+                    _buildTableHeader(columns),
+                    ...List.generate(rows.length, (i) => _buildTableRow(rows, columns, i)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tableAction(IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(4)),
+        child: Icon(icon, size: 14, color: OmniTheme.accentBlue),
       ),
+    );
+  }
+
+  Widget _buildTableHeader(List<Map<String, dynamic>> columns) {
+    return Container(
+      height: 32,
+      color: OmniTheme.bg800,
       child: Row(
         children: [
-          Expanded(
-            child: _saveError != null
-                ? Text('$_saveError', style: const TextStyle(fontSize: 12, color: OmniTheme.red400))
-                : _saveSuccess
-                    ? Text('Guardado correctamente', style: const TextStyle(fontSize: 12, color: OmniTheme.green400))
-                    : _isTableMode
-                        ? Text('$rowCount registros por importar', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted))
-                        : const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 12),
-          TextButton(
-            onPressed: _isSaving ? null : () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: _isSaving || _saveSuccess ? null : _showPreview,
-            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
-            child: _isSaving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(_isTableMode ? 'IMPORTAR $rowCount REGISTROS' : 'CONFIRMAR'),
+          ...columns.map((col) => SizedBox(
+            width: (col['width'] as num?)?.toDouble() ?? 120,
+            child: Center(child: Text((col['label'] as String? ?? '').toUpperCase(), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: OmniTheme.textMuted))),
+          )),
+          const SizedBox(width: 60, child: Center(child: Text('ACCIÓN', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableRow(List<Map<String, dynamic>> rows, List<Map<String, dynamic>> columns, int rowIdx) {
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800, width: 0.5))),
+      child: Row(
+        children: [
+          ...columns.map((col) {
+            final key = col['key'] as String;
+            final type = col['type'] as String? ?? 'text';
+            final options = col['options'] as List?;
+            final width = (col['width'] as num?)?.toDouble() ?? 120;
+            final cellValue = rows[rowIdx][key]?.toString() ?? '';
+            final history = col['history'] == true ? _historyCache[key] : null;
+
+            Widget cell;
+            if (type == 'select' && options != null) {
+              cell = DropdownButtonFormField<String>(
+                value: options.contains(cellValue) ? cellValue : null,
+                items: options.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 11, color: Colors.white)))).toList(),
+                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; }); },
+                dropdownColor: OmniTheme.bg800,
+                style: const TextStyle(fontSize: 11, color: Colors.white),
+                decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 4)),
+              );
+            } else {
+              cell = TextFormField(
+                initialValue: cellValue,
+                style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  suffixIcon: history != null && history.isNotEmpty
+                      ? PopupMenuButton<String>(
+                          icon: const Icon(Icons.history, size: 12, color: OmniTheme.textMuted),
+                          color: OmniTheme.bg800,
+                          onSelected: (v) { setState(() { rows[rowIdx][key] = v; }); },
+                          itemBuilder: (_) => history.take(10).map((h) => PopupMenuItem(value: h, child: Text(h, style: const TextStyle(fontSize: 10, color: OmniTheme.textPrimary)))).toList(),
+                        )
+                      : null,
+                ),
+                onChanged: (v) { rows[rowIdx][key] = v; },
+              );
+            }
+            return SizedBox(width: width, child: cell);
+          }),
+          SizedBox(
+            width: 60,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              InkWell(onTap: () => _duplicateRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.copy, size: 12, color: OmniTheme.accentBlue))),
+              InkWell(onTap: () => _removeRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 12, color: OmniTheme.red400))),
+            ]),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildExtraField(int index) {
+    final f = _extraFields[index];
+    final key = f['key'] as String;
+    final label = f['label'] as String? ?? key;
+    final multiline = f['multiline'] as bool? ?? false;
+    final controller = _controllers[key] ?? TextEditingController(text: _formData[key]?.toString() ?? '');
+    if (!_controllers.containsKey(key)) _controllers[key] = controller;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+          const SizedBox(height: 4),
+          TextFormField(
+            controller: controller,
+            maxLines: multiline ? 3 : 1,
+            style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
+            decoration: InputDecoration(
+              border: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
+              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              isDense: true,
+            ),
+            onChanged: (v) { _formData[key] = v; },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      if (data?.text == null || data!.text!.trim().isEmpty) return;
+      final lines = data.text!.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+      if (lines.isEmpty) return;
+
+      final columns = (_activitiesTable?['columns'] as List?) ?? [];
+      setState(() {
+        for (final line in lines) {
+          final values = line.split('\t');
+          final row = <String, dynamic>{};
+          for (int c = 0; c < columns.length; c++) {
+            row[columns[c]['key'] as String] = c < values.length ? values[c].trim() : '';
+          }
+          _activities.add(row);
+        }
+      });
+    } catch (_) {}
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: OmniTheme.bg800))),
+      child: Row(children: [
+        Expanded(child: _saveError != null
+            ? Text('$_saveError', style: const TextStyle(fontSize: 11, color: OmniTheme.red400))
+            : _saveSuccess
+                ? const Text('Guardado correctamente', style: TextStyle(fontSize: 11, color: OmniTheme.green400))
+                : const SizedBox.shrink()),
+        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: OmniTheme.textMuted))),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          onPressed: _isSaving || _saveSuccess ? null : _showPreview,
+          icon: _isSaving
+              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.save, size: 16),
+          label: Text(widget.existingEntry != null ? 'ACTUALIZAR' : 'GUARDAR'),
+          style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
+        ),
+      ]),
     );
   }
 }

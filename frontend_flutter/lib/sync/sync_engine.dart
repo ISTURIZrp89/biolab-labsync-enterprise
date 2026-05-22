@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import '../data/db.dart';
+import 'lan_discovery_service.dart';
 
 class SyncEngine extends ChangeNotifier {
   final LocalDatabase _localDb;
@@ -35,6 +36,7 @@ class SyncEngine extends ChangeNotifier {
     _periodicTimer?.cancel();
     _periodicTimer = Timer.periodic(interval, (_) {
       synchronize();
+      syncWithLanPeers();
     });
   }
 
@@ -45,8 +47,11 @@ class SyncEngine extends ChangeNotifier {
 
   Future<bool> checkOnline() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
+
       final response = await http.get(
-        Uri.parse('http://localhost:8000/api/health'),
+        Uri.parse('$backendUrl/api/health'),
       ).timeout(const Duration(seconds: 3));
       _isOnline = response.statusCode == 200;
     } catch (e) {
@@ -73,6 +78,7 @@ class SyncEngine extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString('device_id') ?? 'dev-unknown';
       final lastSync = prefs.getString('last_sync_timestamp') ?? '';
+      final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
 
       final queueItems = await _localDb.getSyncQueue();
       _pendingCount = queueItems.length;
@@ -94,7 +100,7 @@ class SyncEngine extends ChangeNotifier {
       }
 
       final response = await http.post(
-        Uri.parse('http://localhost:8000/api/sync'),
+        Uri.parse('$backendUrl/api/sync'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'device_id': deviceId,
@@ -156,6 +162,119 @@ class SyncEngine extends ChangeNotifier {
     }
 
     return _isOnline;
+  }
+
+  Future<List<DiscoveredPeer>> syncWithLanPeers({List<DiscoveredPeer>? peers}) async {
+    final syncedPeers = <DiscoveredPeer>[];
+    if (peers == null || peers.isEmpty) return syncedPeers;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lanEnabled = prefs.getBool('lan_sync_enabled') ?? false;
+    if (!lanEnabled) return syncedPeers;
+
+    final queueItems = await _localDb.getSyncQueue();
+    if (queueItems.isEmpty) return syncedPeers;
+
+    for (final peer in peers) {
+      try {
+        final success = await _syncWithPeer(peer, queueItems);
+        if (success) syncedPeers.add(peer);
+      } catch (e) {
+        debugPrint('SyncEngine: LAN sync failed for ${peer.hostname}: $e');
+      }
+    }
+
+    return syncedPeers;
+  }
+
+  Future<bool> _syncWithPeer(DiscoveredPeer peer, List<Map<String, dynamic>> queueItems) async {
+    try {
+      final entries = <Map<String, dynamic>>[];
+      for (final item in queueItems) {
+        Map<String, dynamic> data = {};
+        try {
+          data = jsonDecode(item['data_json'] as String);
+        } catch (_) {}
+
+        if (item['entity'] == 'form_entries') {
+          entries.add({
+            'id': item['entity_id'],
+            'module': data['module'] ?? '',
+            'date': data['date'] ?? '',
+            'user_id': data['user_id'] ?? '',
+            'device_id': data['device_id'] ?? '',
+            'version': data['version'] ?? 1,
+            'data_json': item['data_json'],
+            'status': data['status'] ?? 'pending',
+            'created_at': item['timestamp'],
+            'updated_at': item['timestamp'],
+          });
+        }
+      }
+
+      if (entries.isEmpty) return false;
+
+      final url = 'http://${peer.ip}:${peer.port}/sync/push';
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'entries': entries}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final resData = jsonDecode(response.body);
+        if (resData['success'] == true) {
+          final inserted = resData['inserted'] as int? ?? 0;
+          debugPrint('SyncEngine: Pushed $inserted entries to ${peer.hostname}');
+
+          final pullUrl = 'http://${peer.ip}:${peer.port}/sync/pull';
+          final pullResponse = await http.get(
+            Uri.parse(pullUrl),
+          ).timeout(const Duration(seconds: 10));
+
+          if (pullResponse.statusCode == 200) {
+            final pullData = jsonDecode(pullResponse.body);
+            if (pullData['success'] == true) {
+              final remoteEntries = pullData['entries'] as List? ?? [];
+              final db = await _localDb.database;
+              int pulledCount = 0;
+
+              for (final entry in remoteEntries) {
+                try {
+                  await db.insert('form_entries', {
+                    'id': entry['id'],
+                    'module': entry['module'] ?? '',
+                    'date': entry['date'] ?? '',
+                    'user_id': entry['user_id'] ?? '',
+                    'device_id': entry['device_id'] ?? '',
+                    'version': entry['version'] ?? 1,
+                    'data_json': entry['data_json'] is String
+                        ? entry['data_json']
+                        : jsonEncode(entry['data_json'] ?? {}),
+                    'status': entry['status'] ?? 'pending',
+                    'created_at': entry['created_at'] ?? '',
+                    'updated_at': entry['updated_at'] ?? '',
+                  }, conflictAlgorithm: ConflictAlgorithm.ignore);
+                  pulledCount++;
+                } catch (e) {
+                  debugPrint('SyncEngine: Pull insert error: $e');
+                }
+              }
+
+              debugPrint('SyncEngine: Pulled $pulledCount entries from ${peer.hostname}');
+              _syncCount++;
+              _lastSync = DateTime.now();
+            }
+          }
+
+          return true;
+        }
+      }
+    } catch (e) {
+      debugPrint('SyncEngine: LAN peer sync error (${peer.hostname}): $e');
+    }
+
+    return false;
   }
 
   Future<int> getPendingCount() async {

@@ -8,6 +8,8 @@ import 'data/repositories/auth_repository_impl.dart';
 import 'data/repositories/form_repository_impl.dart';
 import 'security/auth_service.dart';
 import 'sync/sync_engine.dart';
+import 'sync/lan_discovery_service.dart';
+import 'sync/lan_sync_server.dart';
 import 'services/update_service.dart';
 import 'presentation/screens/login_screen.dart';
 import 'theme/omni_theme.dart';
@@ -32,6 +34,16 @@ void main() async {
     final syncEngine = SyncEngine();
     final formRepo = FormRepositoryImpl();
     final updateService = UpdateService();
+    final lanDiscovery = LanDiscoveryService();
+    final lanSyncServer = LanSyncServer();
+
+    final lanEnabled = prefs.getBool('lan_sync_enabled') ?? false;
+    if (lanEnabled) {
+      final lanPort = prefs.getString('lan_port') ?? '8765';
+      final serverPort = prefs.getInt('lan_server_port') ?? 8766;
+      lanDiscovery.start(port: int.tryParse(lanPort) ?? 8765);
+      lanSyncServer.start(port: serverPort);
+    }
 
     runApp(
       MultiProvider(
@@ -39,6 +51,8 @@ void main() async {
           ChangeNotifierProvider<AuthService>.value(value: authService),
           ChangeNotifierProvider<SyncEngine>.value(value: syncEngine),
           ChangeNotifierProvider<UpdateService>.value(value: updateService),
+          ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
+          ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           Provider<FormRepositoryImpl>.value(value: formRepo),
         ],
         child: const BioLabApp(),
@@ -113,6 +127,15 @@ class _BioLabAppState extends State<BioLabApp> {
       try {
         final sync = context.read<SyncEngine>();
         sync.startPeriodicSync(interval: const Duration(minutes: 5));
+
+        Timer.periodic(const Duration(minutes: 3), (_) async {
+          try {
+            final discovery = context.read<LanDiscoveryService>();
+            if (discovery.isRunning && discovery.peers.isNotEmpty) {
+              await sync.syncWithLanPeers(peers: discovery.peers);
+            }
+          } catch (_) {}
+        });
 
         final updateService = context.read<UpdateService>();
         updateService.startPeriodicCheck(interval: const Duration(hours: 1));
