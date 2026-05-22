@@ -248,10 +248,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   final ScrollController _activitiesScrollH = ScrollController();
   final ScrollController _resourcesScrollH = ScrollController();
 
-  List<Map<String, dynamic>> get _generalFields => (widget.section['general_fields'] as List?) ?? [];
+  List<Map<String, dynamic>> get _generalFields => ((widget.section['general_fields'] as List?) ?? []).cast<Map<String, dynamic>>();
   Map<String, dynamic>? get _activitiesTable => widget.section['activities_table'] as Map<String, dynamic>?;
   Map<String, dynamic>? get _resourcesTable => widget.section['resources_table'] as Map<String, dynamic>?;
-  List<Map<String, dynamic>> get _extraFields => (widget.section['fields'] as List?) ?? [];
+  List<Map<String, dynamic>> get _extraFields => ((widget.section['fields'] as List?) ?? []).cast<Map<String, dynamic>>();
 
   @override
   void initState() {
@@ -551,7 +551,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         const SizedBox(height: 20),
                         _buildTableSection(
                           _activitiesTable!['label'] as String? ?? 'Actividades',
-                          _activitiesTable!['columns'] as List? ?? [],
+                          ((_activitiesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _activities,
                           _activitiesScrollH,
                         ),
@@ -560,7 +560,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         const SizedBox(height: 20),
                         _buildTableSection(
                           _resourcesTable!['label'] as String? ?? 'Recursos',
-                          _resourcesTable!['columns'] as List? ?? [],
+                          ((_resourcesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _resources,
                           _resourcesScrollH,
                         ),

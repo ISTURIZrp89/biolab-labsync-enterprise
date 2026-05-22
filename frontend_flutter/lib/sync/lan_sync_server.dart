@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 import '../data/db.dart';
 
 class LanSyncServer extends ChangeNotifier {
@@ -84,7 +85,7 @@ class LanSyncServer extends ChangeNotifier {
 
   void _handlePush(HttpRequest request) async {
     try {
-      final body = await request.transform(utf8.decoder).join();
+      final body = await request.cast<List<int>>().transform(utf8.decoder).join();
       final data = jsonDecode(body) as Map<String, dynamic>;
       final db = await LocalDatabase.instance.database;
 

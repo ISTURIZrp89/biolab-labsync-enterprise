@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class DiscoveredPeer {
   final String deviceId;
   final String hostname;
-  final String ip;
+  String ip;
   final int port;
   DateTime lastSeen;
 
