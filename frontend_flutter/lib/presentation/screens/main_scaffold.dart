@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/db.dart';
@@ -5,7 +6,6 @@ import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
-import 'calendar_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'login_screen.dart';
@@ -22,6 +22,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _pendingCount = 0;
   DateTime _selectedDate = DateTime.now();
   Map<String, int> _moduleCounts = {};
+  Map<String, int> _dayEntryCounts = {};
+  Map<String, List<Map<String, dynamic>>> _dayEntries = {};
   bool _statsLoaded = false;
 
   static const _navItems = [
@@ -33,10 +35,9 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem('Equipos', Icons.precision_manufacturing_outlined, Icons.precision_manufacturing),
     _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Bitacora', Icons.book_outlined, Icons.book),
-    _NavItem('Calendario', Icons.calendar_month_outlined, Icons.calendar_month),
   ];
 
-  static const _moduleKeys = ['', '', 'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', ''];
+  static const _moduleKeys = ['', '', 'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
@@ -46,7 +47,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     OmniTheme.green400,
     Color(0xFFB197FC),
     Color(0xFFF472B6),
-    null,
   ];
 
   @override
@@ -70,12 +70,34 @@ class _MainScaffoldState extends State<MainScaffold> {
         counts[key] = (result.isNotEmpty ? result.first['cnt'] as int? : null) ?? 0;
       }
 
+      final firstDay = DateTime(_selectedDate.year, _selectedDate.month, 1);
+      final lastDay = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
+      final startStr = firstDay.toIso8601String().split('T')[0];
+      final endStr = lastDay.toIso8601String().split('T')[0];
+
+      final monthEntries = await db.query(
+        'form_entries',
+        where: 'date >= ? AND date <= ?',
+        whereArgs: [startStr, endStr],
+        orderBy: 'date ASC',
+      );
+
+      final dayCounts = <String, int>{};
+      final dayEntries = <String, List<Map<String, dynamic>>>{};
+      for (final e in monthEntries) {
+        final d = (e['date'] as String? ?? '').substring(0, 10);
+        dayCounts[d] = (dayCounts[d] ?? 0) + 1;
+        dayEntries.putIfAbsent(d, () => []).add(e);
+      }
+
       final sync = context.read<SyncEngine>();
       final pending = await sync.getPendingCount();
 
       if (mounted) setState(() {
         _moduleCounts = counts;
         _pendingCount = pending;
+        _dayEntryCounts = dayCounts;
+        _dayEntries = dayEntries;
         _statsLoaded = true;
       });
     } catch (_) {
@@ -90,8 +112,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     Widget content;
     if (_selectedIndex == 0) {
       content = _buildDashboard();
-    } else if (_selectedIndex == 8) {
-      content = const CalendarScreen();
     } else {
       content = const SizedBox.shrink();
     }
@@ -120,9 +140,9 @@ class _MainScaffoldState extends State<MainScaffold> {
     return NavigationRail(
       selectedIndex: _selectedIndex.clamp(0, _navItems.length - 1),
       onDestinationSelected: (i) {
-        if (i == 0 || i == 8) {
+        if (i == 0) {
           setState(() => _selectedIndex = i);
-          if (i == 0) _loadStats();
+          _loadStats();
         } else if (i == 1) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
         } else {
@@ -277,7 +297,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   Widget _buildCalendar(DateTime now, List<String> dayNames) {
     final firstDay = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final lastDay = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
-    final startWeekday = firstDay.weekday; // 1=Mon ... 7=Sun
+    final startWeekday = firstDay.weekday;
 
     return Card(
       child: Padding(
@@ -286,7 +306,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: dayNames.map((d) => SizedBox(
-                width: 32,
+                width: 36,
                 child: Text(d, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)),
               )).toList(),
             ),
@@ -295,25 +315,36 @@ class _MainScaffoldState extends State<MainScaffold> {
               return Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(7, (weekday) {
                   final day = week * 7 + weekday - startWeekday + 2;
-                  if (day < 1 || day > lastDay.day) return const SizedBox(width: 32, height: 32);
+                  if (day < 1 || day > lastDay.day) return const SizedBox(width: 36, height: 36);
                   final isToday = now.year == _selectedDate.year && now.month == _selectedDate.month && now.day == day;
                   final dateStr = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+                  final entryCount = _dayEntryCounts[dateStr] ?? 0;
                   return GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedDate = DateTime(_selectedDate.year, _selectedDate.month, day);
-                      _loadStats();
-                    }),
+                    onTap: () => _showDayEntries(dateStr),
                     child: Container(
-                      width: 32, height: 32,
+                      width: 36, height: 36,
                       decoration: BoxDecoration(
-                        color: isToday ? OmniTheme.accentBlue.withOpacity(0.2) : null,
+                        color: isToday ? OmniTheme.accentBlue.withOpacity(0.2) : (entryCount > 0 ? OmniTheme.green400.withOpacity(0.08) : null),
                         borderRadius: BorderRadius.circular(8),
-                        border: isToday ? Border.all(color: OmniTheme.accentBlue, width: 1) : null,
+                        border: isToday ? Border.all(color: OmniTheme.accentBlue, width: 1.5) : null,
                       ),
-                      child: Center(child: Text('$day', style: TextStyle(
-                        fontSize: 12, fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                        color: OmniTheme.textPrimary,
-                      ))),
+                      child: Stack(
+                        children: [
+                          Center(child: Text('$day', style: TextStyle(
+                            fontSize: 12, fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                            color: isToday ? OmniTheme.accentBlue : (entryCount > 0 ? OmniTheme.textPrimary : OmniTheme.textMuted),
+                          ))),
+                          if (entryCount > 0)
+                            Positioned(
+                              bottom: 1, right: 1,
+                              child: Container(
+                                width: 12, height: 12,
+                                decoration: BoxDecoration(color: OmniTheme.green400, shape: BoxShape.circle),
+                                child: Center(child: Text('$entryCount', style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white))),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   );
                 }),
@@ -321,6 +352,105 @@ class _MainScaffoldState extends State<MainScaffold> {
             }),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDayEntries(String dateStr) {
+    final entries = _dayEntries[dateStr] ?? [];
+    final modules = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
+    final moduleLabels = ['Incubadoras', 'Autoclaves', 'Ultracongeladores', 'Equipos', 'Procesamiento', 'Bitacora'];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.8,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, scrollController) {
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                ),
+                child: Row(
+                  children: [
+                    Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                    const Spacer(),
+                    Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                    const SizedBox(width: 12),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
+                      tooltip: 'Nuevo registro',
+                      color: OmniTheme.bg800,
+                      onSelected: (module) {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
+                      },
+                      itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: entries.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox_outlined, size: 40, color: OmniTheme.bg700),
+                            const SizedBox(height: 8),
+                            const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: entries.length,
+                        itemBuilder: (ctx, index) {
+                          final entry = entries[index];
+                          Map<String, dynamic> data = {};
+                          try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Container(width: 4, height: 16, decoration: BoxDecoration(
+                                      color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                                      borderRadius: BorderRadius.circular(2),
+                                    )),
+                                    const SizedBox(width: 8),
+                                    Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  ...data.entries.take(4).map((e) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Row(children: [
+                                      Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                                      Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                    ]),
+                                  )),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

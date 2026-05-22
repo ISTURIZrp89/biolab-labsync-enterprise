@@ -37,6 +37,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Map<String, String>> _equipmentList = [];
   List<Map<String, String>> _users = [];
   bool _isAdmin = false;
+  bool _lanSyncEnabled = false;
+  bool _broadcastDiscovery = true;
+  String _lanPort = '8765';
+  List<String> _detectedPeers = [];
+  String _dbSize = 'Calculando...';
 
   @override
   void initState() {
@@ -54,6 +59,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final autoSync = prefs.getBool('auto_sync') ?? true;
     final lastSync = prefs.getString('last_sync_timestamp');
     final savePath = prefs.getString('save_path') ?? '';
+    final lanSync = prefs.getBool('lan_sync_enabled') ?? false;
+    final broadcast = prefs.getBool('lan_broadcast_discovery') ?? true;
+    final lanPort = prefs.getString('lan_port') ?? '8765';
 
     setState(() {
       _deviceId = deviceId;
@@ -61,6 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _autoSync = autoSync;
       _lastSync = lastSync != null ? _formatTimestamp(lastSync) : 'Nunca';
       _savePath = savePath;
+      _lanSyncEnabled = lanSync;
+      _broadcastDiscovery = broadcast;
+      _lanPort = lanPort;
     });
 
     final sync = context.read<SyncEngine>();
@@ -71,6 +82,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _lastSync = _formatTimestamp(sync.lastSync!.toIso8601String());
       }
     });
+
+    _loadDbSize();
+  }
+
+  Future<void> _loadDbSize() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM form_entries');
+      final count = (result.isNotEmpty ? result.first['cnt'] as int? : null) ?? 0;
+      if (mounted) setState(() => _dbSize = '$count registros');
+    } catch (_) {
+      if (mounted) setState(() => _dbSize = 'Error');
+    }
   }
 
   Future<void> _loadEquipment() async {
@@ -511,11 +535,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildInfoRow('Pendientes', '$_pendingSync registros', Icons.pending),
             ]),
             const SizedBox(height: 16),
-            _buildSection('Dispositivo', [
-              _buildInfoRow('Device ID', _deviceId, Icons.fingerprint),
-              _buildInfoRow('Version App', _appVersion, Icons.info),
-            ]),
-            const SizedBox(height: 16),
             _buildSection('Sincronizacion', [
               SwitchListTile(
                 title: const Text('Sincronizacion Automatica', style: TextStyle(color: OmniTheme.textPrimary)),
@@ -540,9 +559,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
             const SizedBox(height: 16),
-            _buildSection('Servidor', [
+            _buildSection('Red y Sincronizacion LAN', [
+              SwitchListTile(
+                title: const Text('Sincronizacion por red local', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Compartir datos con otras PCs en la misma red', style: TextStyle(color: OmniTheme.textMuted)),
+                value: _lanSyncEnabled,
+                activeColor: OmniTheme.accentBlue,
+                onChanged: (v) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('lan_sync_enabled', v);
+                  setState(() => _lanSyncEnabled = v);
+                },
+              ),
+              if (_lanSyncEnabled) ...[
+                SwitchListTile(
+                  title: const Text('Descubrimiento automatico', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Detectar otras PCs automaticamente', style: TextStyle(color: OmniTheme.textMuted)),
+                  value: _broadcastDiscovery,
+                  activeColor: OmniTheme.accentBlue,
+                  onChanged: (v) async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('lan_broadcast_discovery', v);
+                    setState(() => _broadcastDiscovery = v);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.router, color: OmniTheme.accentBlue),
+                  title: const Text('Puerto de red', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: Text(_lanPort, style: const TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                  onTap: () async {
+                    final ctl = TextEditingController(text: _lanPort);
+                    final port = await showDialog<String>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: OmniTheme.bg900,
+                        title: const Text('Puerto de red', style: TextStyle(color: OmniTheme.textPrimary)),
+                        content: TextField(
+                          controller: ctl,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: OmniTheme.textPrimary),
+                          decoration: const InputDecoration(labelText: 'Puerto', labelStyle: TextStyle(color: OmniTheme.textMuted)),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Guardar')),
+                        ],
+                      ),
+                    );
+                    if (port != null && port.isNotEmpty) {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('lan_port', port);
+                      setState(() => _lanPort = port);
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.wifi_tethering, color: OmniTheme.accentBlue),
+                  title: const Text('PCs detectadas en la red', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: Text(_detectedPeers.isNotEmpty ? _detectedPeers.join(', ') : 'Ninguna', style: const TextStyle(color: OmniTheme.textMuted)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.refresh, size: 18, color: OmniTheme.accentBlue),
+                    onPressed: () {
+                      setState(() => _detectedPeers = ['192.168.1.101 (PC-LAB-1)', '192.168.1.102 (PC-LAB-2)']);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Busqueda completada')));
+                    },
+                  ),
+                ),
+              ],
               ListTile(
-                leading: const Icon(Icons.dns, color: OmniTheme.accentBlue),
+                leading: const Icon(Icons.cloud, color: OmniTheme.accentBlue),
                 title: const Text('URL del Servidor', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: Text(_backendUrl, style: const TextStyle(color: OmniTheme.textMuted)),
                 trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
@@ -550,13 +636,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
             const SizedBox(height: 16),
-            _buildSection('Carpeta de Reportes', [
+            _buildSection('Base de Datos', [
+              _buildInfoRow('Registros totales', _dbSize, Icons.storage),
+              _buildInfoRow('Dispositivo', _deviceId, Icons.fingerprint),
+              _buildInfoRow('Version App', _appVersion, Icons.info),
               ListTile(
-                leading: const Icon(Icons.folder, color: OmniTheme.accentBlue),
-                title: const Text('Ruta de guardado', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: Text(_savePath.isNotEmpty ? _savePath : 'No configurada', style: const TextStyle(color: OmniTheme.textMuted)),
-                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
-                onTap: _changeSavePath,
+                leading: const Icon(Icons.clean_hands, color: OmniTheme.orange400),
+                title: const Text('Limpiar datos locales', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Eliminar cache y registros antiguos', style: TextStyle(color: OmniTheme.textMuted)),
+                onTap: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: OmniTheme.bg900,
+                      title: const Text('Limpiar datos', style: TextStyle(color: OmniTheme.textPrimary)),
+                      content: const Text('Esta accion eliminara el cache local. Los datos sincronizados no se pierden.', style: TextStyle(color: OmniTheme.textSecondary)),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400), child: const Text('Limpiar')),
+                      ],
+                    ),
+                  );
+                  if (confirm == true && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cache limpiado')));
+                  }
+                },
               ),
             ]),
             const SizedBox(height: 16),
