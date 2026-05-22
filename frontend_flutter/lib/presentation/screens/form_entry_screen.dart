@@ -811,7 +811,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                 child: SingleChildScrollView(
                   controller: _fieldsScroll,
                   padding: const EdgeInsets.all(16),
-                  child: Column(
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_generalFields.isNotEmpty) ...[
@@ -845,6 +848,8 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                       ],
                       const SizedBox(height: 100),
                     ],
+                      ),
+                    ),
                   ),
                 ),
               ),
