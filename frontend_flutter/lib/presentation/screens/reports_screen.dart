@@ -260,6 +260,165 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  Future<void> _showBatchExportDialog() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Exportacion por lotes', style: TextStyle(color: OmniTheme.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Generar reportes separados para cada periodo dentro del rango:', style: TextStyle(color: OmniTheme.textSecondary, fontSize: 12)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.calendar_view_week, color: OmniTheme.accentBlue),
+              title: const Text('Por semana', style: TextStyle(color: OmniTheme.textPrimary)),
+              subtitle: const Text('Un reporte por cada semana', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+              onTap: () => Navigator.pop(ctx, 'week'),
+            ),
+            const Divider(height: 1, color: OmniTheme.bg800),
+            ListTile(
+              leading: const Icon(Icons.calendar_month, color: OmniTheme.green400),
+              title: const Text('Por mes', style: TextStyle(color: OmniTheme.textPrimary)),
+              subtitle: const Text('Un reporte por cada mes', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+              onTap: () => Navigator.pop(ctx, 'month'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      _batchExport(result);
+    }
+  }
+
+  Future<void> _batchExport(String period) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final fmt = DateFormat('yyyyMMdd');
+      final displayFmt = DateFormat('dd/MM/yyyy');
+      final periods = <Map<String, dynamic>>[];
+      var cursor = DateTime(_startDate.year, _startDate.month, _startDate.day);
+
+      if (period == 'week') {
+        while (cursor.isBefore(_endDate) || cursor.isAtSameMomentAs(_endDate)) {
+          var weekEnd = cursor.add(const Duration(days: 6));
+          if (weekEnd.isAfter(_endDate)) weekEnd = _endDate;
+          periods.add({'label': 'Sem ${displayFmt.format(cursor)}', 'start': cursor, 'end': weekEnd});
+          cursor = weekEnd.add(const Duration(days: 1));
+        }
+      } else {
+        while (cursor.isBefore(_endDate) || cursor.isAtSameMomentAs(_endDate)) {
+          final monthEnd = DateTime(cursor.year, cursor.month + 1, 0);
+          final end = monthEnd.isBefore(_endDate) ? monthEnd : _endDate;
+          periods.add({'label': '${_monthName(cursor.month)} ${cursor.year}', 'start': cursor, 'end': end});
+          cursor = DateTime(cursor.year, cursor.month + 1, 1);
+        }
+      }
+
+      final dir = await _getReportsDir();
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      int generated = 0;
+      final filePaths = <String>[];
+
+      for (final p in periods) {
+        final s = (p['start'] as DateTime).toIso8601String().split('T')[0];
+        final e = (p['end'] as DateTime).toIso8601String().split('T')[0];
+        final label = p['label'] as String;
+
+        final db = await LocalDatabase.instance.database;
+        String where;
+        List<dynamic> args;
+        if (_selectedModule != null) {
+          where = 'date >= ? AND date <= ? AND module = ?';
+          args = [s, e, _selectedModule];
+        } else {
+          where = 'date >= ? AND date <= ?';
+          args = [s, e];
+        }
+
+        final rows = await db.query('form_entries', where: where, whereArgs: args, orderBy: 'date ASC');
+        if (rows.isEmpty) continue;
+
+        final pdf = pw.Document();
+        pdf.addPage(pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          header: (ctx) => pw.Container(
+            alignment: pw.Alignment.centerLeft,
+            margin: const pw.EdgeInsets.only(bottom: 12),
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('BioLab LABSYNC - $label', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+              pw.Text('Reporte $_moduleLabel', style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+            ]),
+          ),
+          footer: (ctx) => pw.Container(
+            alignment: pw.Alignment.centerRight,
+            margin: const pw.EdgeInsets.only(top: 12),
+            child: pw.Text('Pagina ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+          ),
+          build: (ctx) => [
+            pw.Paragraph(text: 'Periodo: ${displayFmt.format(p['start'])} - ${displayFmt.format(p['end'])}'),
+            pw.Paragraph(text: 'Total registros: ${rows.length}'),
+            pw.SizedBox(height: 12),
+            pw.Header(text: 'Detalle', level: 1),
+            pw.TableHelper.fromTextArray(
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+              cellStyle: const pw.TextStyle(fontSize: 7.5),
+              headers: ['Modulo', 'Fecha', 'Responsable', 'Actividad'],
+              data: rows.map((row) {
+                final mod = row['module'] as String? ?? '';
+                final date = row['date'] as String? ?? '';
+                Map<String, dynamic> dataMap = {};
+                try { dataMap = jsonDecode(row['data_json'] as String); } catch (_) {}
+                final user = dataMap['responsable'] as String? ?? dataMap['usuario'] as String? ?? dataMap['nombre'] as String? ?? '-';
+                final act = dataMap['actividad'] as String? ?? dataMap['observaciones'] as String? ?? '-';
+                return [mod, date, user, act.length > 60 ? '${act.substring(0, 60)}...' : act];
+              }).toList(),
+            ),
+          ],
+        ));
+
+        final filePath = '$dir/LABSYNC_${label.replaceAll(' ', '_')}_$ts.pdf';
+        await File(filePath).writeAsBytes(await pdf.save());
+        filePaths.add(filePath);
+        generated++;
+      }
+
+      if (mounted) Navigator.pop(context);
+
+      if (generated > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$generated reportes generados en $dir'),
+          backgroundColor: OmniTheme.green400,
+          duration: const Duration(seconds: 4),
+        ));
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sin registros para exportar'), backgroundColor: OmniTheme.orange400));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error batch: $e'), backgroundColor: OmniTheme.red400));
+      }
+    }
+  }
+
+  String _monthName(int m) {
+    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return months[m - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -275,6 +434,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.picture_as_pdf, size: 20), tooltip: 'Exportar PDF', onPressed: _entries.isEmpty ? null : _exportPdf, color: OmniTheme.red400),
           IconButton(icon: const Icon(Icons.table_chart, size: 20), tooltip: 'Exportar Excel', onPressed: _entries.isEmpty ? null : _exportExcel, color: OmniTheme.green400),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, size: 18, color: OmniTheme.textMuted),
+            color: OmniTheme.bg800,
+            onSelected: (v) {
+              if (v == 'batch') _showBatchExportDialog();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'batch', child: ListTile(
+                leading: Icon(Icons.layers, size: 18, color: OmniTheme.accentBlue),
+                title: Text('Exportacion por lotes', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                dense: true,
+              )),
+            ],
+          ),
         ],
       ),
       body: Column(

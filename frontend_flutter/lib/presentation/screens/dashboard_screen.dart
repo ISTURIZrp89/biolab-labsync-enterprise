@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../data/db.dart';
+import '../../services/dashboard_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
 import 'calendar_screen.dart';
@@ -18,6 +20,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
+  final GlobalKey _notifKey = GlobalKey();
   int _pendingCount = 0;
   int _todayEntries = 0;
   int _totalEntries = 0;
@@ -61,9 +64,108 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           _todayClosureStatus = closures.isNotEmpty ? closures.first['status'] as String : 'ABIERTO';
         });
       }
+
+      try {
+        await context.read<DashboardService>().loadStatusesForDate(today);
+      } catch (_) {}
     } catch (e) {
       debugPrint('Dashboard load error: $e');
     }
+  }
+
+  Widget _buildNotificationBell() {
+    final notif = context.watch<NotificationService>();
+    final count = notif.unreadCount;
+    return Stack(
+      key: _notifKey,
+      children: [
+        IconButton(
+          icon: Icon(count > 0 ? Icons.notifications : Icons.notifications_outlined, size: 20),
+          onPressed: () => _showNotificationDrawer(notif),
+          color: count > 0 ? OmniTheme.accentBlue : OmniTheme.textMuted,
+          tooltip: 'Notificaciones',
+        ),
+        if (count > 0)
+          Positioned(
+            right: 4, top: 4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(color: OmniTheme.red400, shape: BoxShape.circle),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text('$count', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white), textAlign: TextAlign.center),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showNotificationDrawer(NotificationService notif) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.4,
+        maxChildSize: 0.7,
+        minChildSize: 0.2,
+        expand: false,
+        builder: (_, scrollController) {
+          final notifications = notif.notifications;
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800))),
+                child: Row(
+                  children: [
+                    const Text('Notificaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                    const Spacer(),
+                    if (notifications.isNotEmpty)
+                      TextButton(onPressed: () => notif.dismissAll(), child: const Text('Limpiar', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted))),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: notifications.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.notifications_none, size: 40, color: OmniTheme.bg700),
+                          const SizedBox(height: 8),
+                          const Text('Sin notificaciones', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(8),
+                      itemCount: notifications.length,
+                      itemBuilder: (_, i) {
+                        final n = notifications[i];
+                        return Dismissible(
+                          key: Key(n.id),
+                          onDismissed: (_) => notif.dismiss(n.id),
+                          child: Card(
+                            margin: const EdgeInsets.only(bottom: 4),
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(n.icon, size: 18, color: n.color),
+                              title: Text(n.title, style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                              subtitle: n.message.isNotEmpty ? Text(n.message, style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)) : null,
+                              trailing: IconButton(icon: const Icon(Icons.close, size: 14, color: OmniTheme.textMuted), onPressed: () => notif.dismiss(n.id)),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   static const _modules = [
@@ -221,6 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             } catch (_) {}
           },
         ),
+        _buildNotificationBell(),
         IconButton(
           icon: const Icon(Icons.settings_outlined, size: 20),
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -280,6 +383,12 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   }
 
   Widget _buildActivitySection() {
+    final dash = context.watch<DashboardService>();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final statuses = dash.getStatusesForDate(today);
+    final completed = statuses.values.where((s) => s.status == 'completado').length;
+    final total = _modules.length;
+
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,7 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             child: Row(
               children: [
                 const Text(
-                  'Resumen del Dia',
+                  'Estado por Modulo',
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontWeight: FontWeight.w500,
@@ -302,17 +411,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 ),
                 const Spacer(),
                 Text(
-                  _todayClosureStatus == 'CERRADO'
-                      ? 'Cerrado'
-                      : '${_todayEntries}/${_modules.length} modulos',
+                  '$completed/$total completados',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: _todayClosureStatus == 'CERRADO'
-                        ? OmniTheme.green400
-                        : _todayEntries >= _modules.length
-                            ? OmniTheme.green400
-                            : OmniTheme.yellow400,
+                    color: completed >= total ? OmniTheme.green400 : OmniTheme.yellow400,
                   ),
                 ),
               ],
@@ -322,10 +425,14 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             padding: const EdgeInsets.all(12),
             child: Column(
               children: _modules.map((m) {
+                final moduleKey = m['module'] as String;
+                final status = statuses[moduleKey]?.status ?? 'pendiente';
                 return _buildModuleStatusRow(
                   m['label'] as String,
                   m['icon'] as IconData,
                   m['color'] as Color,
+                  status,
+                  moduleKey,
                 );
               }).toList(),
             ),
@@ -335,7 +442,30 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildModuleStatusRow(String label, IconData icon, Color color) {
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'completado': return OmniTheme.green400;
+      case 'pendiente': return OmniTheme.yellow400;
+      case 'incidencia': return OmniTheme.red400;
+      case 'no_laborado': return OmniTheme.textMuted;
+      case 'justificado': return OmniTheme.accentBlue;
+      default: return OmniTheme.textMuted;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'completado': return 'C';
+      case 'pendiente': return 'P';
+      case 'incidencia': return 'I';
+      case 'no_laborado': return 'N';
+      case 'justificado': return 'J';
+      default: return '?';
+    }
+  }
+
+  Widget _buildModuleStatusRow(String label, IconData icon, Color color, String status, String moduleKey) {
+    final statusColor = _statusColor(status);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -347,25 +477,95 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(icon, size: 14, color: color),
+            child: Icon(icon, size: 14, color: status == 'no_laborado' ? OmniTheme.textMuted : color),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12, color: OmniTheme.textSecondary),
+              style: TextStyle(
+                fontSize: 12,
+                color: status == 'no_laborado' ? OmniTheme.textMuted : OmniTheme.textSecondary,
+                decoration: status == 'no_laborado' ? TextDecoration.lineThrough : null,
+              ),
             ),
           ),
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 0.5),
+          GestureDetector(
+            onTap: () => _showStatusSelector(moduleKey, label, status),
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: statusColor, width: 1.5),
+              ),
+              child: Center(child: Text(
+                _statusLabel(status),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+              )),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showStatusSelector(String moduleKey, String label, String currentStatus) {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: OmniTheme.bg900,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800))),
+              child: Row(
+                children: [
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                  const Spacer(),
+                  IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+            ),
+            ...ModuleDayStatus.statuses.map((s) {
+              final selected = s == currentStatus;
+              return ListTile(
+                leading: Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(
+                    color: _statusColor(s).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _statusColor(s), width: selected ? 2 : 1),
+                  ),
+                  child: selected
+                      ? Icon(Icons.check, size: 12, color: _statusColor(s))
+                      : null,
+                ),
+                title: Text(ModuleDayStatus.statusLabel(s), style: TextStyle(
+                  fontSize: 14,
+                  color: OmniTheme.textPrimary,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                )),
+                onTap: () {
+                  context.read<DashboardService>().setStatus(
+                    date: today,
+                    module: moduleKey,
+                    status: s,
+                    updatedBy: context.read<AuthService>().currentUser?.nombre,
+                  );
+                  context.read<NotificationService>().info(
+                    '$label: ${ModuleDayStatus.statusLabel(s)}',
+                  );
+                  Navigator.pop(ctx);
+                },
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../data/db.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
+import '../../services/notification_service.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
 import 'settings_screen.dart';
@@ -178,6 +179,8 @@ class _MainScaffoldState extends State<MainScaffold> {
           children: [
             _buildSyncDot(sync),
             const SizedBox(height: 4),
+            _buildNotificationBell(),
+            const SizedBox(height: 4),
             IconButton(
               icon: const Icon(Icons.settings_outlined, size: 20),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -215,6 +218,108 @@ class _MainScaffoldState extends State<MainScaffold> {
           label: Text(item.label, style: TextStyle(fontSize: 10, color: isSelected ? OmniTheme.accentBlue : OmniTheme.textMuted)),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildNotificationBell() {
+    final notif = context.watch<NotificationService>();
+    final count = notif.unreadCount;
+    return Stack(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_outlined, size: 20),
+          onPressed: () => _showNotificationDrawer(notif),
+          color: count > 0 ? OmniTheme.accentBlue : OmniTheme.textMuted,
+          tooltip: 'Notificaciones',
+        ),
+        if (count > 0)
+          Positioned(
+            right: 4, top: 4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(color: OmniTheme.red400, shape: BoxShape.circle),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text('$count', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white), textAlign: TextAlign.center),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showNotificationDrawer(NotificationService notif) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: OmniTheme.bg900,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.4,
+        maxChildSize: 0.7,
+        minChildSize: 0.2,
+        expand: false,
+        builder: (_, scrollController) {
+          final notifications = notif.notifications;
+          return Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800))),
+                child: Row(
+                  children: [
+                    const Text('Notificaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                    const Spacer(),
+                    if (notifications.isNotEmpty)
+                      TextButton(
+                        onPressed: () => notif.dismissAll(),
+                        child: const Text('Limpiar', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                      ),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: notifications.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.notifications_none, size: 40, color: OmniTheme.bg700),
+                          const SizedBox(height: 8),
+                          const Text('Sin notificaciones', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(8),
+                      itemCount: notifications.length,
+                      itemBuilder: (_, i) {
+                        final n = notifications[i];
+                        return Dismissible(
+                          key: Key(n.id),
+                          onDismissed: (_) => notif.dismiss(n.id),
+                          child: Card(
+                            margin: const EdgeInsets.only(bottom: 4),
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(n.icon, size: 18, color: n.color),
+                              title: Text(n.title, style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                              subtitle: n.message.isNotEmpty
+                                ? Text(n.message, style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted))
+                                : null,
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 14, color: OmniTheme.textMuted),
+                                onPressed: () => notif.dismiss(n.id),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 

@@ -8,7 +8,7 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 2,
+    version: 3,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -66,12 +66,37 @@ Future<Database> openLocalDatabase(String filePath) async {
           value TEXT NOT NULL
         )
       ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS day_module_status (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL,
+          module TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pendiente',
+          updated_by TEXT,
+          updated_at TEXT NOT NULL,
+          notes TEXT,
+          UNIQUE(date, module)
+        )
+      ''');
     },
     onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
-        await db.execute(
-          'ALTER TABLE form_entries ADD COLUMN sub_module TEXT',
-        );
+        await db.execute('ALTER TABLE form_entries ADD COLUMN sub_module TEXT');
+      }
+      if (oldVersion < 3) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS day_module_status (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            module TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pendiente',
+            updated_by TEXT,
+            updated_at TEXT NOT NULL,
+            notes TEXT,
+            UNIQUE(date, module)
+          )
+        ''');
       }
     },
   );

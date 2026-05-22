@@ -11,6 +11,8 @@ import 'sync/sync_engine.dart';
 import 'sync/lan_discovery_service.dart';
 import 'sync/lan_sync_server.dart';
 import 'services/update_service.dart';
+import 'services/notification_service.dart';
+import 'services/dashboard_service.dart';
 import 'presentation/screens/login_screen.dart';
 import 'theme/omni_theme.dart';
 
@@ -34,6 +36,8 @@ void main() async {
     final syncEngine = SyncEngine();
     final formRepo = FormRepositoryImpl();
     final updateService = UpdateService();
+    final notificationService = NotificationService();
+    final dashboardService = DashboardService();
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
 
@@ -51,6 +55,8 @@ void main() async {
           ChangeNotifierProvider<AuthService>.value(value: authService),
           ChangeNotifierProvider<SyncEngine>.value(value: syncEngine),
           ChangeNotifierProvider<UpdateService>.value(value: updateService),
+          ChangeNotifierProvider<NotificationService>.value(value: notificationService),
+          ChangeNotifierProvider<DashboardService>.value(value: dashboardService),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           Provider<FormRepositoryImpl>.value(value: formRepo),
@@ -139,6 +145,30 @@ class _BioLabAppState extends State<BioLabApp> {
 
         final updateService = context.read<UpdateService>();
         updateService.startPeriodicCheck(interval: const Duration(hours: 1));
+
+        sync.addListener(() {
+          if (sync.isOnline && sync.syncCount > 0) {
+            context.read<NotificationService>().success(
+              'Sincronizacion completada',
+              message: '${sync.syncCount} sincronizaciones exitosas',
+            );
+          } else           if (!sync.isOnline && sync.failedCount > 0) {
+            context.read<NotificationService>().warning(
+              'Error de sincronizacion',
+              message: '${sync.failedCount} fallos',
+            );
+          }
+        });
+
+        final discovery = context.read<LanDiscoveryService>();
+        discovery.addListener(() {
+          if (discovery.peers.isNotEmpty) {
+            context.read<NotificationService>().info(
+              'PCs detectadas en red',
+              message: discovery.peers.map((p) => p.hostname).join(', '),
+            );
+          }
+        });
       } catch (e) {
         debugPrint('Init error: $e');
       }
