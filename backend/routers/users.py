@@ -20,6 +20,10 @@ class UserCreateRequest(schemas.UserCreate):
 class UserUpdateRequest:
     nombre: Optional[str] = None
     cargo: Optional[str] = None
+    cargo_operativo: Optional[str] = None
+    area: Optional[str] = None
+    supervisor: Optional[str] = None
+    firma: Optional[str] = None
     rol: Optional[str] = None
     pin: Optional[str] = None
     password: Optional[str] = None
@@ -37,6 +41,10 @@ def list_users(
             "id": u.id,
             "nombre": u.nombre,
             "cargo": u.cargo,
+            "cargo_operativo": u.cargo_operativo or u.cargo,
+            "area": u.area or "",
+            "supervisor": u.supervisor or "",
+            "firma": u.firma or u.nombre,
             "rol": u.rol,
             "activo": u.activo,
             "created_at": u.created_at.isoformat() if u.created_at else None,
@@ -62,6 +70,10 @@ def get_user(
         "id": user.id,
         "nombre": user.nombre,
         "cargo": user.cargo,
+        "cargo_operativo": user.cargo_operativo or user.cargo,
+        "area": user.area or "",
+        "supervisor": user.supervisor or "",
+        "firma": user.firma or user.nombre,
         "rol": user.rol,
         "activo": user.activo,
         "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -81,7 +93,11 @@ def create_user(
     user = models.Usuario(
         id=payload.id,
         nombre=payload.nombre,
-        cargo=payload.cargo,
+        cargo=payload.cargo or (payload.cargo_operativo or ""),
+        cargo_operativo=payload.cargo_operativo or payload.cargo or "",
+        area=getattr(payload, "area", "Cultivo Celular") or "Cultivo Celular",
+        supervisor=getattr(payload, "supervisor", "") or "",
+        firma=getattr(payload, "firma", "") or payload.nombre,
         rol=payload.rol,
         pin_hash=pwd_context.hash(payload.pin) if payload.pin else None,
         pass_hash=pwd_context.hash(payload.password) if payload.password else None,
@@ -125,6 +141,14 @@ def update_user(
         user.nombre = payload["nombre"]
     if "cargo" in payload:
         user.cargo = payload["cargo"]
+    if "cargo_operativo" in payload:
+        user.cargo_operativo = payload["cargo_operativo"]
+    if "area" in payload:
+        user.area = payload["area"]
+    if "supervisor" in payload:
+        user.supervisor = payload["supervisor"]
+    if "firma" in payload:
+        user.firma = payload["firma"]
     if "rol" in payload:
         user.rol = payload["rol"]
     if "activo" in payload:

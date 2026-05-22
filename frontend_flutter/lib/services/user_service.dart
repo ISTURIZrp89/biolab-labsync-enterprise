@@ -5,6 +5,7 @@ import '../security/auth_service.dart';
 class UserSession {
   final String nombre;
   final String cargo;
+  final String cargoOperativo;
   final String area;
   final String supervisor;
   final String firma;
@@ -13,6 +14,7 @@ class UserSession {
   UserSession({
     required this.nombre,
     this.cargo = '',
+    this.cargoOperativo = '',
     this.area = '',
     this.supervisor = '',
     this.firma = '',
@@ -25,11 +27,14 @@ class UserSession {
     'nombre': nombre,
     'operador': nombre,
     'elaborado_por': nombre,
-    'cargo': cargo,
+    'cargo': cargoOperativo.isNotEmpty ? cargoOperativo : cargo,
+    'cargo_operativo': cargoOperativo,
     'area': area,
     'supervisor': supervisor,
     'firma_responsable': firma.isNotEmpty ? firma : nombre,
+    'firma': firma.isNotEmpty ? firma : nombre,
     'turno': _detectTurno(),
+    'rol': rol,
   };
 
   String _detectTurno() {
@@ -52,15 +57,23 @@ class UserService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _loadFromPrefs(user.nombre, user.cargo, user.rol);
+    _loadFromPrefs(user.nombre, user.cargo, user.cargoOperativo, user.rol);
   }
 
-  Future<void> _loadFromPrefs(String nombre, String cargo, String rol) async {
+  Future<void> _loadFromPrefs(String nombre, String cargo, String cargoOperativo, String rol) async {
     final prefs = await SharedPreferences.getInstance();
     final area = prefs.getString('user_area') ?? 'Cultivo Celular';
     final supervisor = prefs.getString('user_supervisor') ?? '';
     final firma = prefs.getString('user_firma') ?? nombre;
-    _session = UserSession(nombre: nombre, cargo: cargo, area: area, supervisor: supervisor, firma: firma, rol: rol);
+    _session = UserSession(
+      nombre: nombre,
+      cargo: cargo,
+      cargoOperativo: cargoOperativo,
+      area: area,
+      supervisor: supervisor,
+      firma: firma,
+      rol: rol,
+    );
     notifyListeners();
   }
 
@@ -68,7 +81,15 @@ class UserService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_area', area);
     if (_session != null) {
-      _session = UserSession(nombre: _session!.nombre, cargo: _session!.cargo, area: area, supervisor: _session!.supervisor, firma: _session!.firma, rol: _session!.rol);
+      _session = UserSession(
+        nombre: _session!.nombre,
+        cargo: _session!.cargo,
+        cargoOperativo: _session!.cargoOperativo,
+        area: area,
+        supervisor: _session!.supervisor,
+        firma: _session!.firma,
+        rol: _session!.rol,
+      );
       notifyListeners();
     }
   }
@@ -77,7 +98,32 @@ class UserService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_supervisor', supervisor);
     if (_session != null) {
-      _session = UserSession(nombre: _session!.nombre, cargo: _session!.cargo, area: _session!.area, supervisor: supervisor, firma: _session!.firma, rol: _session!.rol);
+      _session = UserSession(
+        nombre: _session!.nombre,
+        cargo: _session!.cargo,
+        cargoOperativo: _session!.cargoOperativo,
+        area: _session!.area,
+        supervisor: supervisor,
+        firma: _session!.firma,
+        rol: _session!.rol,
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateFirma(String firma) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_firma', firma);
+    if (_session != null) {
+      _session = UserSession(
+        nombre: _session!.nombre,
+        cargo: _session!.cargo,
+        cargoOperativo: _session!.cargoOperativo,
+        area: _session!.area,
+        supervisor: _session!.supervisor,
+        firma: firma,
+        rol: _session!.rol,
+      );
       notifyListeners();
     }
   }

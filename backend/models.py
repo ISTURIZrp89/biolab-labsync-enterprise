@@ -6,7 +6,11 @@ class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(String, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
-    cargo = Column(String)
+    cargo = Column(String) # Cargo operativo que aparece en reportes (TECNICO, BIOLOGO, QFB, etc.)
+    cargo_operativo = Column(String) # Alias para compatibilidad (se mapea a cargo)
+    area = Column(String, default="Cultivo Celular")
+    supervisor = Column(String, default="")
+    firma = Column(String, default="")
     rol = Column(String, nullable=False) # ADMIN, JEFE, LABORATORIO, AUDITOR, DUEÑO
     pin_hash = Column(String)
     pass_hash = Column(String)

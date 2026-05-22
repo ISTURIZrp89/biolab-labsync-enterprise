@@ -63,6 +63,22 @@ Future<Database> openLocalDatabase(String filePath) async {
             value TEXT NOT NULL
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS month_closures (
+            id TEXT PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            closed_by TEXT NOT NULL,
+            closed_at TEXT NOT NULL,
+            notes TEXT,
+            days_total INTEGER DEFAULT 30,
+            days_closed INTEGER DEFAULT 0,
+            reopen_log_json TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(year, month)
+          )
+        ''');
       },
     ),
   );

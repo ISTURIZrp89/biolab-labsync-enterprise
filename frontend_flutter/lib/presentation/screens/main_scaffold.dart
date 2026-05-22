@@ -6,6 +6,11 @@ import '../../data/db.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../services/notification_service.dart';
+import '../../services/closure_service.dart';
+import '../../services/user_service.dart';
+import '../../security/permission_service.dart';
+import '../../security/edit_lock_service.dart';
+import '../../domain/entities/user.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
 import 'settings_screen.dart';
@@ -62,28 +67,13 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   Future<void> _loadPermissions() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
       final auth = context.read<AuthService>();
-      final userId = auth.currentUser?.id;
-      final raw = prefs.getString('users_list');
-      if (raw != null && userId != null) {
-        final list = jsonDecode(raw) as List;
-        for (final u in list) {
-          if (u['pin'] == userId || u['id'] == userId) {
-            final p = (u as Map)['permisos'] as String? ?? 'todos';
-            if (p == 'todos') {
-              _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'};
-            } else {
-              _allowedModules = p.split(',').toSet();
-            }
-            break;
-          }
-        }
-      }
-    } catch (_) {}
-    _allowedModules = _allowedModules.isEmpty
-      ? {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'}
-      : _allowedModules;
+      final permService = context.read<PermissionService>();
+      await permService.loadPermissions(auth);
+      _allowedModules = permService.allowedModules;
+    } catch (_) {
+      _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'};
+    }
     if (mounted) setState(() => _permLoaded = true);
   }
 
@@ -125,6 +115,12 @@ class _MainScaffoldState extends State<MainScaffold> {
       final sync = context.read<SyncEngine>();
       final pending = await sync.getPendingCount();
 
+      try {
+        final closureService = context.read<ClosureService>();
+        await closureService.loadMonthClosures(_selectedDate.year, _selectedDate.month);
+        await closureService.loadDailyClosures(today);
+      } catch (_) {}
+
       if (mounted) setState(() {
         _moduleCounts = counts;
         _pendingCount = pending;
@@ -162,15 +158,20 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _openModule(String module, String label) {
     if (module.isEmpty) return;
-    if (!_allowedModules.contains(module)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No tienes permiso para acceder a este modulo'),
-          backgroundColor: OmniTheme.orange400,
-        ));
+    try {
+      final permService = context.read<PermissionService>();
+      if (!permService.canAccess(module)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No tienes permiso para acceder a este modulo'),
+            backgroundColor: OmniTheme.orange400,
+          ));
+        }
+        return;
       }
-      return;
-    }
+    } catch (_) {}
+    final auth = context.read<AuthService>();
+    auth.recordActivity();
     Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: label)));
   }
 
@@ -217,7 +218,7 @@ class _MainScaffoldState extends State<MainScaffold> {
             ),
             const SizedBox(height: 4),
             Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis),
-            Text(auth.currentUser?.rol ?? '', style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis),
+            Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis),
           ],
         ),
       ),
@@ -375,22 +376,137 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   Widget _buildSyncDot(SyncEngine sync) {
     return GestureDetector(
-      onTap: sync.isOnline ? () async {
-        try { await sync.synchronize(); _loadStats(); } catch (_) {}
-      } : null,
+      onTap: () async {
+        if (sync.isOnline) {
+          try { await sync.synchronize(); _loadStats(); } catch (_) {}
+        } else {
+          await sync.checkOnline();
+        }
+      },
+      onLongPress: () => _showSyncLog(sync),
       child: Container(
         width: 28, height: 28,
         decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(8)),
-        child: Center(child: Container(
-          width: 8, height: 8,
-          decoration: BoxDecoration(
-            color: sync.isOnline ? OmniTheme.green400 : OmniTheme.red400,
-            shape: BoxShape.circle,
-            boxShadow: sync.isOnline ? [BoxShadow(color: OmniTheme.green400.withOpacity(0.4), blurRadius: 6)] : null,
-          ),
-        )),
+        child: Center(
+          child: sync.isSyncing
+              ? const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: OmniTheme.accentBlue))
+              : Container(
+                  width: 8, height: 8,
+                  decoration: BoxDecoration(
+                    color: sync.isOnline ? OmniTheme.green400 : OmniTheme.red400,
+                    shape: BoxShape.circle,
+                    boxShadow: sync.isOnline ? [BoxShadow(color: OmniTheme.green400.withOpacity(0.4), blurRadius: 6)] : null,
+                  ),
+                ),
+        ),
       ),
     );
+  }
+
+  void _showSyncLog(SyncEngine sync) {
+    final log = sync.syncLog;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Row(children: [
+          Icon(Icons.sync, size: 18, color: OmniTheme.accentBlue),
+          SizedBox(width: 8),
+          Text('Sincronización', style: TextStyle(fontSize: 14, color: OmniTheme.textPrimary, fontWeight: FontWeight.bold)),
+        ]),
+        content: SizedBox(
+          width: 400,
+          height: 400,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                _statChip('En línea', sync.isOnline ? 'Sí' : 'No', sync.isOnline ? OmniTheme.green400 : OmniTheme.red400),
+                const SizedBox(width: 8),
+                _statChip('Exitosas', '${sync.syncCount}', OmniTheme.green400),
+                const SizedBox(width: 8),
+                _statChip('Fallidas', '${sync.failedCount}', OmniTheme.red400),
+              ]),
+              const SizedBox(height: 12),
+              if (sync.lastSync != null)
+                Text('Última sincronización: ${_formatTime(sync.lastSync!)}', style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+              const SizedBox(height: 12),
+              const Text('Historial:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
+              const SizedBox(height: 4),
+              Expanded(
+                child: log.isEmpty
+                    ? Center(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.sync, size: 16),
+                          label: const Text('Sincronizar ahora', style: TextStyle(fontSize: 12)),
+                          onPressed: () async {
+                            await sync.synchronize();
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: log.length,
+                        itemBuilder: (_, i) {
+                          final item = log[i];
+                          final status = item['status'] as String? ?? '';
+                          return Container(
+                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            margin: const EdgeInsets.only(bottom: 4),
+                            decoration: BoxDecoration(
+                              color: status == 'success' ? OmniTheme.green400.withOpacity(0.08) : OmniTheme.red400.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(children: [
+                              Icon(
+                                status == 'success' ? Icons.check_circle : Icons.error,
+                                size: 12,
+                                color: status == 'success' ? OmniTheme.green400 : OmniTheme.red400,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  item['action'] as String? ?? '',
+                                  style: TextStyle(fontSize: 10, color: status == 'success' ? OmniTheme.green400 : OmniTheme.red400),
+                                ),
+                              ),
+                              Text(_formatTime(DateTime.parse(item['timestamp'] as String)), style: const TextStyle(fontSize: 8, color: OmniTheme.textMuted)),
+                            ]),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(color: OmniTheme.textMuted))),
+          if (sync.failedCount > 0)
+            TextButton(
+              onPressed: () async {
+                await sync.retryFailed();
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Reintentar fallidos', style: TextStyle(color: OmniTheme.orange400)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: color.withOpacity(0.2))),
+      child: Column(children: [
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: TextStyle(fontSize: 8, color: color.withOpacity(0.8))),
+      ]),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
   }
 
   Widget _buildDashboard() {
@@ -449,10 +565,25 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'CERRADO': return OmniTheme.green400;
+      case 'REABIERTO': return OmniTheme.orange400;
+      case 'ABIERTO': return null;
+      default: return null;
+    }
+  }
+
   Widget _buildCalendar(DateTime now, List<String> dayNames) {
     final firstDay = DateTime(_selectedDate.year, _selectedDate.month, 1);
     final lastDay = DateTime(_selectedDate.year, _selectedDate.month + 1, 0);
     final startWeekday = firstDay.weekday;
+    final closureService = context.watch<ClosureService>();
+    final closureStatuses = closureService.getDailyStatusesForMonth(_selectedDate.year, _selectedDate.month);
+    final statusMap = <String, String>{};
+    for (final s in closureStatuses) {
+      statusMap[s['date'] as String] = s['status'] as String;
+    }
 
     return Card(
       child: Padding(
@@ -474,12 +605,27 @@ class _MainScaffoldState extends State<MainScaffold> {
                   final isToday = now.year == _selectedDate.year && now.month == _selectedDate.month && now.day == day;
                   final dateStr = '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
                   final entryCount = _dayEntryCounts[dateStr] ?? 0;
+                  final closureStatus = statusMap[dateStr] ?? 'ABIERTO';
+                  final statusColor = _statusColor(closureStatus);
+                  final hasData = entryCount > 0 || closureStatus == 'CERRADO';
+
+                  Color? bgColor;
+                  if (closureStatus == 'CERRADO') {
+                    bgColor = OmniTheme.green400.withOpacity(0.12);
+                  } else if (closureStatus == 'REABIERTO') {
+                    bgColor = OmniTheme.orange400.withOpacity(0.12);
+                  } else if (isToday) {
+                    bgColor = OmniTheme.accentBlue.withOpacity(0.2);
+                  } else if (entryCount > 0) {
+                    bgColor = OmniTheme.blue400.withOpacity(0.08);
+                  }
+
                   return GestureDetector(
                     onTap: () => _showDayEntries(dateStr),
                     child: Container(
                       width: 36, height: 36,
                       decoration: BoxDecoration(
-                        color: isToday ? OmniTheme.accentBlue.withOpacity(0.2) : (entryCount > 0 ? OmniTheme.green400.withOpacity(0.08) : null),
+                        color: bgColor,
                         borderRadius: BorderRadius.circular(8),
                         border: isToday ? Border.all(color: OmniTheme.accentBlue, width: 1.5) : null,
                       ),
@@ -487,17 +633,34 @@ class _MainScaffoldState extends State<MainScaffold> {
                         children: [
                           Center(child: Text('$day', style: TextStyle(
                             fontSize: 12, fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                            color: isToday ? OmniTheme.accentBlue : (entryCount > 0 ? OmniTheme.textPrimary : OmniTheme.textMuted),
+                            color: isToday ? OmniTheme.accentBlue : (hasData ? OmniTheme.textPrimary : OmniTheme.textMuted),
                           ))),
-                          if (entryCount > 0)
-                            Positioned(
-                              bottom: 1, right: 1,
-                              child: Container(
-                                width: 12, height: 12,
-                                decoration: BoxDecoration(color: OmniTheme.green400, shape: BoxShape.circle),
-                                child: Center(child: Text('$entryCount', style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white))),
-                              ),
+                          Positioned(
+                            bottom: 1, right: 1,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (closureStatus == 'CERRADO')
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(color: OmniTheme.green400, shape: BoxShape.circle),
+                                    child: const Icon(Icons.check, size: 6, color: Colors.white),
+                                  )
+                                else if (closureStatus == 'REABIERTO')
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(color: OmniTheme.orange400, shape: BoxShape.circle),
+                                    child: const Icon(Icons.lock_open, size: 6, color: Colors.white),
+                                  )
+                                else if (entryCount > 0)
+                                  Container(
+                                    width: 12, height: 12,
+                                    decoration: BoxDecoration(color: OmniTheme.blue400, shape: BoxShape.circle),
+                                    child: Center(child: Text('$entryCount', style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white))),
+                                  ),
+                              ],
                             ),
+                          ),
                         ],
                       ),
                     ),
@@ -505,10 +668,28 @@ class _MainScaffoldState extends State<MainScaffold> {
                 }),
               );
             }),
+            const SizedBox(height: 8),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _legendDot(OmniTheme.green400, 'Cerrado'),
+              const SizedBox(width: 16),
+              _legendDot(OmniTheme.orange400, 'Reabierto'),
+              const SizedBox(width: 16),
+              _legendDot(OmniTheme.blue400, 'Con datos'),
+              const SizedBox(width: 16),
+              _legendDot(OmniTheme.accentBlue, 'Hoy'),
+            ]),
           ],
         ),
       ),
     );
+  }
+
+  Widget _legendDot(Color color, String label) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      const SizedBox(width: 4),
+      Text(label, style: const TextStyle(fontSize: 9, color: OmniTheme.textMuted)),
+    ]);
   }
 
   void _showDayEntries(String dateStr) {
@@ -612,6 +793,13 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildDailyStatus() {
+    final auth = context.watch<AuthService>();
+    final closureService = context.watch<ClosureService>();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final todayClosure = closureService.getDayClosure(today);
+    final isTodayClosed = todayClosure?.isClosed == true;
+    final isTodayReopened = todayClosure?.isReopened == true;
+
     final allModules = [
       ('incubadoras', 'Incubadoras', Icons.thermostat_outlined, OmniTheme.red400),
       ('autoclaves', 'Autoclaves', Icons.local_fire_department_outlined, OmniTheme.orange400),
@@ -635,7 +823,42 @@ class _MainScaffoldState extends State<MainScaffold> {
                 Text('${modules.where((m) => (_moduleCounts[m.$1] ?? 0) > 0).length}/${modules.length}', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            Row(children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  color: isTodayClosed ? OmniTheme.green400 : (isTodayReopened ? OmniTheme.orange400 : OmniTheme.yellow400),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isTodayReopened ? 'REABIERTO' : (isTodayClosed ? 'CERRADO' : 'ABIERTO'),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isTodayClosed ? OmniTheme.green400 : (isTodayReopened ? OmniTheme.orange400 : OmniTheme.yellow400)),
+              ),
+              const Spacer(),
+              if (auth.canClose && !isTodayClosed)
+                TextButton.icon(
+                  icon: const Icon(Icons.lock, size: 14),
+                  label: const Text('Cerrar dia', style: TextStyle(fontSize: 11)),
+                  onPressed: () => _confirmCloseDay(today, auth.currentUser!),
+                  style: TextButton.styleFrom(foregroundColor: OmniTheme.green400),
+                ),
+              if (auth.canReopen && isTodayClosed)
+                TextButton.icon(
+                  icon: const Icon(Icons.lock_open, size: 14),
+                  label: const Text('Reabrir', style: TextStyle(fontSize: 11)),
+                  onPressed: () => _showReopenDialog(today, auth.currentUser!),
+                  style: TextButton.styleFrom(foregroundColor: OmniTheme.orange400),
+                ),
+            ]),
+            if (todayClosure?.notes != null && todayClosure!.notes!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('Notas: ${todayClosure.notes}', style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted, fontStyle: FontStyle.italic)),
+              ),
+            const SizedBox(height: 8),
             ...modules.map((m) {
               final count = _moduleCounts[m.$1] ?? 0;
               return _buildModuleRow(m.$2, m.$3, m.$4, count, m.$1);
@@ -644,6 +867,98 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmCloseDay(String date, User user) async {
+    final notesCtrl = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Cerrar dia', style: TextStyle(color: Colors.white)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Confirmar cierre del dia $date?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: notesCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Notas (opcional)',
+              labelStyle: TextStyle(color: Colors.white54),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
+            child: const Text('Confirmar cierre', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        await context.read<ClosureService>().closeDay(date, user, notes: notesCtrl.text);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Dia $date cerrado exitosamente'),
+          backgroundColor: OmniTheme.green400,
+        ));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: OmniTheme.red400,
+        ));
+      }
+    }
+  }
+
+  Future<void> _showReopenDialog(String date, User user) async {
+    final motivoCtrl = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Reabrir dia', style: TextStyle(color: Colors.white)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Reabrir el dia $date? (maximo 3 dias desde cierre)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: motivoCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Motivo de reapertura *',
+              labelStyle: TextStyle(color: Colors.white54),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: motivoCtrl.text.isNotEmpty ? () => Navigator.pop(ctx, true) : null,
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.orange400),
+            child: const Text('Reabrir', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        await context.read<ClosureService>().reopenDay(date, user, motivo: motivoCtrl.text);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Dia $date reabierto'),
+          backgroundColor: OmniTheme.orange400,
+        ));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: OmniTheme.red400,
+        ));
+      }
+    }
   }
 
   Widget _buildModuleRow(String label, IconData icon, Color color, int count, String moduleKey) {
@@ -687,16 +1002,30 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildPendingBar() {
-    if (_pendingCount <= 0) return const SizedBox.shrink();
+    if (_pendingCount <= 0 && context.read<SyncEngine>().failedCount <= 0) return const SizedBox.shrink();
+    final sync = context.read<SyncEngine>();
+    final isFailed = sync.failedCount > 0;
+    final color = isFailed ? OmniTheme.red400 : OmniTheme.orange400;
+    final icon = isFailed ? Icons.sync_problem : Icons.cloud_upload_outlined;
+    final msg = isFailed
+        ? '${sync.failedCount} sincronizaciones fallidas - toca para reintentar'
+        : '$_pendingCount registros pendientes de sincronizar';
     return Card(
+      margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: const Icon(Icons.sync_problem, color: OmniTheme.orange400),
-        title: Text('$_pendingCount registros pendientes de sincronizar', style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
-        trailing: const Icon(Icons.sync, size: 18, color: OmniTheme.textMuted),
+        dense: true,
+        leading: Icon(icon, color: color, size: 18),
+        title: Text(msg, style: TextStyle(fontSize: 11, color: color)),
+        trailing: sync.isSyncing
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.sync, size: 16, color: OmniTheme.textMuted),
         onTap: () async {
           try {
-            final sync = context.read<SyncEngine>();
-            await sync.synchronize();
+            if (isFailed) {
+              await sync.retryFailed();
+            } else {
+              await sync.synchronize();
+            }
             _loadStats();
           } catch (_) {}
         },

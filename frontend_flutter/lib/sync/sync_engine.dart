@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 import '../data/db.dart';
 import 'lan_discovery_service.dart';
 
@@ -19,6 +20,8 @@ class SyncEngine extends ChangeNotifier {
   bool _disposed = false;
   Timer? _periodicTimer;
 
+  final List<Map<String, dynamic>> _syncLog = [];
+
   SyncEngine({LocalDatabase? localDb})
       : _localDb = localDb ?? LocalDatabase.instance;
 
@@ -28,6 +31,7 @@ class SyncEngine extends ChangeNotifier {
   int get syncCount => _syncCount;
   int get failedCount => _failedCount;
   int get pendingCount => _pendingCount;
+  List<Map<String, dynamic>> get syncLog => List.unmodifiable(_syncLog);
 
   void _safeNotify() {
     if (!_disposed) notifyListeners();
@@ -46,15 +50,29 @@ class SyncEngine extends ChangeNotifier {
     _periodicTimer = null;
   }
 
+  void _logSync(String action, String status, Map<String, dynamic>? details) {
+    _syncLog.insert(0, {
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'action': action,
+      'status': status,
+      'details': details,
+    });
+    if (_syncLog.length > 100) _syncLog.removeLast();
+  }
+
   Future<bool> checkOnline() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
-
       final response = await http.get(
         Uri.parse('$backendUrl/api/health'),
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 5));
+      final wasOffline = !_isOnline;
       _isOnline = response.statusCode == 200;
+      if (wasOffline && _isOnline) {
+        _logSync('reconnect', 'success', {'message': 'Conexión restablecida'});
+        synchronize();
+      }
     } catch (e) {
       _isOnline = false;
     }
@@ -97,6 +115,8 @@ class SyncEngine extends ChangeNotifier {
           'entity_id': item['entity_id'],
           'data': data,
           'timestamp': item['timestamp'],
+          'device_id': deviceId,
+          'version': data['version'] ?? 1,
         });
       }
 
@@ -108,33 +128,105 @@ class SyncEngine extends ChangeNotifier {
           'queue': mappedQueue,
           'last_sync_timestamp': lastSync,
         }),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200) {
         final resData = jsonDecode(response.body);
         if (resData['success'] == true) {
           final db = await _localDb.database;
 
-          for (var id in (resData['processed_ids'] as List)) {
+          final processed = (resData['processed_ids'] as List?) ?? [];
+          final conflicts = (resData['conflicts'] as List?) ?? [];
+          final rejected = (resData['rejected'] as List?) ?? [];
+
+          for (var id in processed) {
             await _localDb.deleteQueueItem(id.toString());
           }
 
-          for (var update in (resData['updates_to_pull'] as List)) {
+          for (final conflict in conflicts) {
+            final entityId = conflict['entity_id'] as String?;
+            final serverVersion = conflict['server_version'] as int? ?? 0;
+            final localVersion = conflict['local_version'] as int? ?? 0;
+            final resolution = conflict['resolution'] as String? ?? 'server_wins';
+
+            if (resolution == 'server_wins' && conflict['data'] != null) {
+              final itemData = conflict['data'] as Map<String, dynamic>;
+              final entity = conflict['entity'] as String? ?? 'form_entries';
+              if (entity == 'form_entries') {
+                await db.insert('form_entries', {
+                  'id': itemData['id'],
+                  'module': itemData['module'],
+                  'date': itemData['date'],
+                  'user_id': itemData['user_id'],
+                  'device_id': itemData['device_id'],
+                  'version': itemData['version'],
+                  'data_json': jsonEncode(itemData['data']),
+                  'status': itemData['status'],
+                  'created_at': itemData['created_at'],
+                  'updated_at': itemData['updated_at'],
+                }, conflictAlgorithm: ConflictAlgorithm.replace);
+              }
+            }
+
+            final uuid = Uuid().v4();
+            await db.insert('audit_log', {
+              'id': uuid,
+              'action': 'SYNC_CONFLICT',
+              'user_id': 'system',
+              'device_id': deviceId,
+              'timestamp': DateTime.now().toUtc().toIso8601String(),
+              'details_json': jsonEncode({
+                'entity_id': entityId,
+                'server_version': serverVersion,
+                'local_version': localVersion,
+                'resolution': resolution,
+                'entity': conflict['entity'],
+              }),
+            });
+          }
+
+          for (final rejection in rejected) {
+            final entityId = rejection['entity_id'] as String?;
+            final reason = rejection['reason'] as String? ?? 'unknown';
+            final rejUuid = Uuid().v4();
+            await db.insert('audit_log', {
+              'id': rejUuid,
+              'action': 'SYNC_REJECTED',
+              'user_id': 'system',
+              'device_id': deviceId,
+              'timestamp': DateTime.now().toUtc().toIso8601String(),
+              'details_json': jsonEncode({'entity_id': entityId, 'reason': reason}),
+            });
+          }
+
+          int pulled = 0;
+          for (var update in (resData['updates_to_pull'] as List?) ?? []) {
             final entity = update['entity'] as String;
             final itemData = update['data'] as Map<String, dynamic>;
+            final remoteVersion = itemData['version'] as int? ?? 0;
+
             if (entity == 'form_entries') {
+              final existing = await db.query('form_entries',
+                where: 'id = ?',
+                whereArgs: [itemData['id']],
+              );
+              if (existing.isNotEmpty) {
+                final localVersion = (existing.first['version'] as int?) ?? 0;
+                if (remoteVersion <= localVersion) continue;
+              }
               await db.insert('form_entries', {
                 'id': itemData['id'],
                 'module': itemData['module'],
                 'date': itemData['date'],
                 'user_id': itemData['user_id'],
                 'device_id': itemData['device_id'],
-                'version': itemData['version'],
+                'version': remoteVersion,
                 'data_json': jsonEncode(itemData['data']),
                 'status': itemData['status'],
                 'created_at': itemData['created_at'],
                 'updated_at': itemData['updated_at'],
               }, conflictAlgorithm: ConflictAlgorithm.replace);
+              pulled++;
             } else if (entity == 'day_closures') {
               await db.insert('day_closures', {
                 'id': itemData['id'],
@@ -148,21 +240,41 @@ class SyncEngine extends ChangeNotifier {
             }
           }
 
-          await prefs.setString('last_sync_timestamp', resData['server_time']);
+          await prefs.setString('last_sync_timestamp', resData['server_time'] ?? DateTime.now().toUtc().toIso8601String());
           _lastSync = DateTime.now();
           _syncCount++;
           _isOnline = true;
+
+          _logSync('sync_complete', 'success', {
+            'processed': processed.length,
+            'conflicts': conflicts.length,
+            'rejected': rejected.length,
+            'pulled': pulled,
+          });
         }
+      } else {
+        _logSync('sync_error', 'fail', {'status_code': response.statusCode, 'body': response.body.substring(0, min(response.body.length, 200))});
+        _failedCount++;
       }
     } catch (e) {
       _isOnline = false;
       _failedCount++;
+      _logSync('sync_exception', 'fail', {'error': e.toString()});
     } finally {
       _isSyncing = false;
       _safeNotify();
     }
 
     return _isOnline;
+  }
+
+  Future<bool> retryFailed() async {
+    final wasFailed = _failedCount > 0;
+    if (wasFailed) {
+      _failedCount = 0;
+      return synchronize();
+    }
+    return true;
   }
 
   Future<List<DiscoveredPeer>> syncWithLanPeers({List<DiscoveredPeer>? peers}) async {
@@ -182,6 +294,7 @@ class SyncEngine extends ChangeNotifier {
         if (success) syncedPeers.add(peer);
       } catch (e) {
         debugPrint('SyncEngine: LAN sync failed for ${peer.hostname}: $e');
+        _logSync('lan_sync_fail', 'fail', {'peer': peer.hostname, 'error': e.toString()});
       }
     }
 
@@ -219,7 +332,7 @@ class SyncEngine extends ChangeNotifier {
       final response = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'entries': entries}),
+        body: jsonEncode({'entries': entries, 'device_id': 'lan-sync-${DateTime.now().millisecondsSinceEpoch}'}),
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -242,20 +355,32 @@ class SyncEngine extends ChangeNotifier {
 
               for (final entry in remoteEntries) {
                 try {
+                  final remoteId = entry['id'] as String?;
+                  final remoteVersion = entry['version'] as int? ?? 0;
+                  if (remoteId != null) {
+                    final existing = await db.query('form_entries',
+                      where: 'id = ?',
+                      whereArgs: [remoteId],
+                    );
+                    if (existing.isNotEmpty) {
+                      final localVersion = (existing.first['version'] as int?) ?? 0;
+                      if (remoteVersion <= localVersion) continue;
+                    }
+                  }
                   await db.insert('form_entries', {
                     'id': entry['id'],
                     'module': entry['module'] ?? '',
                     'date': entry['date'] ?? '',
                     'user_id': entry['user_id'] ?? '',
                     'device_id': entry['device_id'] ?? '',
-                    'version': entry['version'] ?? 1,
+                    'version': remoteVersion,
                     'data_json': entry['data_json'] is String
                         ? entry['data_json']
                         : jsonEncode(entry['data_json'] ?? {}),
                     'status': entry['status'] ?? 'pending',
                     'created_at': entry['created_at'] ?? '',
                     'updated_at': entry['updated_at'] ?? '',
-                  }, conflictAlgorithm: ConflictAlgorithm.ignore);
+                  }, conflictAlgorithm: ConflictAlgorithm.replace);
                   pulledCount++;
                 } catch (e) {
                   debugPrint('SyncEngine: Pull insert error: $e');
@@ -265,6 +390,7 @@ class SyncEngine extends ChangeNotifier {
               debugPrint('SyncEngine: Pulled $pulledCount entries from ${peer.hostname}');
               _syncCount++;
               _lastSync = DateTime.now();
+              _logSync('lan_sync_complete', 'success', {'peer': peer.hostname, 'pushed': inserted, 'pulled': pulledCount});
             }
           }
 
@@ -296,3 +422,5 @@ class SyncEngine extends ChangeNotifier {
     super.dispose();
   }
 }
+
+int min(int a, int b) => a < b ? a : b;

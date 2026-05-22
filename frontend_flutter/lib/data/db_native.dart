@@ -5,18 +5,25 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
-Future<Database> openLocalDatabase(String filePath) async {
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+bool _sqfliteInitialized = false;
+
+void ensureSqfliteInit() {
+  if (!_sqfliteInitialized && !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    _sqfliteInitialized = true;
   }
+}
+
+Future<Database> openLocalDatabase(String filePath) async {
+  ensureSqfliteInit();
 
   final appDir = await getApplicationSupportDirectory();
   final dbPath = join(appDir.path, filePath);
 
   return openDatabase(
     dbPath,
-    version: 3,
+    version: 4,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -87,6 +94,22 @@ Future<Database> openLocalDatabase(String filePath) async {
           UNIQUE(date, module)
         )
       ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS month_closures (
+          id TEXT PRIMARY KEY,
+          year INTEGER NOT NULL,
+          month INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          closed_by TEXT NOT NULL,
+          closed_at TEXT NOT NULL,
+          notes TEXT,
+          days_total INTEGER DEFAULT 30,
+          days_closed INTEGER DEFAULT 0,
+          reopen_log_json TEXT NOT NULL DEFAULT '[]',
+          UNIQUE(year, month)
+        )
+      ''');
     },
     onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
@@ -103,6 +126,23 @@ Future<Database> openLocalDatabase(String filePath) async {
             updated_at TEXT NOT NULL,
             notes TEXT,
             UNIQUE(date, module)
+          )
+        ''');
+      }
+      if (oldVersion < 4) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS month_closures (
+            id TEXT PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            closed_by TEXT NOT NULL,
+            closed_at TEXT NOT NULL,
+            notes TEXT,
+            days_total INTEGER DEFAULT 30,
+            days_closed INTEGER DEFAULT 0,
+            reopen_log_json TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(year, month)
           )
         ''');
       }

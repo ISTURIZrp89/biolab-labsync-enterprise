@@ -545,12 +545,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  static const _cargosOperativos = ['TÉCNICO', 'BIÓLOGO', 'QFB', 'JEFE DE LABORATORIO', 'ADMINISTRADOR', 'DIRECTOR GENERAL'];
+
   Future<void> _showUserDialog({int? editIndex}) async {
     final isEdit = editIndex != null;
     final existing = isEdit ? _users[editIndex] : null;
     final nameCtrl = TextEditingController(text: existing?['nombre'] ?? '');
     final pinCtrl = TextEditingController(text: existing?['pin'] ?? '');
+    final areaCtrl = TextEditingController(text: existing?['area'] ?? 'Cultivo Celular');
+    final supervisorCtrl = TextEditingController(text: existing?['supervisor'] ?? '');
+    final firmaCtrl = TextEditingController(text: existing?['firma'] ?? existing?['nombre'] ?? '');
     String role = existing?['rol'] ?? 'Laboratorio';
+    String cargoOperativo = existing?['cargo_operativo'] ?? existing?['cargo'] ?? 'TÉCNICO';
     Set<String> permisos = {};
     if (existing != null) {
       final p = existing['permisos'] ?? 'todos';
@@ -581,6 +587,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (_) => setDialogState(() {}),
                 ),
                 const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: cargoOperativo,
+                  items: _cargosOperativos.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(color: Colors.white)))).toList(),
+                  onChanged: (v) => setDialogState(() => cargoOperativo = v ?? cargoOperativo),
+                  dropdownColor: OmniTheme.bg800,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Cargo Operativo (en reportes)', labelStyle: TextStyle(color: Colors.white54)),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: pinCtrl,
                   style: const TextStyle(color: Colors.white),
@@ -596,7 +611,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (v) => setDialogState(() => role = v ?? role),
                   dropdownColor: OmniTheme.bg800,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Rol', labelStyle: TextStyle(color: Colors.white54)),
+                  decoration: const InputDecoration(labelText: 'Rol del Sistema', labelStyle: TextStyle(color: Colors.white54)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: areaCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Area', labelStyle: TextStyle(color: Colors.white54)),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: supervisorCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Supervisor', labelStyle: TextStyle(color: Colors.white54)),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: firmaCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Firma (aparece en reportes)', labelStyle: TextStyle(color: Colors.white54)),
+                  onChanged: (_) => setDialogState(() {}),
                 ),
                 const SizedBox(height: 16),
                 const Text('Permisos por modulo:', style: TextStyle(color: Colors.white70, fontSize: 13)),
@@ -623,8 +659,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? () => Navigator.pop(ctx, {
                     'id': existing?['id'] ?? DateTime.now().microsecondsSinceEpoch.toString(),
                     'nombre': nameCtrl.text,
+                    'cargo': cargoOperativo,
+                    'cargo_operativo': cargoOperativo,
                     'pin': pinCtrl.text,
                     'rol': role,
+                    'area': areaCtrl.text,
+                    'supervisor': supervisorCtrl.text,
+                    'firma': firmaCtrl.text,
                     'permisos': permisos.length >= _permModules.length ? 'todos' : permisos.join(','),
                   })
                 : null,
@@ -897,6 +938,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: const Text('Agregar Usuario', style: TextStyle(fontSize: 12)),
                 ),
               ),
+            ]),
+            if (auth.isAuthenticated) _buildAccordion('Sesion y Seguridad', Icons.security, false, [
+              _buildInfoRow('Sesion iniciada', auth.currentUser?.nombre ?? '', Icons.person),
+              _buildInfoRow('Duracion de sesion', '${auth.sessionDurationMinutes} min', Icons.timer),
+              _buildInfoRow('Timeout inactividad', '${AuthService.inactivityTimeoutMinutes} min', Icons.timer_off),
+              _buildInfoRow('Timeout maximo', '${AuthService.sessionTimeoutMinutes} min (${(AuthService.sessionTimeoutMinutes / 60).round()}h)', Icons.access_time),
+              if (auth.isAdmin || auth.isOwner) ...[
+                const Divider(color: OmniTheme.bg800),
+                ListTile(
+                  leading: const Icon(Icons.lock_outline, color: OmniTheme.accentBlue),
+                  title: const Text('Administrar sesiones', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Cerrar todas las sesiones activas', style: TextStyle(color: OmniTheme.textMuted)),
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: OmniTheme.bg900,
+                        title: const Text('Cerrar sesion?', style: TextStyle(color: OmniTheme.textPrimary)),
+                        content: const Text('Se cerrara tu sesion actual y deberas volver a iniciar.', style: TextStyle(color: OmniTheme.textMuted)),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+                          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400), child: const Text('Cerrar Sesion', style: TextStyle(color: Colors.white))),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await auth.logout();
+                      if (mounted) Navigator.pushReplacementNamed(context, '/');
+                    }
+                  },
+                ),
+              ],
             ]),
             _buildAccordion('Importar / Exportar', Icons.file_copy, false, [
               ListTile(

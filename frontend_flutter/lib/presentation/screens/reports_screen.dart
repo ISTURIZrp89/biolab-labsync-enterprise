@@ -156,57 +156,101 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final user = auth.currentUser;
       final pdf = pw.Document();
       final fmt = DateFormat('dd/MM/yyyy');
-      final title = 'LABSYNC - Reporte $_moduleLabel';
+      final now = DateTime.now();
+      final folio = 'BL-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.hour}${now.minute}${now.second}';
 
       pdf.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
         header: (ctx) => pw.Container(
-          alignment: pw.Alignment.centerLeft,
-          margin: const pw.EdgeInsets.only(bottom: 12),
-          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Text('BioLab LABSYNC', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
-            pw.Text('Reporte de Actividades', style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue800, width: 2)),
+          ),
+          padding: const pw.EdgeInsets.only(bottom: 12),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('BIOLAB LABSYNC', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+              pw.Text('Sistema de Gestión de Laboratorio', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            ]),
+            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+              pw.Text('Folio: $folio', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('Emisión: ${fmt.format(now)}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            ]),
           ]),
         ),
         footer: (ctx) => pw.Container(
           alignment: pw.Alignment.centerRight,
           margin: const pw.EdgeInsets.only(top: 12),
-          child: pw.Text('Pagina ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+          ),
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Text('BioLab LABSYNC - Documento Controlado', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500)),
+            pw.Text('Pág. ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+          ]),
         ),
         build: (ctx) => [
-          pw.Paragraph(text: 'Periodo: ${fmt.format(_startDate)} - ${fmt.format(_endDate)}'),
-          pw.SizedBox(height: 4),
-          if (user != null) ...[
-            pw.Paragraph(text: 'Elaborado por: ${user.nombre}'),
-            pw.Paragraph(text: 'Rol: ${user.rol}'),
-          ],
-          pw.SizedBox(height: 4),
-          pw.Paragraph(text: 'Modulo: $_moduleLabel'),
-          pw.Paragraph(text: 'Total de registros: $_totalEntries'),
-          pw.SizedBox(height: 16),
-          pw.Header(text: 'Resumen por modulo', level: 1),
-          pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-            cellStyle: const pw.TextStyle(fontSize: 9),
-            headers: ['Modulo', 'Cantidad'],
-            data: _moduleBreakdown.entries.map((e) => [e.key, '${e.value}']).toList(),
+          pw.Header(text: 'REPORTE DE ACTIVIDADES', level: 0, separator: true),
+          pw.SizedBox(height: 8),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+            ),
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                pw.Text('Período:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('${fmt.format(_startDate)} - ${fmt.format(_endDate)}', style: const pw.TextStyle(fontSize: 9)),
+              ]),
+              pw.SizedBox(height: 4),
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                pw.Text('Módulo:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text(_moduleLabel, style: const pw.TextStyle(fontSize: 9)),
+              ]),
+              if (user != null) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                  pw.Text('Elaborado por:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('${user.nombre} (${user.rol})', style: const pw.TextStyle(fontSize: 9)),
+                ]),
+              ],
+              pw.SizedBox(height: 4),
+              pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                pw.Text('Total registros:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('$_totalEntries', style: const pw.TextStyle(fontSize: 9, color: PdfColors.blue800)),
+              ]),
+            ]),
           ),
           pw.SizedBox(height: 20),
-          pw.Header(text: 'Detalle de registros', level: 1),
+          pw.Header(text: 'Resumen por módulo', level: 1, separator: true),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center},
+            headers: ['Módulo', 'Registros'],
+            data: _moduleBreakdown.entries.map((e) {
+              final mod = findModule(e.key);
+              return [mod['label'] as String? ?? e.key, '${e.value}'];
+            }).toList(),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Header(text: 'Detalle de registros', level: 1, separator: true),
           ..._buildPdfEntryTable(pdf, fmt),
         ],
       ));
 
       final dir = await _getReportsDir();
-      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(now);
       final file = File('$dir/LABSYNC_Reporte_$ts.pdf');
       await file.writeAsBytes(await pdf.save());
 
       if (mounted) {
         final bytes = await pdf.save();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('PDF guardado: ${file.path}'),
+          content: Text('PDF ISO generado: ${file.path}'),
           backgroundColor: OmniTheme.green400,
           action: SnackBarAction(label: 'COMPARTIR', onPressed: () => Printing.sharePdf(bytes: bytes, filename: file.path.split('\\').last)),
         ));
