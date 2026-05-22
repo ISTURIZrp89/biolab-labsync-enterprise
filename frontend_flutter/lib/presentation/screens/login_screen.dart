@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../security/auth_service.dart';
 import '../../theme/omni_theme.dart';
+import 'main_scaffold.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -59,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const DashboardScreen(),
+          pageBuilder: (_, __, ___) => const MainScaffold(),
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },

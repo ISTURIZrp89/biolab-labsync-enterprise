@@ -115,14 +115,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadUsers() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('users_list');
-    if (raw != null) {
+
+    if (raw == null || raw == '[]') {
+      _users = [
+        {'id': '1', 'nombre': 'Admin', 'pin': '1234', 'rol': 'Admin'},
+        {'id': '2', 'nombre': 'Jefe', 'pin': '0000', 'rol': 'Supervisor'},
+        {'id': '3', 'nombre': 'Tecnico', 'pin': '1111', 'rol': 'Laboratorio'},
+        {'id': '4', 'nombre': 'Auditor', 'pin': '2222', 'rol': 'Auditor'},
+        {'id': '5', 'nombre': 'Dueno', 'pin': '3333', 'rol': 'Dueno'},
+      ];
+      await prefs.setString('users_list', jsonEncode(_users));
+    } else {
       try {
         final list = jsonDecode(raw) as List;
-        setState(() {
-          _users = list.map((e) => Map<String, String>.from(e as Map)).toList();
-        });
+        _users = list.map((e) => Map<String, String>.from(e as Map)).toList();
       } catch (_) {}
     }
+
     final jwt = prefs.getString('jwt_token');
     setState(() => _isAdmin = jwt == 'local-offline-session');
   }
@@ -316,18 +325,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: nameCtrl,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(labelText: 'Nombre del equipo', labelStyle: TextStyle(color: Colors.white54)),
+                onChanged: (_) => setDialogState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: modelCtrl,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(labelText: 'Modelo', labelStyle: TextStyle(color: Colors.white54)),
+                onChanged: (_) => setDialogState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: serialCtrl,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(labelText: 'No. Serie', labelStyle: TextStyle(color: Colors.white54)),
+                onChanged: (_) => setDialogState(() {}),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -386,6 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: nameCtrl,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(labelText: 'Nombre completo', labelStyle: TextStyle(color: Colors.white54)),
+                onChanged: (_) => setDialogState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -394,6 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: const InputDecoration(labelText: 'PIN de acceso (4 digitos)', labelStyle: TextStyle(color: Colors.white54)),
                 keyboardType: TextInputType.number,
                 maxLength: 4,
+                onChanged: (_) => setDialogState(() {}),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
