@@ -159,6 +159,57 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final now = DateTime.now();
       final folio = 'BL-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.hour}${now.minute}${now.second}';
 
+      pdf.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (ctx) => pw.Column(
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          children: [
+            pw.SizedBox(height: 60),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(vertical: 20, horizontal: 40),
+              decoration: pw.BoxDecoration(
+                border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue800, width: 3)),
+              ),
+              child: pw.Column(children: [
+                pw.Text('BIOLAB LABSYNC', style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+                pw.SizedBox(height: 4),
+                pw.Text('Sistema de Gestión de Laboratorio', style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
+              ]),
+            ),
+            pw.SizedBox(height: 40),
+            pw.Text('REPORTE DE ACTIVIDADES', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+            pw.SizedBox(height: 8),
+            pw.Container(
+              width: 80, height: 3,
+              color: PdfColors.blue800,
+            ),
+            pw.SizedBox(height: 30),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(20),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey50,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _buildCoverRow('Folio:', folio),
+                  _buildCoverRow('Emisión:', fmt.format(now)),
+                  _buildCoverRow('Período:', '${fmt.format(_startDate)} - ${fmt.format(_endDate)}'),
+                  _buildCoverRow('Módulo:', _moduleLabel),
+                  _buildCoverRow('Elaborado por:', user != null ? '${user.nombre} (${user.rol})${user.cargoOperativo.isNotEmpty ? ' - ${user.cargoOperativo}' : ''}' : '-'),
+                  _buildCoverRow('Total registros:', '$_totalEntries'),
+                ],
+              ),
+            ),
+            pw.Spacer(),
+            pw.Text('BioLab LABSYNC - Documento Controlado', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+            pw.Text('Este documento es propiedad de BioLab LABSYNC', style: pw.TextStyle(fontSize: 7, color: PdfColors.grey400)),
+            pw.SizedBox(height: 20),
+          ],
+        ),
+      ));
       pdf.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
@@ -258,6 +309,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error PDF: $e'), backgroundColor: OmniTheme.red400));
     }
+  }
+
+  pw.Widget _buildCoverRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 4),
+      child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+        pw.Text(value, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey800)),
+      ]),
+    );
   }
 
   List<pw.Widget> _buildPdfEntryTable(pw.Document pdf, DateFormat fmt) {

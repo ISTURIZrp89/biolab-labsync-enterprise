@@ -543,6 +543,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildMonthNav(DateTime now) {
+    final auth = context.read<AuthService>();
     return Row(
       children: [
         IconButton(
@@ -562,6 +563,15 @@ class _MainScaffoldState extends State<MainScaffold> {
           }),
           color: OmniTheme.textMuted,
         ),
+        if (auth.canClose) ...[
+          const SizedBox(width: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.lock, size: 14),
+            label: const Text('Cerrar mes', style: TextStyle(fontSize: 11)),
+            onPressed: () => _confirmCloseMonth(_selectedDate.year, _selectedDate.month, auth.currentUser!),
+            style: TextButton.styleFrom(foregroundColor: OmniTheme.green400),
+          ),
+        ],
       ],
     );
   }
@@ -685,7 +695,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     final allModules = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
     final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
     final moduleLabels = ['Incubadoras', 'Autoclaves', 'Ultracongeladores', 'Equipos', 'Procesamiento', 'Bitacora'];
-
+    final auth = context.read<AuthService>();
+    final canCloseDay = auth.canClose;
     final isDesktop = MediaQuery.of(context).size.width > 800;
 
     if (isDesktop) {
@@ -720,6 +731,17 @@ class _MainScaffoldState extends State<MainScaffold> {
                         },
                         itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
                       ),
+                      if (canCloseDay) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.lock, size: 16, color: OmniTheme.green400),
+                          tooltip: 'Cerrar dia',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _confirmCloseDay(dateStr, auth.currentUser!);
+                          },
+                        ),
+                      ],
                       IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
@@ -814,6 +836,17 @@ class _MainScaffoldState extends State<MainScaffold> {
                         },
                         itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
                       ),
+                      if (canCloseDay) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.lock, size: 16, color: OmniTheme.green400),
+                          tooltip: 'Cerrar dia',
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _confirmCloseDay(dateStr, auth.currentUser!);
+                          },
+                        ),
+                      ],
                       IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
@@ -1016,6 +1049,54 @@ class _MainScaffoldState extends State<MainScaffold> {
           content: Text('Dia $date cerrado exitosamente'),
           backgroundColor: OmniTheme.green400,
         ));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: OmniTheme.red400,
+        ));
+      }
+    }
+  }
+
+  Future<void> _confirmCloseMonth(int year, int month, User user) async {
+    final key = '$year-${month.toString().padLeft(2, '0')}';
+    final notesCtrl = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Cerrar mes', style: TextStyle(color: Colors.white)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Confirmar cierre del mes ${_monthName(month)} $year?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: notesCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Notas (opcional)',
+              labelStyle: TextStyle(color: Colors.white54),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
+            child: const Text('Confirmar cierre de mes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        await context.read<ClosureService>().closeMonth(year, month, user, notes: notesCtrl.text);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Mes $key cerrado exitosamente'),
+          backgroundColor: OmniTheme.green400,
+        ));
+        _loadStats();
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Error: $e'),
