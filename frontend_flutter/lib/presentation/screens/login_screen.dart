@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 position: _slideAnim,
                 child: Container(
                   width: 380,
-                  constraints: const BoxConstraints(maxWidth: 90),
+                  constraints: const BoxConstraints(maxWidth: 420),
                   child: Card(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
