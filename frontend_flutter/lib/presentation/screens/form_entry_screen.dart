@@ -8,6 +8,7 @@ import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
 import '../../domain/entities/form_entry.dart';
+import '../widgets/smart_form_field.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';

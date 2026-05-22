@@ -211,10 +211,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    if (newUrl != null) {
+    if (newPath != null) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('save_path', newUrl);
-      setState(() => _savePath = newUrl);
+      await prefs.setString('save_path', newPath);
+      setState(() => _savePath = newPath);
     }
   }
 
