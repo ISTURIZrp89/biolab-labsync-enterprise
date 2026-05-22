@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border;
 import 'package:path_provider/path_provider.dart';
 import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
@@ -157,10 +157,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       await file.writeAsBytes(await pdf.save());
 
       if (mounted) {
+        final bytes = await pdf.save();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('PDF guardado: ${file.path}'),
           backgroundColor: OmniTheme.green400,
-          action: SnackBarAction(label: 'ABRIR', onPressed: () => Printing.openPdf(file: file.path)),
+          action: SnackBarAction(label: 'COMPARTIR', onPressed: () => Printing.sharePdf(bytes: bytes, filename: file.path.split('\\').last)),
         ));
       }
     } catch (e) {
@@ -232,7 +233,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final dir = await getApplicationDocumentsDirectory();
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final filePath = '${dir.path}/LABSYNC_Reporte_$ts.xlsx';
-      await excel.encode().then((bytes) => File(filePath).writeAsBytes(bytes!));
+      final excelBytes = excel.encode();
+      if (excelBytes != null) {
+        await File(filePath).writeAsBytes(excelBytes);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
