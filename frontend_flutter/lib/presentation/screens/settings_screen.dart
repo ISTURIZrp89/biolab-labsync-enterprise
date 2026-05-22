@@ -118,10 +118,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final db = await LocalDatabase.instance.database;
       final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM form_entries');
-      final count = (result.isNotEmpty ? result.first['cnt'] as int? : null) ?? 0;
+      final count = result.isNotEmpty ? (result.first['cnt'] as num?)?.toInt() ?? 0 : 0;
       if (mounted) setState(() => _dbSize = '$count registros');
-    } catch (_) {
-      if (mounted) setState(() => _dbSize = 'Error');
+    } catch (e) {
+      if (mounted) setState(() => _dbSize = 'Error: $e');
     }
   }
 
@@ -164,23 +164,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _saveEquipment();
   }
 
+  static const _permModules = [
+    'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora',
+  ];
+  static const _permModuleLabels = {
+    'incubadoras': 'Incubadoras',
+    'autoclaves': 'Autoclaves',
+    'ultracongeladores': 'Ultracongeladores',
+    'equipos': 'Equipos',
+    'procesamiento': 'Procesamiento',
+    'bitacora': 'Bitacora General',
+  };
+
   Future<void> _loadUsers() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('users_list');
 
     if (raw == null || raw == '[]') {
       _users = [
-        {'id': '1', 'nombre': 'Admin', 'pin': '1234', 'rol': 'Admin'},
-        {'id': '2', 'nombre': 'Jefe', 'pin': '0000', 'rol': 'Supervisor'},
-        {'id': '3', 'nombre': 'Tecnico', 'pin': '1111', 'rol': 'Laboratorio'},
-        {'id': '4', 'nombre': 'Auditor', 'pin': '2222', 'rol': 'Auditor'},
-        {'id': '5', 'nombre': 'Dueno', 'pin': '3333', 'rol': 'Dueno'},
+        {'id': '1', 'nombre': 'Admin', 'pin': '1234', 'rol': 'Admin', 'permisos': 'todos'},
+        {'id': '2', 'nombre': 'Jefe', 'pin': '0000', 'rol': 'Supervisor', 'permisos': 'todos'},
+        {'id': '3', 'nombre': 'Tecnico', 'pin': '1111', 'rol': 'Laboratorio', 'permisos': 'incubadoras,autoclaves,ultracongeladores,equipos,bitacora'},
+        {'id': '4', 'nombre': 'Auditor', 'pin': '2222', 'rol': 'Auditor', 'permisos': 'todos'},
+        {'id': '5', 'nombre': 'Dueno', 'pin': '3333', 'rol': 'Dueno', 'permisos': 'todos'},
       ];
       await prefs.setString('users_list', jsonEncode(_users));
     } else {
       try {
         final list = jsonDecode(raw) as List;
         _users = list.map((e) => Map<String, String>.from(e as Map)).toList();
+        for (final u in _users) {
+          u.putIfAbsent('permisos', () => 'todos');
+        }
       } catch (_) {}
     }
 
@@ -536,6 +551,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final nameCtrl = TextEditingController(text: existing?['nombre'] ?? '');
     final pinCtrl = TextEditingController(text: existing?['pin'] ?? '');
     String role = existing?['rol'] ?? 'Laboratorio';
+    Set<String> permisos = {};
+    if (existing != null) {
+      final p = existing['permisos'] ?? 'todos';
+      if (p == 'todos') {
+        permisos = _permModules.toSet();
+      } else {
+        permisos = p.split(',').toSet();
+      }
+    } else {
+      permisos = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'bitacora'};
+    }
 
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -543,34 +569,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (ctx, setDialogState) => AlertDialog(
           backgroundColor: OmniTheme.bg900,
           title: Text(isEdit ? 'Editar Usuario' : 'Agregar Usuario', style: const TextStyle(color: Colors.white)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Nombre completo', labelStyle: TextStyle(color: Colors.white54)),
-                onChanged: (_) => setDialogState(() {}),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: pinCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'PIN de acceso (4 digitos)', labelStyle: TextStyle(color: Colors.white54)),
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                onChanged: (_) => setDialogState(() {}),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: role,
-                items: _userRoles.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(color: Colors.white)))).toList(),
-                onChanged: (v) => setDialogState(() => role = v ?? role),
-                dropdownColor: OmniTheme.bg800,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Rol', labelStyle: TextStyle(color: Colors.white54)),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Nombre completo', labelStyle: TextStyle(color: Colors.white54)),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pinCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'PIN de acceso (4 digitos)', labelStyle: TextStyle(color: Colors.white54)),
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: role,
+                  items: _userRoles.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(color: Colors.white)))).toList(),
+                  onChanged: (v) => setDialogState(() => role = v ?? role),
+                  dropdownColor: OmniTheme.bg800,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Rol', labelStyle: TextStyle(color: Colors.white54)),
+                ),
+                const SizedBox(height: 16),
+                const Text('Permisos por modulo:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 4),
+                ..._permModules.map((m) => CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  title: Text(_permModuleLabels[m] ?? m, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  value: permisos.contains(m),
+                  activeColor: OmniTheme.accentBlue,
+                  checkColor: Colors.white,
+                  onChanged: (v) => setDialogState(() {
+                    if (v == true) { permisos.add(m); } else { permisos.remove(m); }
+                  }),
+                )),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
@@ -581,6 +625,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'nombre': nameCtrl.text,
                     'pin': pinCtrl.text,
                     'rol': role,
+                    'permisos': permisos.length >= _permModules.length ? 'todos' : permisos.join(','),
                   })
                 : null,
               style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),

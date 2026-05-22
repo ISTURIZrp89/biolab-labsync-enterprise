@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/db.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
@@ -26,6 +27,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   Map<String, int> _dayEntryCounts = {};
   Map<String, List<Map<String, dynamic>>> _dayEntries = {};
   bool _statsLoaded = false;
+  Set<String> _allowedModules = {};
+  bool _permLoaded = false;
 
   static const _navItems = [
     _NavItem('Inicio', Icons.dashboard_outlined, Icons.dashboard),
@@ -53,7 +56,35 @@ class _MainScaffoldState extends State<MainScaffold> {
   @override
   void initState() {
     super.initState();
+    _loadPermissions();
     _loadStats();
+  }
+
+  Future<void> _loadPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final auth = context.read<AuthService>();
+      final userId = auth.currentUser?.id;
+      final raw = prefs.getString('users_list');
+      if (raw != null && userId != null) {
+        final list = jsonDecode(raw) as List;
+        for (final u in list) {
+          if (u['pin'] == userId || u['id'] == userId) {
+            final p = (u as Map)['permisos'] as String? ?? 'todos';
+            if (p == 'todos') {
+              _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'};
+            } else {
+              _allowedModules = p.split(',').toSet();
+            }
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+    _allowedModules = _allowedModules.isEmpty
+      ? {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'}
+      : _allowedModules;
+    if (mounted) setState(() => _permLoaded = true);
   }
 
   Future<void> _loadStats() async {
@@ -63,7 +94,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       final counts = <String, int>{};
 
       for (final key in _moduleKeys) {
-        if (key.isEmpty) continue;
+        if (key.isEmpty || !_allowedModules.contains(key)) continue;
         final result = await db.rawQuery(
           'SELECT COUNT(*) as cnt FROM form_entries WHERE module = ? AND date = ?',
           [key, today],
@@ -131,16 +162,34 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _openModule(String module, String label) {
     if (module.isEmpty) return;
+    if (!_allowedModules.contains(module)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No tienes permiso para acceder a este modulo'),
+          backgroundColor: OmniTheme.orange400,
+        ));
+      }
+      return;
+    }
     Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: label)));
+  }
+
+  List<int> _getFilteredIndices() {
+    return [0, 1, 2, 3, 4, 5, 6, 7]
+      .where((i) => i < 2 || _allowedModules.contains(_moduleKeys[i]))
+      .toList();
   }
 
   Widget _buildNavRail(bool extended) {
     final auth = context.watch<AuthService>();
     final sync = context.watch<SyncEngine>();
+    final filteredIndices = _getFilteredIndices();
+    final filteredItems = filteredIndices.map((i) => _navItems[i]).toList();
 
     return NavigationRail(
-      selectedIndex: _selectedIndex.clamp(0, _navItems.length - 1),
-      onDestinationSelected: (i) {
+      selectedIndex: filteredIndices.indexOf(_selectedIndex).clamp(0, filteredIndices.length - 1),
+      onDestinationSelected: (pos) {
+        final i = filteredIndices[pos];
         if (i == 0) {
           setState(() => _selectedIndex = i);
           _loadStats();
@@ -201,19 +250,20 @@ class _MainScaffoldState extends State<MainScaffold> {
           ],
         ),
       ),
-      destinations: _navItems.asMap().entries.map((entry) {
-        final i = entry.key;
+      destinations: filteredItems.asMap().entries.map((entry) {
+        final pos = entry.key;
         final item = entry.value;
-        final isSelected = _selectedIndex == i;
+        final origIdx = filteredIndices[pos];
+        final isSelected = _selectedIndex == origIdx;
         return NavigationRailDestination(
           icon: Icon(item.icon, size: 18, color: OmniTheme.textMuted),
           selectedIcon: Container(
             width: 28, height: 28,
             decoration: BoxDecoration(
-              color: _moduleColors[i]?.withOpacity(0.15) ?? Colors.transparent,
+              color: _moduleColors[origIdx]?.withOpacity(0.15) ?? Colors.transparent,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(item.selectedIcon, size: 18, color: _moduleColors[i] ?? OmniTheme.accentBlue),
+            child: Icon(item.selectedIcon, size: 18, color: _moduleColors[origIdx] ?? OmniTheme.accentBlue),
           ),
           label: Text(item.label, style: TextStyle(fontSize: 10, color: isSelected ? OmniTheme.accentBlue : OmniTheme.textMuted)),
         );
@@ -463,7 +513,8 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _showDayEntries(String dateStr) {
     final entries = _dayEntries[dateStr] ?? [];
-    final modules = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
+    final allModules = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
+    final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
     final moduleLabels = ['Incubadoras', 'Autoclaves', 'Ultracongeladores', 'Equipos', 'Procesamiento', 'Bitacora'];
 
     showModalBottomSheet(
@@ -561,7 +612,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Widget _buildDailyStatus() {
-    final modules = [
+    final allModules = [
       ('incubadoras', 'Incubadoras', Icons.thermostat_outlined, OmniTheme.red400),
       ('autoclaves', 'Autoclaves', Icons.local_fire_department_outlined, OmniTheme.orange400),
       ('ultracongeladores', 'Ultracongeladores', Icons.ac_unit_outlined, OmniTheme.accentBlue),
@@ -569,6 +620,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       ('procesamiento', 'Procesamiento', Icons.biotech_outlined, const Color(0xFFB197FC)),
       ('bitacora', 'Bitacora', Icons.book_outlined, const Color(0xFFF472B6)),
     ];
+    final modules = allModules.where((m) => _allowedModules.contains(m.$1)).toList();
 
     return Card(
       child: Padding(

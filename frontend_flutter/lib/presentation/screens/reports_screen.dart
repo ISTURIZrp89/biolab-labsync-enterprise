@@ -32,7 +32,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final Map<String, int> _moduleBreakdown = {};
   final Set<String> _datesInRange = {};
 
-  static const _moduleOptions = [
+  static const _allModules = [
     'incubadoras',
     'autoclaves',
     'ultracongeladores',
@@ -40,6 +40,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'procesamiento',
     'bitacora',
   ];
+  List<String> _moduleOptions = [];
 
   String get _moduleLabel {
     if (_selectedModule == null) return 'Todos los modulos';
@@ -50,7 +51,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPermissions();
     _loadReport();
+  }
+
+  Future<void> _loadPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final auth = context.read<AuthService>();
+      final userId = auth.currentUser?.id;
+      final raw = prefs.getString('users_list');
+      if (raw != null && userId != null) {
+        final list = jsonDecode(raw) as List;
+        for (final u in list) {
+          if ((u as Map)['pin'] == userId || u['id'] == userId) {
+            final p = u['permisos'] as String? ?? 'todos';
+            if (p == 'todos') {
+              _moduleOptions = List.from(_allModules);
+            } else {
+              _moduleOptions = p.split(',');
+            }
+            if (mounted) setState(() {});
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+    _moduleOptions = List.from(_allModules);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadReport() async {
