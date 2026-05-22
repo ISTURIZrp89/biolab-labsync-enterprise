@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../security/auth_service.dart';
+import '../../services/user_service.dart';
 import '../../theme/omni_theme.dart';
 import 'main_scaffold.dart';
 import 'dashboard_screen.dart';
@@ -57,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final success = await authService.login(userId, pin, deviceId);
 
     if (success && mounted) {
+      context.read<UserService>().loadFromAuth(authService);
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(

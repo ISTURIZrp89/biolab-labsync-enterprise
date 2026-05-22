@@ -44,7 +44,7 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
   }
 

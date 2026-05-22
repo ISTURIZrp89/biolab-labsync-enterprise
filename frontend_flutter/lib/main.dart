@@ -13,6 +13,7 @@ import 'sync/lan_sync_server.dart';
 import 'services/update_service.dart';
 import 'services/notification_service.dart';
 import 'services/dashboard_service.dart';
+import 'services/user_service.dart';
 import 'presentation/screens/login_screen.dart';
 import 'theme/omni_theme.dart';
 
@@ -38,6 +39,8 @@ void main() async {
     final updateService = UpdateService();
     final notificationService = NotificationService();
     final dashboardService = DashboardService();
+    final userService = UserService();
+    userService.loadFromAuth(authService);
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
 
@@ -57,6 +60,7 @@ void main() async {
           ChangeNotifierProvider<UpdateService>.value(value: updateService),
           ChangeNotifierProvider<NotificationService>.value(value: notificationService),
           ChangeNotifierProvider<DashboardService>.value(value: dashboardService),
+          ChangeNotifierProvider<UserService>.value(value: userService),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           Provider<FormRepositoryImpl>.value(value: formRepo),
