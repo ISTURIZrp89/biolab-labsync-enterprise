@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../data/db.dart';
+import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../sync/lan_discovery_service.dart';
 import '../../sync/lan_sync_server.dart';
@@ -42,7 +43,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _encryptLocal = true;
   List<Map<String, String>> _equipmentList = [];
   List<Map<String, String>> _users = [];
-  bool _isAdmin = false;
   bool _lanSyncEnabled = false;
   bool _broadcastDiscovery = true;
   String _lanPort = '8765';
@@ -184,8 +184,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } catch (_) {}
     }
 
-    final jwt = prefs.getString('jwt_token');
-    setState(() => _isAdmin = jwt == 'local-offline-session');
   }
 
   Future<void> _saveUsers() async {
@@ -641,9 +639,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthService>();
+    final user = auth.currentUser;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Configuracion'),
+        title: Row(children: [
+          const Text('Configuracion'),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(10)),
+            child: Text(user?.nombre ?? 'Offline', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue)),
+          ),
+        ]),
         backgroundColor: const Color(0xFF004A99),
         foregroundColor: Colors.white,
       ),
@@ -658,16 +666,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _buildSection('Estado del Sistema', [
+            _buildAccordion('Estado del Sistema', Icons.monitor_heart, true, [
               _buildInfoRow('Estado', _isOnline ? 'En linea' : 'Desconectado', Icons.wifi),
+              _buildInfoRow('Usuario', user?.nombre ?? '--', Icons.person),
+              _buildInfoRow('Rol', user?.rol ?? '--', Icons.badge),
               _buildInfoRow('Plataforma', _platform, Icons.devices),
               _buildInfoRow('Ultima Sincronizacion', _lastSync, Icons.sync),
               _buildInfoRow('Pendientes', '$_pendingSync registros', Icons.pending),
             ]),
-            const SizedBox(height: 16),
-            _buildSection('Sincronizacion', [
+            _buildAccordion('Sincronizacion', Icons.sync, false, [
               SwitchListTile(
-                title: const Text('Sincronizacion Automatica', style: TextStyle(color: OmniTheme.textPrimary)),
+                title: const Text('Automatica', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: Text(_autoSync ? 'Cada 5 minutos' : 'Desactivada', style: TextStyle(color: OmniTheme.textMuted)),
                 value: _autoSync,
                 onChanged: _toggleAutoSync,
@@ -688,28 +697,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ]),
-            const SizedBox(height: 16),
-            _buildSection('Red y Sincronizacion LAN', [
-                SwitchListTile(
-                  title: const Text('Sincronizacion por red local', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: const Text('Compartir datos con otras PCs en la misma red', style: TextStyle(color: OmniTheme.textMuted)),
-                  value: _lanSyncEnabled,
-                  activeColor: OmniTheme.accentBlue,
-                  onChanged: (v) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('lan_sync_enabled', v);
-                    setState(() => _lanSyncEnabled = v);
-                    if (v) {
-                      _startLanServices();
-                    } else {
-                      _stopLanServices();
-                    }
-                  },
-                ),
+            _buildAccordion('Red LAN', Icons.lan, false, [
+              SwitchListTile(
+                title: const Text('Sincronizacion por red local', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Compartir datos con otras PCs', style: TextStyle(color: OmniTheme.textMuted)),
+                value: _lanSyncEnabled,
+                activeColor: OmniTheme.accentBlue,
+                onChanged: (v) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('lan_sync_enabled', v);
+                  setState(() => _lanSyncEnabled = v);
+                  if (v) { _startLanServices(); } else { _stopLanServices(); }
+                },
+              ),
               if (_lanSyncEnabled) ...[
                 SwitchListTile(
                   title: const Text('Descubrimiento automatico', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: const Text('Detectar otras PCs automaticamente', style: TextStyle(color: OmniTheme.textMuted)),
+                  subtitle: const Text('Detectar otras PCs', style: TextStyle(color: OmniTheme.textMuted)),
                   value: _broadcastDiscovery,
                   activeColor: OmniTheme.accentBlue,
                   onChanged: (v) async {
@@ -720,8 +724,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.router, color: OmniTheme.accentBlue),
-                  title: const Text('Puerto de red', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: Text('${_lanPort} (descubrimiento) / $_lanServerPort (sync)', style: const TextStyle(color: OmniTheme.textMuted)),
+                  title: const Text('Puertos', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: Text('$_lanPort (UDP) / $_lanServerPort (HTTP)', style: const TextStyle(color: OmniTheme.textMuted)),
                   trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
                   onTap: () async {
                     final ctl = TextEditingController(text: _lanPort);
@@ -731,24 +735,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       builder: (ctx) => AlertDialog(
                         backgroundColor: OmniTheme.bg900,
                         title: const Text('Puertos de red', style: TextStyle(color: OmniTheme.textPrimary)),
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextField(
-                              controller: ctl,
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(color: OmniTheme.textPrimary),
-                              decoration: const InputDecoration(labelText: 'Puerto descubrimiento (UDP)', labelStyle: TextStyle(color: OmniTheme.textMuted)),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: srvCtl,
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(color: OmniTheme.textPrimary),
-                              decoration: const InputDecoration(labelText: 'Puerto sincronizacion (HTTP)', labelStyle: TextStyle(color: OmniTheme.textMuted)),
-                            ),
-                          ],
-                        ),
+                        content: Column(mainAxisSize: MainAxisSize.min, children: [
+                          TextField(controller: ctl, keyboardType: TextInputType.number, style: const TextStyle(color: OmniTheme.textPrimary), decoration: const InputDecoration(labelText: 'Puerto descubrimiento (UDP)', labelStyle: TextStyle(color: OmniTheme.textMuted))),
+                          const SizedBox(height: 12),
+                          TextField(controller: srvCtl, keyboardType: TextInputType.number, style: const TextStyle(color: OmniTheme.textPrimary), decoration: const InputDecoration(labelText: 'Puerto sincronizacion (HTTP)', labelStyle: TextStyle(color: OmniTheme.textMuted))),
+                        ]),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
                           ElevatedButton(onPressed: () => Navigator.pop(ctx, '${ctl.text}|${srvCtl.text}'), child: const Text('Guardar')),
@@ -759,48 +750,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       final parts = port.split('|');
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setString('lan_port', parts[0]);
-                      if (parts.length > 1) {
-                        await prefs.setInt('lan_server_port', int.tryParse(parts[1]) ?? 8766);
-                      }
-                      setState(() {
-                        _lanPort = parts[0];
-                        if (parts.length > 1) _lanServerPort = int.tryParse(parts[1]) ?? 8766;
-                      });
+                      if (parts.length > 1) await prefs.setInt('lan_server_port', int.tryParse(parts[1]) ?? 8766);
+                      setState(() { _lanPort = parts[0]; if (parts.length > 1) _lanServerPort = int.tryParse(parts[1]) ?? 8766; });
                     }
                   },
                 ),
                 ListTile(
                   leading: Icon(Icons.wifi_tethering, color: _discoveryRunning ? OmniTheme.green400 : OmniTheme.accentBlue),
-                  title: const Text('PCs detectadas en la red', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: Text(
-                    _detectedPeers.isNotEmpty
-                      ? _detectedPeers.map((p) => '${p.hostname} (${p.ip})').join(', ')
-                      : 'Ninguna',
-                    style: const TextStyle(color: OmniTheme.textMuted, fontSize: 12),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_discoveryRunning)
-                        const SizedBox(
-                          width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: OmniTheme.green400),
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, size: 18, color: OmniTheme.accentBlue),
-                        onPressed: _startLanDiscovery,
-                      ),
-                    ],
-                  ),
+                  title: const Text('PCs detectadas', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: Text(_detectedPeers.isNotEmpty ? _detectedPeers.map((p) => '${p.hostname} (${p.ip})').join(', ') : 'Ninguna', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (_discoveryRunning) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: OmniTheme.green400)),
+                    IconButton(icon: const Icon(Icons.refresh, size: 18, color: OmniTheme.accentBlue), onPressed: _startLanDiscovery),
+                  ]),
                 ),
                 if (_detectedPeers.isNotEmpty)
-                  ..._detectedPeers.map((peer) => ListTile(
-                    dense: true,
-                    leading: Icon(Icons.computer, size: 18, color: OmniTheme.green400),
-                    title: Text(peer.hostname, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
-                    subtitle: Text('${peer.ip}:${peer.port} | ${_formatTimestamp(peer.lastSeen.toIso8601String())}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
-                    trailing: const Icon(Icons.check_circle, size: 16, color: OmniTheme.green400),
-                  )),
+                  ..._detectedPeers.map((peer) => ListTile(dense: true, leading: Icon(Icons.computer, size: 18, color: OmniTheme.green400), title: Text(peer.hostname, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)), subtitle: Text('${peer.ip}:${peer.port}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)), trailing: const Icon(Icons.check_circle, size: 16, color: OmniTheme.green400))),
               ],
               ListTile(
                 leading: const Icon(Icons.cloud, color: OmniTheme.accentBlue),
@@ -810,98 +775,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _changeBackendUrl,
               ),
             ]),
-            const SizedBox(height: 16),
-            _buildSection('Almacenamiento', [
+            _buildAccordion('Almacenamiento', Icons.storage, false, [
               ListTile(
                 leading: const Icon(Icons.folder, color: OmniTheme.accentBlue),
                 title: const Text('Carpeta de Reportes', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: Text(_savePath.isNotEmpty ? _savePath : 'No configurada (usar carpeta por defecto)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                subtitle: Text(_savePath.isNotEmpty ? _savePath : 'No configurada', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
-                onTap: () => _changePathDialog('save_path', 'Carpeta de Reportes', 'Ruta en Google Drive para guardar PDF/Excel', _savePath, (v) => _savePath = v),
+                onTap: () => _changePathDialog('save_path', 'Carpeta de Reportes', 'Ruta para PDF/Excel', _savePath, (v) => _savePath = v),
               ),
               ListTile(
                 leading: const Icon(Icons.backup, color: OmniTheme.green400),
                 title: const Text('Carpeta de Respaldos', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: Text(_backupPath.isNotEmpty ? _backupPath : 'No configurada (usar carpeta por defecto)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                subtitle: Text(_backupPath.isNotEmpty ? _backupPath : 'No configurada', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
-                onTap: () => _changePathDialog('backup_path', 'Carpeta de Respaldos', 'Ruta en Google Drive para guardar backups JSON', _backupPath, (v) => _backupPath = v),
+                onTap: () => _changePathDialog('backup_path', 'Carpeta de Respaldos', 'Ruta para backups JSON', _backupPath, (v) => _backupPath = v),
               ),
               SwitchListTile(
-                title: const Text('Cifrado local de datos', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: Text(_encryptLocal ? 'Base de datos cifrada (SQLCipher)' : 'Sin cifrado', style: const TextStyle(color: OmniTheme.textMuted)),
+                title: const Text('Cifrado local', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_encryptLocal ? 'SQLCipher activado' : 'Sin cifrado', style: const TextStyle(color: OmniTheme.textMuted)),
                 value: _encryptLocal,
                 activeColor: OmniTheme.accentBlue,
-                onChanged: (v) async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('encrypt_local', v);
-                  setState(() => _encryptLocal = v);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(v ? 'Cifrado activado. Los datos locales estan protegidos.' : 'Cifrado desactivado'),
-                    ));
-                  }
-                },
+                onChanged: _toggleEncryption,
               ),
             ]),
-            const SizedBox(height: 16),
-            _buildSection('Base de Datos', [
+            _buildAccordion('Base de Datos', Icons.storage_outlined, false, [
               _buildInfoRow('Registros totales', _dbSize, Icons.storage),
               _buildInfoRow('Dispositivo', _deviceId, Icons.fingerprint),
               _buildInfoRow('Version App', _appVersion, Icons.info),
               ListTile(
                 leading: const Icon(Icons.clean_hands, color: OmniTheme.orange400),
-                title: const Text('Limpiar datos locales', style: TextStyle(color: OmniTheme.textPrimary)),
+                title: const Text('Limpiar cache local', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: const Text('Eliminar cache y registros antiguos', style: TextStyle(color: OmniTheme.textMuted)),
-                onTap: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: OmniTheme.bg900,
-                      title: const Text('Limpiar datos', style: TextStyle(color: OmniTheme.textPrimary)),
-                      content: const Text('Esta accion eliminara el cache local. Los datos sincronizados no se pierden.', style: TextStyle(color: OmniTheme.textSecondary)),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                        ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400), child: const Text('Limpiar')),
-                      ],
-                    ),
-                  );
-                  if (confirm == true && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cache limpiado')));
-                  }
-                },
+                onTap: _confirmCleanCache,
               ),
             ]),
-            const SizedBox(height: 16),
-            _buildSection('Equipos (${_equipmentList.length})', [
-              ..._equipmentList.asMap().entries.map((e) => ListTile(
-                dense: true,
-                leading: Container(
-                  width: 6, height: 6,
-                  decoration: const BoxDecoration(color: OmniTheme.accentBlue, shape: BoxShape.circle),
-                ),
-                title: Text(e.value['name'] ?? '', style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (e.value['model']?.isNotEmpty == true)
-                      Text('Modelo: ${e.value['model']}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+            _buildAccordion('Equipos (${_equipmentList.length})', Icons.precision_manufacturing, false, [
+              if (_equipmentList.isEmpty)
+                const Padding(padding: EdgeInsets.all(16), child: Text('No hay equipos registrados', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)))
+              else
+                ..._equipmentList.asMap().entries.map((e) => ListTile(dense: true,
+                  leading: Container(width: 6, height: 6, decoration: const BoxDecoration(color: OmniTheme.accentBlue, shape: BoxShape.circle)),
+                  title: Text(e.value['name'] ?? '', style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
+                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (e.value['model']?.isNotEmpty == true) Text('Modelo: ${e.value['model']}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
                     Text(e.value['category'] ?? '', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
-                  ],
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, size: 16, color: OmniTheme.accentBlue),
-                      onPressed: () => _showEquipmentDialog(editIndex: e.key),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 16, color: OmniTheme.red400),
-                      onPressed: () => _removeEquipment(e.key),
-                    ),
-                  ],
-                ),
-              )),
+                  ]),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(icon: const Icon(Icons.edit, size: 16, color: OmniTheme.accentBlue), onPressed: () => _showEquipmentDialog(editIndex: e.key)),
+                    IconButton(icon: const Icon(Icons.close, size: 16, color: OmniTheme.red400), onPressed: () => _removeEquipment(e.key)),
+                  ]),
+                )),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: OutlinedButton.icon(
@@ -911,102 +834,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ]),
-            if (_isAdmin) ...[
-              const SizedBox(height: 16),
-              _buildSection('Usuarios (${_users.length})', [
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.admin_panel_settings, color: OmniTheme.accentBlue, size: 20),
-                  title: const Text('Administrador', style: TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
-                  subtitle: const Text('Admin', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+            _buildAccordion('Usuarios (${_users.length})', Icons.people, false, [
+              ..._users.asMap().entries.map((u) => ListTile(dense: true,
+                leading: Icon(Icons.person, size: 20, color: _roleColor(u.value['rol'] ?? '')),
+                title: Text(u.value['nombre'] ?? '', style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
+                subtitle: Text('${u.value['rol'] ?? ''} - PIN: ${u.value['pin'] ?? ''}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(icon: const Icon(Icons.edit, size: 16, color: OmniTheme.accentBlue), onPressed: () => _showUserDialog(editIndex: u.key)),
+                  IconButton(icon: const Icon(Icons.close, size: 16, color: OmniTheme.red400), onPressed: () => _removeUser(u.key)),
+                ]),
+              )),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: OutlinedButton.icon(
+                  onPressed: () => _showUserDialog(),
+                  icon: const Icon(Icons.person_add, size: 16),
+                  label: const Text('Agregar Usuario', style: TextStyle(fontSize: 12)),
                 ),
-                ..._users.asMap().entries.map((u) => ListTile(
-                  dense: true,
-                  leading: Icon(Icons.person, size: 20, color: _roleColor(u.value['rol'] ?? '')),
-                  title: Text(u.value['nombre'] ?? '', style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
-                  subtitle: Text('${u.value['rol'] ?? ''} - PIN: ${u.value['pin'] ?? ''}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 16, color: OmniTheme.accentBlue),
-                        onPressed: () => _showUserDialog(editIndex: u.key),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 16, color: OmniTheme.red400),
-                        onPressed: () => _removeUser(u.key),
-                      ),
-                    ],
-                  ),
-                )),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showUserDialog(),
-                    icon: const Icon(Icons.person_add, size: 16),
-                    label: const Text('Agregar Usuario', style: TextStyle(fontSize: 12)),
-                  ),
-                ),
-              ]),
-            ],
-            const SizedBox(height: 16),
-            _buildSection('Importar Datos', [
+              ),
+            ]),
+            _buildAccordion('Importar / Exportar', Icons.file_copy, false, [
               ListTile(
                 leading: const Icon(Icons.file_upload, color: OmniTheme.accentBlue),
                 title: const Text('Importar CSV', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: const Text('Cargar reportes de meses anteriores desde CSV', style: TextStyle(color: OmniTheme.textMuted)),
+                subtitle: const Text('Cargar reportes de meses anteriores', style: TextStyle(color: OmniTheme.textMuted)),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CsvImportScreen())),
               ),
-            ]),
-            const SizedBox(height: 16),
-            _buildSection('Respaldo', [
               ListTile(
-                leading: const Icon(Icons.backup, color: OmniTheme.accentBlue),
+                leading: const Icon(Icons.backup, color: OmniTheme.green400),
                 title: const Text('Exportar Backup', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: const Text('Respaldar configuracion y datos', style: TextStyle(color: OmniTheme.textMuted)),
                 onTap: _exportBackup,
               ),
-            ]),
-            const SizedBox(height: 16),
-            _buildSection('Actualizaciones', [
               ListTile(
                 leading: const Icon(Icons.system_update, color: OmniTheme.accentBlue),
                 title: const Text('Buscar Actualizaciones', style: TextStyle(color: OmniTheme.textPrimary)),
                 onTap: _checkForUpdates,
               ),
             ]),
-            const SizedBox(height: 32),
-            Center(
-              child: Text(
-                'LABSYNC Enterprise v$_appVersion',
-                style: TextStyle(color: OmniTheme.textMuted.withOpacity(0.3), fontSize: 12),
-              ),
-            ),
+            const SizedBox(height: 16),
+            Center(child: Text('LABSYNC Enterprise v$_appVersion', style: TextStyle(color: OmniTheme.textMuted.withOpacity(0.3), fontSize: 12))),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
+  Widget _buildAccordion(String title, IconData icon, bool initiallyExpanded, List<Widget> children) {
     return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: OmniTheme.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          ...children,
-        ],
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        leading: Icon(icon, color: OmniTheme.accentBlue, size: 20),
+        title: Text(title, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+        collapsedBackgroundColor: OmniTheme.bg900,
+        backgroundColor: OmniTheme.bg900,
+        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        children: children,
       ),
     );
   }
@@ -1017,5 +905,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: Text(label, style: const TextStyle(color: OmniTheme.textPrimary)),
       subtitle: Text(value, style: const TextStyle(color: OmniTheme.textMuted)),
     );
+  }
+
+  Future<void> _toggleEncryption(bool v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('encrypt_local', v);
+    setState(() => _encryptLocal = v);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(v ? 'Cifrado activado. Datos protegidos.' : 'Cifrado desactivado'),
+      ));
+    }
+  }
+
+  Future<void> _confirmCleanCache() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Limpiar datos', style: TextStyle(color: OmniTheme.textPrimary)),
+        content: const Text('Se eliminara el cache local. Los datos sincronizados no se pierden.', style: TextStyle(color: OmniTheme.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400), child: const Text('Limpiar')),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cache limpiado')));
+    }
   }
 }

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
+import '../../security/auth_service.dart';
 import '../../theme/omni_theme.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -123,9 +124,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _exportPdf() async {
     try {
+      final auth = context.read<AuthService>();
+      final user = auth.currentUser;
       final pdf = pw.Document();
       final fmt = DateFormat('dd/MM/yyyy');
-      final title = 'LABSYNC - Reporte ${_moduleLabel}';
+      final title = 'LABSYNC - Reporte $_moduleLabel';
 
       pdf.addPage(pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -145,7 +148,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         build: (ctx) => [
           pw.Paragraph(text: 'Periodo: ${fmt.format(_startDate)} - ${fmt.format(_endDate)}'),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 4),
+          if (user != null) ...[
+            pw.Paragraph(text: 'Elaborado por: ${user.nombre}'),
+            pw.Paragraph(text: 'Rol: ${user.rol}'),
+          ],
+          pw.SizedBox(height: 4),
           pw.Paragraph(text: 'Modulo: $_moduleLabel'),
           pw.Paragraph(text: 'Total de registros: $_totalEntries'),
           pw.SizedBox(height: 16),
@@ -347,9 +355,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           args = [s, e];
         }
 
-        final rows = await db.query('form_entries', where: where, whereArgs: args, orderBy: 'date ASC');
+                final rows = await db.query('form_entries', where: where, whereArgs: args, orderBy: 'date ASC');
         if (rows.isEmpty) continue;
 
+        final auth = context.read<AuthService>();
+        final user = auth.currentUser;
         final pdf = pw.Document();
         pdf.addPage(pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -369,6 +379,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           build: (ctx) => [
             pw.Paragraph(text: 'Periodo: ${displayFmt.format(p['start'])} - ${displayFmt.format(p['end'])}'),
+            if (user != null) pw.Paragraph(text: 'Elaborado por: ${user.nombre} (${user.rol})'),
             pw.Paragraph(text: 'Total registros: ${rows.length}'),
             pw.SizedBox(height: 12),
             pw.Header(text: 'Detalle', level: 1),
