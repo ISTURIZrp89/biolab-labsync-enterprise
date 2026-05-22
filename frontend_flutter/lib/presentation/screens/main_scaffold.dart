@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -141,10 +142,10 @@ class _MainScaffoldState extends State<MainScaffold> {
       ),
       destinations: _navItems.map((item) {
         final isSelected = _navItems[_selectedIndex] == item;
-        return NavigationDestination(
+        return NavigationRailDestination(
           icon: Icon(item.icon, size: 18, color: OmniTheme.textMuted),
           selectedIcon: Icon(item.selectedIcon, size: 18, color: OmniTheme.accentBlue),
-          label: item.label,
+          label: Text(item.label, style: TextStyle(fontSize: 10, color: isSelected ? OmniTheme.accentBlue : OmniTheme.textMuted)),
         );
       }).toList(),
     );
