@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -9,6 +10,7 @@ import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
 import '../../domain/entities/form_entry.dart';
 import '../widgets/smart_form_field.dart';
+import '../widgets/operational_table.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -406,10 +408,13 @@ class _SmartFillModalState extends State<_SmartFillModal> {
   Timer? _autoSaveTimer;
   int _completedFields = 0;
   int _totalRequired = 0;
+  List<Map<String, dynamic>> _tableRows = [];
+  bool _isTableMode = false;
 
   @override
   void initState() {
     super.initState();
+    _isTableMode = widget.section['mode'] == 'table';
     _initForm();
   }
 
@@ -432,21 +437,29 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     final nowTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     _totalRequired = fields.where((f) => f['required'] == true).length;
 
-    for (int i = 0; i < fields.length; i++) {
-      final f = fields[i];
-      final key = f['key'] as String;
-      final type = f['type'] as String;
-      _formKeys[key] = GlobalKey<FormState>();
-      _focusNodes[key] = FocusNode();
-
-      if (type == 'date') {
-        _formData[key] = today;
-      } else if (type == 'time') {
-        _formData[key] = nowTime;
-      } else {
-        _formData[key] = '';
+    if (_isTableMode) {
+      for (final f in fields) {
+        final key = f['key'] as String;
+        final type = f['type'] as String;
+        if (type == 'date') _formData[key] = today;
+        else if (type == 'time') _formData[key] = nowTime;
+        else _formData[key] = '';
+        _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
       }
-      _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
+      _tableRows = [{}];
+    } else {
+      for (int i = 0; i < fields.length; i++) {
+        final f = fields[i];
+        final key = f['key'] as String;
+        final type = f['type'] as String;
+        _formKeys[key] = GlobalKey<FormState>();
+        _focusNodes[key] = FocusNode();
+
+        if (type == 'date') _formData[key] = today;
+        else if (type == 'time') _formData[key] = nowTime;
+        else _formData[key] = '';
+        _controllers[key] = TextEditingController(text: _formData[key]?.toString() ?? '');
+      }
     }
   }
 
@@ -474,22 +487,75 @@ class _SmartFillModalState extends State<_SmartFillModal> {
       if (entries.isEmpty) return;
       final lastEntry = entries.first;
       final lastData = lastEntry.data;
-      final fields = widget.section['fields'] as List;
-      for (final f in fields) {
-        final key = f['key'] as String;
-        final type = f['type'] as String;
-        if (type == 'date') continue;
-        if (type == 'time') continue;
-        if (lastData.containsKey(key)) {
-          final val = lastData[key]?.toString() ?? '';
-          _formData[key] = val;
-          _controllers[key]?.text = val;
+
+      if (_isTableMode) {
+        final tableData = lastData['_table_rows'] as List? ?? [];
+        if (tableData.isNotEmpty) {
+          final lastRows = tableData.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+          setState(() => _tableRows = lastRows);
+        }
+        for (final entry in lastData.entries) {
+          final key = entry.key;
+          if (key == '_table_rows' || key == 'fecha') continue;
+          if (_controllers.containsKey(key)) {
+            final val = entry.value?.toString() ?? '';
+            _controllers[key]?.text = val;
+            _formData[key] = val;
+          }
+        }
+      } else {
+        final fields = widget.section['fields'] as List;
+        for (final f in fields) {
+          final key = f['key'] as String;
+          final type = f['type'] as String;
+          if (type == 'date') continue;
+          if (type == 'time') continue;
+          if (lastData.containsKey(key)) {
+            final val = lastData[key]?.toString() ?? '';
+            _formData[key] = val;
+            _controllers[key]?.text = val;
+          }
         }
       }
       setState(() {});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Datos copiados del ultimo registro')),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _copyYesterday() async {
+    try {
+      final repo = context.read<FormRepositoryImpl>();
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final yStr = yesterday.toIso8601String().split('T')[0];
+      final entries = await repo.getEntriesByModule(widget.module);
+      final yesterdayEntries = entries.where((e) => e.date.startsWith(yStr)).toList();
+
+      if (_isTableMode) {
+        final rows = <Map<String, dynamic>>[];
+        for (final e in yesterdayEntries) {
+          final data = e.data;
+          final tableData = data['_table_rows'] as List?;
+          if (tableData != null) {
+            rows.addAll(tableData.map((r) => Map<String, dynamic>.from(r as Map)));
+          } else {
+            final row = <String, dynamic>{};
+            for (final col in (widget.section['table_columns'] as List?) ?? []) {
+              final k = col['key'] as String;
+              if (data.containsKey(k)) row[k] = data[k];
+            }
+            if (row.isNotEmpty) rows.add(row);
+          }
+        }
+        if (rows.isNotEmpty) setState(() => _tableRows = rows);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Copiados ${yesterdayEntries.length} registros de ayer')),
         );
       }
     } catch (_) {}
@@ -504,34 +570,50 @@ class _SmartFillModalState extends State<_SmartFillModal> {
     });
 
     try {
-      final fields = widget.section['fields'] as List;
-      for (final f in fields) {
-        final key = f['key'] as String;
-        final controller = _controllers[key];
-        if (controller != null) {
-          _formData[key] = controller.text;
-        }
-      }
-
       final auth = context.read<AuthService>();
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString('device_id') ?? '';
-
       final repo = context.read<FormRepositoryImpl>();
       final sync = context.read<SyncEngine>();
 
-      await repo.createEntry(
-        module: widget.module,
-        subModule: widget.section['key'] as String?,
-        date: _formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0],
-        userId: auth.currentUser?.id ?? 'offline',
-        deviceId: deviceId,
-        data: _formData,
-      );
+      if (_isTableMode) {
+        final fields = widget.section['fields'] as List;
+        for (final f in fields) {
+          final key = f['key'] as String;
+          final controller = _controllers[key];
+          if (controller != null) _formData[key] = controller.text;
+        }
+        for (final row in _tableRows) {
+          final data = Map<String, dynamic>.from(_formData);
+          data.addAll(row);
+          await repo.createEntry(
+            module: widget.module,
+            subModule: widget.section['key'] as String?,
+            date: _formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0],
+            userId: auth.currentUser?.id ?? 'offline',
+            deviceId: deviceId,
+            data: data,
+          );
+        }
+      } else {
+        final fields = widget.section['fields'] as List;
+        for (final f in fields) {
+          final key = f['key'] as String;
+          final controller = _controllers[key];
+          if (controller != null) _formData[key] = controller.text;
+        }
 
-      if (!auto) {
-        await sync.synchronize();
+        await repo.createEntry(
+          module: widget.module,
+          subModule: widget.section['key'] as String?,
+          date: _formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0],
+          userId: auth.currentUser?.id ?? 'offline',
+          deviceId: deviceId,
+          data: _formData,
+        );
       }
+
+      if (!auto) await sync.synchronize();
 
       if (mounted) {
         setState(() => _saveSuccess = true);
@@ -546,7 +628,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
 
         await Future.delayed(const Duration(milliseconds: 800));
 
-        if (_quickEntryMode) {
+        if (_quickEntryMode && !_isTableMode) {
           final fields = widget.section['fields'] as List;
           final skipKeys = {'usuario', 'operador', 'responsable', 'nombre', 'equipo', 'modelo'};
           for (final f in fields) {
@@ -588,30 +670,45 @@ class _SmartFillModalState extends State<_SmartFillModal> {
   Widget build(BuildContext context) {
     final fields = widget.section['fields'] as List;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (_, scrollController) {
-        return Column(
-          children: [
-            _buildHeader(),
-            if (_totalRequired > 0) _buildProgressBar(),
-            const Divider(height: 1),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.all(20),
-                children: [
-                  _buildFieldGrid(fields),
-                ],
-              ),
-            ),
-            _buildFooter(),
-          ],
-        );
+    return CallbackShortcuts(
+      bindings: {
+        SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _save(),
+        SingleActivator(LogicalKeyboardKey.keyD, control: true): () => _isTableMode ? null : _copyLastEntry(),
+        SingleActivator(LogicalKeyboardKey.enter, control: true): () => _save(),
       },
+      child: Focus(
+        autofocus: true,
+        child: DraggableScrollableSheet(
+          initialChildSize: _isTableMode ? 0.95 : 0.9,
+          maxChildSize: 0.95,
+          minChildSize: 0.5,
+          expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                _buildHeader(),
+                if (!_isTableMode && _totalRequired > 0) _buildProgressBar(),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      if (_isTableMode) ...[
+                        _buildTableHeaderFields(fields),
+                        const SizedBox(height: 16),
+                        _buildTableWidget(),
+                      ] else
+                        _buildFieldGrid(fields),
+                    ],
+                  ),
+                ),
+                _buildFooter(),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -649,81 +746,206 @@ class _SmartFillModalState extends State<_SmartFillModal> {
       padding: const EdgeInsets.all(20),
       child: Row(
         children: [
-          Column(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.section['label'] as String? ?? 'Registro',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary),
+                ),
+                Text(
+                  '${widget.moduleLabel}'.toUpperCase(),
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5),
+                ),
+              ],
+            ),
+          ),
+          _buildQuickActions(),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => Navigator.pop(context),
+            color: OmniTheme.textMuted,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildActionBtn(Icons.content_copy, 'Copiar ultimo', _copyLastEntry),
+        const SizedBox(width: 4),
+        _buildActionBtn(Icons.calendar_view_day, 'Copiar ayer', _copyYesterday),
+        if (!_isTableMode) ...[
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => setState(() => _quickEntryMode = !_quickEntryMode),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.2) : OmniTheme.bg800,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.3) : OmniTheme.bg700),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_quickEntryMode ? Icons.flash_on : Icons.flash_off, size: 14, color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted),
+                  const SizedBox(width: 4),
+                  Text(_quickEntryMode ? 'Rapido' : 'Simple', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActionBtn(IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(color: OmniTheme.bg700),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 16, color: OmniTheme.textMuted),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableHeaderFields(List fields) {
+    final dateField = fields.firstWhere(
+      (f) => (f as Map)['type'] == 'date',
+      orElse: () => <String, dynamic>{'key': 'fecha', 'label': 'Fecha'},
+    ) as Map<String, dynamic>;
+    final dateKey = dateField['key'] as String? ?? 'fecha';
+    final dateLabel = dateField['label'] as String? ?? 'Fecha';
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 160,
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Registro',
-                style: TextStyle(
-                  fontFamily: 'Outfit',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: OmniTheme.textPrimary,
-                ),
-              ),
-              Text(
-                '${widget.moduleLabel} - ${widget.section['label']}'.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: OmniTheme.textMuted,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.content_copy, size: 18),
-                tooltip: 'Copiar del ultimo registro',
-                onPressed: _copyLastEntry,
-                color: OmniTheme.textMuted,
-              ),
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: () => setState(() => _quickEntryMode = !_quickEntryMode),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.2) : OmniTheme.bg800,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _quickEntryMode ? OmniTheme.accentBlue.withOpacity(0.3) : OmniTheme.bg700,
+              Text(dateLabel.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.dark(primary: OmniTheme.accentBlue, onPrimary: Colors.white, surface: OmniTheme.bg900, onSurface: OmniTheme.textPrimary),
+                      ),
+                      child: child!,
                     ),
-                  ),
+                  );
+                  if (picked != null) {
+                    final val = picked.toIso8601String().split('T')[0];
+                    _controllers[dateKey]?.text = val;
+                    _formData[dateKey] = val;
+                    setState(() {});
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(4)),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        _quickEntryMode ? Icons.flash_on : Icons.flash_off,
-                        size: 14,
-                        color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Rapido',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: _quickEntryMode ? OmniTheme.accentBlue : OmniTheme.textMuted,
-                        ),
-                      ),
+                      Expanded(child: Text(_controllers[dateKey]?.text.isNotEmpty == true ? _controllers[dateKey]!.text : 'Seleccionar', style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary))),
+                      const Icon(Icons.calendar_today, size: 14, color: OmniTheme.textMuted),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.close, size: 20),
-                onPressed: () => Navigator.pop(context),
-                color: OmniTheme.textMuted,
-              ),
             ],
           ),
+        ),
+        const SizedBox(width: 16),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('REGISTROS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1.5)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: OmniTheme.accentBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+              child: Text('${_tableRows.length} filas', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
+            ),
+          ],
+        ),
+        const Spacer(),
+        _buildActionBtn(Icons.auto_fix_high, 'Atajos: Ctrl+S Guardar, Ctrl+D Copiar', () => _showShortcutsInfo()),
+      ],
+    );
+  }
+
+  void _showShortcutsInfo() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Atajos de Teclado', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _shortcutRow('Ctrl + S', 'Guardar'),
+            _shortcutRow('Ctrl + Enter', 'Guardar'),
+            _shortcutRow('Ctrl + D', 'Copiar ultimo registro'),
+            _shortcutRow('Tab', 'Siguiente campo'),
+            _shortcutRow('Enter', 'Siguiente campo'),
+            const SizedBox(height: 12),
+            const Text('En tablas operativas:', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+            _shortcutRow('Click +', 'Agregar fila'),
+            _shortcutRow('Icono copia', 'Duplicar fila'),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(color: Colors.white54)))],
+      ),
+    );
+  }
+
+  Widget _shortcutRow(String key, String desc) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(4)),
+            child: Text(key, style: const TextStyle(fontSize: 11, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 12),
+          Text(desc, style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
         ],
       ),
+    );
+  }
+
+  Widget _buildTableWidget() {
+    final columns = (widget.section['table_columns'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+    return OperationalTable(
+      label: '${widget.section['label'] ?? 'Registros'}',
+      columns: columns,
+      rows: _tableRows,
+      onChanged: (rows) => _tableRows = rows,
     );
   }
 
@@ -941,6 +1163,7 @@ class _SmartFillModalState extends State<_SmartFillModal> {
   }
 
   Widget _buildFooter() {
+    final rowCount = _isTableMode ? _tableRows.length : 1;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
@@ -950,26 +1173,25 @@ class _SmartFillModalState extends State<_SmartFillModal> {
         children: [
           Expanded(
             child: _saveError != null
-                ? Text('❌ $_saveError', style: const TextStyle(fontSize: 12, color: OmniTheme.red400))
+                ? Text('$_saveError', style: const TextStyle(fontSize: 12, color: OmniTheme.red400))
                 : _saveSuccess
-                    ? const Text('✅ Guardado correctamente', style: TextStyle(fontSize: 12, color: OmniTheme.green400))
-                    : const SizedBox.shrink(),
+                    ? Text('Guardado correctamente', style: const TextStyle(fontSize: 12, color: OmniTheme.green400))
+                    : _isTableMode
+                        ? Text('$rowCount registros por importar', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted))
+                        : const SizedBox.shrink(),
           ),
           const SizedBox(width: 12),
           TextButton(
             onPressed: _isSaving ? null : () => Navigator.pop(context),
-            child: const Text('Descartar'),
+            child: const Text('Cancelar'),
           ),
           const SizedBox(width: 8),
           ElevatedButton(
             onPressed: _isSaving || _saveSuccess ? null : _save,
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
             child: _isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Text('CONFIRMAR E IMPORTAR'),
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text(_isTableMode ? 'IMPORTAR $rowCount REGISTROS' : 'CONFIRMAR'),
           ),
         ],
       ),

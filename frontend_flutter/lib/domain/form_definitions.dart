@@ -177,6 +177,18 @@ final List<FormModuleDef> formModules = [
       {
         'key': 'cajas_exosomas',
         'label': 'Cajas y Exosomas',
+        'mode': 'table',
+        'table_columns': [
+          {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'width': 70},
+          {'key': 'presentacion', 'label': 'Presentacion', 'type': 'select', 'options': ['100M', '50M', '30M', 'EXOSOMAS'], 'width': 110},
+          {'key': 'volumen', 'label': 'Volumen', 'type': 'select', 'options': ['5CC', '3CC', '2CC', '1CC'], 'width': 80},
+          {'key': 'uso', 'label': 'Uso', 'type': 'select', 'options': ['SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA'], 'width': 130},
+          {'key': 'tejido', 'label': 'Tejido', 'type': 'select', 'options': ['PLACENTA', 'TEJIDO ADIPOSO', 'Autologas', 'ENDOMETRIO'], 'width': 110},
+          {'key': 'paciente', 'label': 'Paciente', 'type': 'text', 'width': 130},
+          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'select', 'options': ['IMMUNOTHERAPY', 'QUANTUM'], 'width': 110},
+          {'key': 'pedido_por', 'label': 'Pedido por', 'type': 'select', 'options': ['DR. JAVIER ARENAS'], 'width': 110},
+          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
+        ],
         'fields': [
           {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
           {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'required': true},
@@ -193,6 +205,15 @@ final List<FormModuleDef> formModules = [
       {
         'key': 'misids',
         'label': 'MISIDs',
+        'mode': 'table',
+        'table_columns': [
+          {'key': 'volumen_ml', 'label': 'Volumen (ml)', 'type': 'number', 'width': 90},
+          {'key': 'uso', 'label': 'Uso', 'type': 'select', 'options': ['MISID ADVANCE', 'TRATAMIENTO AL DAÑO DEL ADN'], 'width': 160},
+          {'key': 'paciente', 'label': 'Paciente', 'type': 'text', 'width': 130},
+          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'text', 'width': 110},
+          {'key': 'pedido_por', 'label': 'Pedido por', 'type': 'text', 'width': 110},
+          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
+        ],
         'fields': [
           {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
           {'key': 'volumen_ml', 'label': 'Volumen (ml)', 'type': 'number', 'required': true},
@@ -206,6 +227,16 @@ final List<FormModuleDef> formModules = [
       {
         'key': 'nk',
         'label': 'NK',
+        'mode': 'table',
+        'table_columns': [
+          {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'width': 70},
+          {'key': 'volumen', 'label': 'Volumen', 'type': 'select', 'options': ['1CC'], 'width': 80},
+          {'key': 'tejido', 'label': 'Tejido', 'type': 'select', 'options': ['Autologas', 'Alogenicas'], 'width': 100},
+          {'key': 'paciente', 'label': 'Paciente', 'type': 'text', 'width': 130},
+          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'text', 'width': 110},
+          {'key': 'pedido_por', 'label': 'Pedido por', 'type': 'text', 'width': 110},
+          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
+        ],
         'fields': [
           {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
           {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'required': true},
@@ -220,6 +251,14 @@ final List<FormModuleDef> formModules = [
       {
         'key': 'otros_productos',
         'label': 'Otros Productos',
+        'mode': 'table',
+        'table_columns': [
+          {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'width': 70},
+          {'key': 'volumen', 'label': 'Volumen', 'type': 'text', 'width': 80},
+          {'key': 'producto', 'label': 'Producto', 'type': 'text', 'width': 130},
+          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'text', 'width': 110},
+          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
+        ],
         'fields': [
           {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
           {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'required': true},
