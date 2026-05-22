@@ -23,7 +23,7 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 4,
+    version: 5,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -145,6 +145,20 @@ Future<Database> openLocalDatabase(String filePath) async {
             UNIQUE(year, month)
           )
         ''');
+      }
+      if (oldVersion < 5) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS form_entry_drafts (
+            id TEXT PRIMARY KEY,
+            module TEXT NOT NULL,
+            section_key TEXT,
+            date TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            saved_at TEXT NOT NULL
+          )
+        ''');
+        try { await db.execute('ALTER TABLE day_module_status ADD COLUMN entry_count INTEGER DEFAULT 0'); } catch (_) {}
       }
     },
   );

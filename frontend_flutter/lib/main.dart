@@ -10,6 +10,7 @@ import 'data/repositories/form_repository_impl.dart';
 import 'security/auth_service.dart';
 import 'security/permission_service.dart';
 import 'security/edit_lock_service.dart';
+import 'ai/ai_service.dart';
 import 'sync/sync_engine.dart';
 import 'sync/lan_discovery_service.dart';
 import 'sync/lan_sync_server.dart';
@@ -50,6 +51,7 @@ void main() async {
     userService.loadFromAuth(authService);
     final permissionService = PermissionService();
     final editLockService = EditLockService();
+    final aiService = AiService(LocalDatabase.instance);
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
 
@@ -73,6 +75,7 @@ void main() async {
           ChangeNotifierProvider<UserService>.value(value: userService),
           ChangeNotifierProvider<PermissionService>.value(value: permissionService),
           ChangeNotifierProvider<EditLockService>.value(value: editLockService),
+          ChangeNotifierProvider<AiService>.value(value: aiService),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           Provider<FormRepositoryImpl>.value(value: formRepo),

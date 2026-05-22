@@ -264,6 +264,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   String? _saveError;
   String? _lockToken;
   EditLockService? _lockService;
+  AiService? _aiService;
+  Timer? _autosaveTimer;
+  DateTime _lastAutosave = DateTime.now();
+  bool _dirty = false;
   List<Map<String, dynamic>> _activities = [];
   List<Map<String, dynamic>> _resources = [];
   final Map<String, List<String>> _historyCache = {};
@@ -280,6 +284,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   void initState() {
     super.initState();
     _initForm();
+    _loadDraft();
     try {
       _lockService = context.read<EditLockService>();
       if (widget.existingEntry != null) {
@@ -288,11 +293,15 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           if (mounted) setState(() => _lockToken = token);
         });
       }
+      _aiService = context.read<AiService>();
     } catch (_) {}
+    _autosaveTimer = Timer.periodic(const Duration(seconds: 30), (_) => _autosave());
   }
 
   @override
   void dispose() {
+    if (_dirty) _autosave();
+    _autosaveTimer?.cancel();
     if (_lockToken != null && widget.existingEntry != null && _lockService != null) {
       _lockService!.releaseLock(widget.existingEntry!.id, _lockToken!);
     }
@@ -401,10 +410,16 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
       _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
 
-      for (final f in _generalFields) {
-        final key = f['key'] as String;
-        final val = _controllers[key]?.text ?? '';
-        if (val.isNotEmpty && f['type'] == 'autofill') _saveHistory(key, val);
+      if (_aiService != null) {
+        for (final f in _generalFields) {
+          final key = f['key'] as String;
+          final val = _controllers[key]?.text ?? '';
+          if (val.isNotEmpty) {
+            if (f['type'] == 'autofill') _saveHistory(key, val);
+            _aiService!.recordValue(key, val);
+          }
+        }
+        _aiService!.recordContextualSuggestion(widget.module, widget.section['key'] as String? ?? '', _formData);
       }
 
       final version = (widget.existingEntry?.version ?? 0) + 1;
@@ -452,6 +467,69 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     } catch (e) {
       if (mounted) setState(() { _saveError = e.toString(); _isSaving = false; });
     }
+  }
+
+  Future<void> _autosave() async {
+    if (!_dirty || widget.existingEntry != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final auth = context.read<AuthService>();
+      final data = _collectFormData();
+      await prefs.setString('draft_${widget.module}', jsonEncode({
+        'module': widget.module,
+        'section_key': widget.section['key'] as String? ?? '',
+        'date': data['fecha'] ?? DateTime.now().toIso8601String().split('T')[0],
+        'data': data,
+        'user_id': auth.currentUser?.id ?? 'offline',
+        'saved_at': DateTime.now().toUtc().toIso8601String(),
+      }));
+      _lastAutosave = DateTime.now();
+      _dirty = false;
+    } catch (_) {}
+  }
+
+  Future<void> _loadDraft() async {
+    if (widget.existingEntry != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('draft_${widget.module}');
+      if (raw == null) return;
+      final draft = jsonDecode(raw) as Map<String, dynamic>;
+      final draftDate = draft['date'] as String? ?? '';
+      final formDate = _controllers['fecha']?.text ?? '';
+      if (draftDate != formDate) return;
+      final data = draft['data'] as Map<String, dynamic>? ?? {};
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        if (data.containsKey(key) && data[key].toString().isNotEmpty) {
+          _formData[key] = data[key];
+          _controllers[key]?.text = data[key].toString();
+        }
+      }
+      if (data['_actividades'] is List) {
+        _activities = (data['_actividades'] as List).map((a) => Map<String, dynamic>.from(a as Map)).toList();
+      }
+      if (data['_recursos'] is List) {
+        _resources = (data['_recursos'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      }
+      if (mounted) setState(() {});
+      prefs.remove('draft_${widget.module}');
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _collectFormData() {
+    for (final f in _generalFields) {
+      final key = f['key'] as String;
+      final c = _controllers[key];
+      if (c != null) _formData[key] = c.text;
+    }
+    _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+    _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
+    return Map<String, dynamic>.from(_formData);
+  }
+
+  void _markDirty() {
+    _dirty = true;
   }
 
   Future<void> _copyFromPreviousDay() async {
@@ -681,17 +759,18 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         }
       }
       list.add(row);
+      _markDirty();
     });
   }
 
   void _duplicateRow(List<Map<String, dynamic>> list, int index) {
     if (index >= list.length) return;
-    setState(() => list.insert(index + 1, Map<String, dynamic>.from(list[index])));
+    setState(() { list.insert(index + 1, Map<String, dynamic>.from(list[index])); _markDirty(); });
   }
 
   void _removeRow(List<Map<String, dynamic>> list, int index) {
     if (list.length <= 1) return;
-    setState(() => list.removeAt(index));
+    setState(() { list.removeAt(index); _markDirty(); });
   }
 
   @override
@@ -813,6 +892,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                       if (picked != null) {
                         controller.text = picked.toIso8601String().split('T')[0];
                         _formData[key] = controller.text;
+                        _markDirty();
                       }
                     },
                     child: Container(
@@ -837,6 +917,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                           if (picked != null) {
                             controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                             _formData[key] = controller.text;
+                            _markDirty();
                           }
                         },
                         child: Container(
@@ -852,7 +933,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ? DropdownButtonFormField<String>(
                             value: controller.text.isEmpty ? null : controller.text,
                             items: (f['options'] as List?)?.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)))).toList(),
-                            onChanged: (v) { controller.text = v ?? ''; _formData[key] = v; },
+                            onChanged: (v) { controller.text = v ?? ''; _formData[key] = v; _markDirty(); },
                             dropdownColor: OmniTheme.bg800,
                             style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
                             decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
@@ -868,7 +949,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               isDense: true,
                             ),
-                            onChanged: (v) { _formData[key] = v; },
+                            onChanged: (v) { _formData[key] = v; _markDirty(); },
                             onFieldSubmitted: index < _generalFields.length - 1
                                 ? (_) { FocusScope.of(context).requestFocus(_focusNodes[_generalFields[index + 1]['key'] as String]); }
                                 : null,
@@ -968,7 +1049,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
               cell = DropdownButtonFormField<String>(
                 value: options.contains(cellValue) ? cellValue : null,
                 items: options.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 11, color: Colors.white)))).toList(),
-                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; }); },
+                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; _markDirty(); }); },
                 dropdownColor: OmniTheme.bg800,
                 style: const TextStyle(fontSize: 11, color: Colors.white),
                 decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 4)),
@@ -992,7 +1073,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         )
                       : null,
                 ),
-                onChanged: (v) { rows[rowIdx][key] = v; },
+                onChanged: (v) { rows[rowIdx][key] = v; _markDirty(); },
                 onFieldSubmitted: isLastCol && rowIdx < rows.length - 1
                     ? (_) {
                         final nextColKey = columns.isNotEmpty ? columns[0]['key'] as String : '';

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../data/db.dart';
+import '../domain/entities/form_entry.dart';
 
 class ModuleDayStatus {
   final String id;
@@ -10,6 +11,7 @@ class ModuleDayStatus {
   String? updatedBy;
   String updatedAt;
   String? notes;
+  int entryCount;
 
   ModuleDayStatus({
     required this.id,
@@ -19,6 +21,7 @@ class ModuleDayStatus {
     this.updatedBy,
     String? updatedAt,
     this.notes,
+    this.entryCount = 0,
   }) : updatedAt = updatedAt ?? DateTime.now().toIso8601String();
 
   Map<String, dynamic> toMap() => {
@@ -29,17 +32,20 @@ class ModuleDayStatus {
     'updated_by': updatedBy,
     'updated_at': updatedAt,
     'notes': notes,
+    'entry_count': entryCount,
   };
-
-  static const statuses = ['pendiente', 'completado', 'incidencia', 'no_laborado', 'justificado'];
 
   static String statusLabel(String s) {
     switch (s) {
-      case 'completado': return 'Completado';
+      case 'borrador': return 'Borrador';
       case 'pendiente': return 'Pendiente';
-      case 'incidencia': return 'Incidencia';
-      case 'no_laborado': return 'No laborado';
+      case 'completado': return 'Completado';
+      case 'revisado': return 'Revisado';
+      case 'corregido': return 'Corregido';
+      case 'cerrado': return 'Cerrado';
+      case 'reabierto': return 'Reabierto';
       case 'justificado': return 'Justificado';
+      case 'cancelado': return 'Cancelado';
       default: return s;
     }
   }
@@ -75,8 +81,35 @@ class DashboardService extends ChangeNotifier {
           updatedBy: row['updated_by'] as String?,
           updatedAt: row['updated_at'] as String?,
           notes: row['notes'] as String?,
+          entryCount: row['entry_count'] as int? ?? 0,
         );
         map[status.module] = status;
+      }
+
+      final entryRows = await db.query(
+        'form_entries',
+        columns: ['module', 'date', 'status'],
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+
+      for (final er in entryRows) {
+        final mod = er['module'] as String? ?? '';
+        final st = er['status'] as String? ?? 'completado';
+        if (!map.containsKey(mod)) {
+          map[mod] = ModuleDayStatus(
+            id: 'dms-${date}-$mod',
+            date: date,
+            module: mod,
+            status: st,
+            entryCount: 1,
+          );
+        } else {
+          map[mod]!.entryCount = (map[mod]!.entryCount) + 1;
+          if (map[mod]!.status == 'pendiente' || map[mod]!.status == 'borrador') {
+            map[mod]!.status = st;
+          }
+        }
       }
 
       _statusCache[date] = map;
@@ -119,6 +152,15 @@ class DashboardService extends ChangeNotifier {
         notes: notes,
       );
 
+      if (status == 'cerrado') {
+        await db.update(
+          'form_entries',
+          {'status': 'cerrado'},
+          where: 'module = ? AND date = ? AND status NOT IN (?, ?)',
+          whereArgs: [module, date, 'cancelado', 'justificado'],
+        );
+      }
+
       _safeNotify();
     } catch (e) {
       debugPrint('DashboardService: setStatus error: $e');
@@ -148,12 +190,14 @@ class DashboardService extends ChangeNotifier {
 
   int getCompletedCount(String date) {
     final map = _statusCache[date] ?? {};
-    return map.values.where((s) => s.status == 'completado').length;
+    return map.values.where((s) =>
+      s.status == 'completado' || s.status == 'revisado' || s.status == 'cerrado').length;
   }
 
   int getPendingCount(String date) {
     final map = _statusCache[date] ?? {};
-    return map.values.where((s) => s.status == 'pendiente').length;
+    return map.values.where((s) =>
+      s.status == 'pendiente' || s.status == 'borrador').length;
   }
 
   void _safeNotify() {

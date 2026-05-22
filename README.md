@@ -15,14 +15,18 @@ Sistema de gestión de bitácoras para laboratorio. Multiplataforma (Windows, ma
 biolab-labsync/
 ├── frontend_flutter/
 │   └── lib/
-│       ├── data/            # DB, repositorios, migraciones schema
+│       ├── ai/              # IA ligera Fase 1: sugerencias, validación, predicción
+│       ├── data/            # DB, repositorios, migraciones schema (v5)
 │       ├── domain/          # Entidades, definiciones de formularios (6 módulos)
 │       ├── presentation/    # Screens (dashboard, formularios, reportes, settings)
 │       ├── security/        # AuthService, PermissionService, EditLockService
 │       ├── services/        # ClosureService, UserService, DashboardService
 │       ├── sync/            # SyncEngine, LAN discovery, LAN sync server
 │       └── theme/           # Tema oscuro profesional (OmniTheme)
-├── backend/                 # API FastAPI con modelos, routers, schemas
+├── backend/
+│   ├── ai/                  # API IA (sugerencias, validación, predicción)
+│   ├── routers/             # FastAPI routers
+│   └── main.py              # Entry point con seed users
 ├── docs/                    # Documentación
 └── scripts/                 # Utilidades
 ```
@@ -108,6 +112,41 @@ Cada módulo con secciones, campos generales, tablas de actividades y recursos:
 - Permisos granulares por módulo (view/edit/owner)
 - PIN de acceso offline (fallback)
 - Auditoría de cambios y sincronización
+
+### IA Operativa Ligera (Fase 1)
+
+Sistema de reglas inteligentes para asistencia operativa sin modelos grandes:
+
+- **Sugerencias contextuales**: Basadas en historial del campo + contexto del formulario
+- **Autocompletado inteligente**: Predice valores (hora_fin desde hora_inicio, turno según hora)
+- **Validación automática**: Detecta campos requeridos faltantes, fechas inconsistentes, reactivos vencidos
+- **Bloqueo contextual**: Sugiere el siguiente campo a llenar según el campo actual
+- **Historial persistente**: Almacena los últimos 50 valores por campo en SharedPreferences
+- **Desacoplado**: El sistema funciona aunque la IA esté deshabilitada
+
+### Sistema de estados profesional
+
+Cada entrada tiene un estado en su ciclo de vida:
+
+| Estado | Descripción |
+|--------|-------------|
+| Borrador | En edición, no finalizado |
+| Pendiente | Guardado, requiere revisión |
+| Completado | Datos completos ingresados |
+| Revisado | Verificado por supervisor |
+| Corregido | Ajustes realizados post-revisión |
+| Cerrado | Bloqueado por cierre operativo |
+| Reabierto | Reactivado post-cierre (máx 3 días) |
+| Justificado | Día no laborado con justificación |
+| Cancelado | Descartado por administrador |
+
+El calendario muestra indicadores visuales: ✓ cerrado, ↩ reabierto, ● hoy, contador de entradas.
+
+### Autoguardado
+
+- Guardado automático cada 30 segundos como borrador en SharedPreferences
+- Recuperación de borrador al abrir el formulario nuevamente
+- Indicador de cambios no guardados (_dirty flag)
 
 ### Laboratorio clínico
 

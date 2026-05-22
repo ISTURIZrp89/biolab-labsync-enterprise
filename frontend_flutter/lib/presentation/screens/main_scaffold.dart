@@ -10,6 +10,7 @@ import '../../services/closure_service.dart';
 import '../../services/user_service.dart';
 import '../../security/permission_service.dart';
 import '../../security/edit_lock_service.dart';
+import '../../ai/ai_service.dart';
 import '../../domain/entities/user.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
@@ -610,14 +611,24 @@ class _MainScaffoldState extends State<MainScaffold> {
                   final hasData = entryCount > 0 || closureStatus == 'CERRADO';
 
                   Color? bgColor;
+                  String statusIcon = '';
+                  Color statusIconColor = OmniTheme.blue400;
                   if (closureStatus == 'CERRADO') {
-                    bgColor = OmniTheme.green400.withOpacity(0.12);
+                    bgColor = OmniTheme.green400.withOpacity(0.15);
+                    statusIcon = '✓';
+                    statusIconColor = OmniTheme.green400;
                   } else if (closureStatus == 'REABIERTO') {
-                    bgColor = OmniTheme.orange400.withOpacity(0.12);
+                    bgColor = OmniTheme.orange400.withOpacity(0.15);
+                    statusIcon = '↩';
+                    statusIconColor = OmniTheme.orange400;
                   } else if (isToday) {
-                    bgColor = OmniTheme.accentBlue.withOpacity(0.2);
+                    bgColor = OmniTheme.accentBlue.withOpacity(0.25);
+                    statusIcon = '●';
+                    statusIconColor = OmniTheme.accentBlue;
                   } else if (entryCount > 0) {
-                    bgColor = OmniTheme.blue400.withOpacity(0.08);
+                    bgColor = OmniTheme.blue400.withOpacity(0.1);
+                    statusIcon = '$entryCount';
+                    statusIconColor = OmniTheme.blue400;
                   }
 
                   return GestureDetector(
@@ -636,30 +647,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                             color: isToday ? OmniTheme.accentBlue : (hasData ? OmniTheme.textPrimary : OmniTheme.textMuted),
                           ))),
                           Positioned(
-                            bottom: 1, right: 1,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (closureStatus == 'CERRADO')
-                                  Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(color: OmniTheme.green400, shape: BoxShape.circle),
-                                    child: const Icon(Icons.check, size: 6, color: Colors.white),
-                                  )
-                                else if (closureStatus == 'REABIERTO')
-                                  Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(color: OmniTheme.orange400, shape: BoxShape.circle),
-                                    child: const Icon(Icons.lock_open, size: 6, color: Colors.white),
-                                  )
-                                else if (entryCount > 0)
-                                  Container(
-                                    width: 12, height: 12,
-                                    decoration: BoxDecoration(color: OmniTheme.blue400, shape: BoxShape.circle),
-                                    child: Center(child: Text('$entryCount', style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: Colors.white))),
-                                  ),
-                              ],
-                            ),
+                            bottom: 1, right: 2,
+                            child: Text(statusIcon, style: TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: statusIconColor)),
                           ),
                         ],
                       ),
@@ -671,10 +660,12 @@ class _MainScaffoldState extends State<MainScaffold> {
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               _legendDot(OmniTheme.green400, 'Cerrado'),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               _legendDot(OmniTheme.orange400, 'Reabierto'),
-              const SizedBox(width: 16),
-              _legendDot(OmniTheme.blue400, 'Con datos'),
+              const SizedBox(width: 12),
+              _legendDot(OmniTheme.blue400, 'Datos'),
+              const SizedBox(width: 12),
+              _legendDot(OmniTheme.accentBlue, 'Hoy'),
               const SizedBox(width: 16),
               _legendDot(OmniTheme.accentBlue, 'Hoy'),
             ]),
@@ -870,6 +861,32 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Future<void> _confirmCloseDay(String date, User user) async {
+    try {
+      final aiService = context.read<AiService>();
+      final db = await LocalDatabase.instance.database;
+      final entries = await db.query('form_entries', where: 'date = ?', whereArgs: [date]);
+      final allIssues = <String>[];
+      for (final row in entries) {
+        Map<String, dynamic> data = {};
+        try {
+          data = jsonDecode(row['data_json'] as String) as Map<String, dynamic>;
+        } catch (_) {}
+        final issues = aiService.validateEntryForClosure(data);
+        if (issues.isNotEmpty) {
+          allIssues.add('${row['module']}: ${issues.join(", ")}');
+        }
+      }
+      if (allIssues.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Observaciones: ${allIssues.take(3).join(" | ")}'),
+            backgroundColor: OmniTheme.orange400,
+            duration: const Duration(seconds: 4),
+          ));
+        }
+      }
+    } catch (_) {}
+
     final notesCtrl = TextEditingController();
     final confirm = await showDialog<bool>(
       context: context,

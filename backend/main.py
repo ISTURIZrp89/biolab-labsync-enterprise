@@ -8,6 +8,7 @@ from database import engine, get_db
 from config import CORS_ORIGINS
 import json
 from routers import health, auth, sync, audit, updates, pdf, templates, calendar, users
+from ai.router import router as ai_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -118,3 +119,4 @@ app.include_router(pdf.router)
 app.include_router(templates.router)
 app.include_router(calendar.router)
 app.include_router(users.router)
+app.include_router(ai_router)
