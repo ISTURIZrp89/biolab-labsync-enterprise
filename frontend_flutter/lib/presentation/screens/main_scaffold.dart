@@ -39,24 +39,24 @@ class _MainScaffoldState extends State<MainScaffold> {
   static const _navItems = [
     _NavItem('Inicio', Icons.dashboard_outlined, Icons.dashboard),
     _NavItem('Reportes diarios', Icons.bar_chart_outlined, Icons.bar_chart),
+    _NavItem('Bitacora', Icons.book_outlined, Icons.book),
+    _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Incubadoras', Icons.thermostat_outlined, Icons.thermostat),
-    _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
     _NavItem('Ultracongeladores', Icons.ac_unit_outlined, Icons.ac_unit),
     _NavItem('Equipos', Icons.precision_manufacturing_outlined, Icons.precision_manufacturing),
-    _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
-    _NavItem('Bitacora', Icons.book_outlined, Icons.book),
+    _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
   ];
 
-  static const _moduleKeys = ['', '', 'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
+  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves'];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
+    Color(0xFFF472B6),
+    Color(0xFFB197FC),
     OmniTheme.red400,
-    OmniTheme.orange400,
     OmniTheme.accentBlue,
     OmniTheme.green400,
-    Color(0xFFB197FC),
-    Color(0xFFF472B6),
+    OmniTheme.orange400,
   ];
 
   @override
@@ -157,7 +157,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  void _openModule(String module, String label) {
+  Future<void> _openModule(String module, String label) async {
     if (module.isEmpty) return;
     try {
       final permService = context.read<PermissionService>();
@@ -173,7 +173,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     } catch (_) {}
     final auth = context.read<AuthService>();
     auth.recordActivity();
-    Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: label)));
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: label)));
+    if (mounted) _loadStats();
   }
 
   List<int> _getFilteredIndices() {
@@ -299,79 +300,136 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   void _showNotificationDrawer(NotificationService notif) {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: OmniTheme.bg900,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.4,
-        maxChildSize: 0.7,
-        minChildSize: 0.2,
-        expand: false,
-        builder: (_, scrollController) {
-          final notifications = notif.notifications;
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800))),
-                child: Row(
-                  children: [
-                    const Text('Notificaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
-                    const Spacer(),
-                    if (notifications.isNotEmpty)
-                      TextButton(
-                        onPressed: () => notif.dismissAll(),
-                        child: const Text('Limpiar', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+      builder: (ctx) {
+        final notifications = notif.notifications;
+        return AlertDialog(
+          backgroundColor: OmniTheme.bg900,
+          contentPadding: EdgeInsets.zero,
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.accentBlue.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.notifications, size: 18, color: OmniTheme.accentBlue),
                       ),
-                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
-                  ],
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text('Notificaciones',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.bg800,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text('${notifications.length}',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)),
+                      ),
+                      const SizedBox(width: 8),
+                      if (notifications.isNotEmpty)
+                        TextButton(
+                          onPressed: () { notif.dismissAll(); if (ctx.mounted) Navigator.pop(ctx); },
+                          child: const Text('Limpiar', style: TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18, color: OmniTheme.textMuted),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: notifications.isEmpty
-                  ? Center(
+                notifications.isEmpty
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(vertical: 48),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.notifications_none, size: 40, color: OmniTheme.bg700),
+                          Icon(Icons.notifications_none, size: 48, color: OmniTheme.bg700),
                           const SizedBox(height: 8),
                           const Text('Sin notificaciones', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
                         ],
                       ),
                     )
-                  : ListView.builder(
-                      controller: scrollController,
-                      padding: const EdgeInsets.all(8),
-                      itemCount: notifications.length,
-                      itemBuilder: (_, i) {
-                        final n = notifications[i];
-                        return Dismissible(
-                          key: Key(n.id),
-                          onDismissed: (_) => notif.dismiss(n.id),
-                          child: Card(
-                            margin: const EdgeInsets.only(bottom: 4),
-                            child: ListTile(
-                              dense: true,
-                              leading: Icon(n.icon, size: 18, color: n.color),
-                              title: Text(n.title, style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
-                              subtitle: n.message.isNotEmpty
-                                ? Text(n.message, style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted))
-                                : null,
-                              trailing: IconButton(
-                                icon: const Icon(Icons.close, size: 14, color: OmniTheme.textMuted),
-                                onPressed: () => notif.dismiss(n.id),
+                  : SizedBox(
+                      height: 360,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: notifications.length,
+                        itemBuilder: (_, i) {
+                          final n = notifications[i];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => notif.dismiss(n.id),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: n.color.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(n.icon, size: 16, color: n.color),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(n.title,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
+                                          if (n.message.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(n.message,
+                                              style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+                                          ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${n.timestamp.hour.toString().padLeft(2, '0')}:${n.timestamp.minute.toString().padLeft(2, '0')}',
+                                            style: const TextStyle(fontSize: 8, color: OmniTheme.bg700),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () => notif.dismiss(n.id),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(4),
+                                        child: Icon(Icons.close, size: 14, color: OmniTheme.textMuted),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
-              ),
-            ],
-          );
-        },
-      ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -692,9 +750,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _showDayEntries(String dateStr) {
     final entries = _dayEntries[dateStr] ?? [];
-    final allModules = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'];
+    final allModules = ['bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves'];
     final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
-    final moduleLabels = ['Incubadoras', 'Autoclaves', 'Ultracongeladores', 'Equipos', 'Procesamiento', 'Bitacora'];
+    final moduleLabels = ['Bitacora', 'Procesamiento', 'Incubadoras', 'Ultracongeladores', 'Equipos', 'Autoclaves'];
     final auth = context.read<AuthService>();
     final canCloseDay = auth.canClose;
     final isDesktop = MediaQuery.of(context).size.width > 800;
@@ -918,12 +976,12 @@ class _MainScaffoldState extends State<MainScaffold> {
     final isTodayReopened = todayClosure?.isReopened == true;
 
     final allModules = [
+      ('bitacora', 'Bitacora', Icons.book_outlined, const Color(0xFFF472B6)),
+      ('procesamiento', 'Procesamiento', Icons.biotech_outlined, const Color(0xFFB197FC)),
       ('incubadoras', 'Incubadoras', Icons.thermostat_outlined, OmniTheme.red400),
-      ('autoclaves', 'Autoclaves', Icons.local_fire_department_outlined, OmniTheme.orange400),
       ('ultracongeladores', 'Ultracongeladores', Icons.ac_unit_outlined, OmniTheme.accentBlue),
       ('equipos', 'Equipos', Icons.precision_manufacturing_outlined, OmniTheme.green400),
-      ('procesamiento', 'Procesamiento', Icons.biotech_outlined, const Color(0xFFB197FC)),
-      ('bitacora', 'Bitacora', Icons.book_outlined, const Color(0xFFF472B6)),
+      ('autoclaves', 'Autoclaves', Icons.local_fire_department_outlined, OmniTheme.orange400),
     ];
     final modules = allModules.where((m) => _allowedModules.contains(m.$1)).toList();
 

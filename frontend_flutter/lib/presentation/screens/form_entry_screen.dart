@@ -443,27 +443,21 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       final now = DateTime.now().toUtc().toIso8601String();
 
       if (widget.existingEntry != null) {
-        final db = await LocalDatabase.instance.database;
         final existing = widget.existingEntry!;
-        final oldData = existing.data;
-        await db.update(
-          'form_entries',
-          {
-            'data_json': jsonEncode(_formData),
-            'version': version,
-            'updated_at': now,
-          },
-          where: 'id = ?',
-          whereArgs: [existing.id],
+        final updated = FormEntry(
+          id: existing.id,
+          module: existing.module,
+          subModule: existing.subModule,
+          date: existing.date,
+          userId: existing.userId,
+          deviceId: deviceId,
+          version: version,
+          data: Map<String, dynamic>.from(_formData),
+          status: existing.status,
+          createdAt: existing.createdAt,
+          updatedAt: now,
         );
-        await db.insert('audit_log', {
-          'id': const Uuid().v4(),
-          'action': 'UPDATE',
-          'user_id': auth.currentUser?.id ?? 'offline',
-          'device_id': deviceId,
-          'timestamp': now,
-          'details_json': jsonEncode({'entry_id': existing.id, 'old_data': oldData}),
-        });
+        await repo.saveEntry(updated);
       } else {
         await repo.createEntry(
           module: widget.module,
@@ -482,7 +476,14 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         if (mounted) Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) setState(() { _saveError = e.toString(); _isSaving = false; });
+      if (mounted) {
+        setState(() { _saveError = e.toString(); _isSaving = false; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error al guardar: $e'),
+          backgroundColor: OmniTheme.red400,
+          duration: const Duration(seconds: 4),
+        ));
+      }
     }
   }
 
@@ -541,6 +542,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       if (c != null) _formData[key] = c.text;
     }
     _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+    _formData['_cajas'] = _cajas.where((c) => c.values.any((v) => v.toString().isNotEmpty)).toList();
     _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
     return Map<String, dynamic>.from(_formData);
   }
