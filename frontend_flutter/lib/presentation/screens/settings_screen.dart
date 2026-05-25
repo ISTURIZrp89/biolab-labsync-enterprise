@@ -383,6 +383,172 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _showMoveDbDialog() async {
+    final controller = TextEditingController(text: _dbPath.isNotEmpty ? _dbPath : '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Mover Base de Datos', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Ingresa la ruta destino. La BD sera MOVIDA con todos sus datos.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: r'C:\Users\...\Google Drive\BioLab',
+                hintStyle: TextStyle(color: Colors.white38),
+                prefixIcon: Icon(Icons.folder, color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+            child: const Text('Mover', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        await LocalDatabase.instance.moveDatabase(result);
+        setState(() => _dbPath = result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Base de datos movida exitosamente')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al mover: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showExportDbDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Exportar Base de Datos', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Carpeta destino para la copia de seguridad (USB).',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: r'D:\BioLab_Backup',
+                hintStyle: TextStyle(color: Colors.white38),
+                prefixIcon: Icon(Icons.folder, color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
+            child: const Text('Exportar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        await LocalDatabase.instance.exportToDirectory(result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Base de datos exportada exitosamente')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al exportar: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showImportDbDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Importar Base de Datos', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Ruta del archivo .db a importar (reemplaza la BD actual).',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: r'D:\BioLab_Backup\labsync_backup_2026-01-01.db',
+                hintStyle: TextStyle(color: Colors.white38),
+                prefixIcon: Icon(Icons.folder, color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.orange400),
+            child: const Text('Importar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        await LocalDatabase.instance.importFromFile(result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Base de datos importada exitosamente')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al importar: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
   void _startLanServices() {
     _startLanDiscovery();
     _startLanServer();
@@ -970,10 +1136,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('Ubicacion de la Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: Text(_dbPath.isNotEmpty ? _dbPath : 'Predeterminada (AppData)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
-                onTap: () => _changePathDialog('db_path', 'Ubicacion de la BD', 'Ruta donde se almacena la BD (ej: Google Drive). Requiere reinicio.', _dbPath, (v) {
-                  _dbPath = v;
-                  _saveSetting('db_path', v);
-                }),
+                onTap: _showMoveDbDialog,
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_upload_outlined, color: OmniTheme.green400),
+                title: const Text('Exportar Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Copia de seguridad a USB', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.upload, color: OmniTheme.textMuted),
+                onTap: _showExportDbDialog,
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_download_outlined, color: OmniTheme.orange400),
+                title: const Text('Importar Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Restaurar desde USB', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.download, color: OmniTheme.textMuted),
+                onTap: _showImportDbDialog,
               ),
               SwitchListTile(
                 title: const Text('Dispositivo Principal', style: TextStyle(color: OmniTheme.textPrimary)),

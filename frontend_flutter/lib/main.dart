@@ -157,13 +157,26 @@ class _BioLabAppState extends State<BioLabApp> {
         final sync = context.read<SyncEngine>();
         sync.startPeriodicSync(interval: const Duration(minutes: 5));
 
-        Timer.periodic(const Duration(minutes: 3), (_) async {
+        Timer.periodic(const Duration(seconds: 30), (_) async {
           try {
             final discovery = context.read<LanDiscoveryService>();
             if (discovery.isRunning && discovery.peers.isNotEmpty) {
               await sync.syncWithLanPeers(peers: discovery.peers);
             }
           } catch (_) {}
+        });
+
+        final discovery = context.read<LanDiscoveryService>();
+        Timer? pendingSync;
+        discovery.addListener(() {
+          pendingSync?.cancel();
+          pendingSync = Timer(const Duration(seconds: 3), () async {
+            try {
+              if (discovery.isRunning && discovery.peers.isNotEmpty) {
+                await sync.syncWithLanPeers(peers: discovery.peers);
+              }
+            } catch (_) {}
+          });
         });
 
         final updateService = context.read<UpdateService>();
@@ -175,20 +188,10 @@ class _BioLabAppState extends State<BioLabApp> {
               'Sincronizacion completada',
               message: '${sync.syncCount} sincronizaciones exitosas',
             );
-          } else           if (!sync.isOnline && sync.failedCount > 0) {
+          } else if (!sync.isOnline && sync.failedCount > 0) {
             context.read<NotificationService>().warning(
               'Error de sincronizacion',
               message: '${sync.failedCount} fallos',
-            );
-          }
-        });
-
-        final discovery = context.read<LanDiscoveryService>();
-        discovery.addListener(() {
-          if (discovery.peers.isNotEmpty) {
-            context.read<NotificationService>().info(
-              'PCs detectadas en red',
-              message: discovery.peers.map((p) => p.hostname).join(', '),
             );
           }
         });
