@@ -31,8 +31,11 @@ jobs:
       - name: Clean previous build
         run: if (Test-Path build/windows) { Remove-Item -Recurse -Force build/windows }
 
+      - name: Flutter doctor
+        run: flutter doctor -v
+
       - name: Build Windows
-        run: flutter build windows --release
+        run: flutter build windows --release --verbose 2>&1
 
       - name: Create installer
         run: |
