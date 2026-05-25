@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool _sqfliteInitialized = false;
 
@@ -18,8 +20,19 @@ void ensureSqfliteInit() {
 Future<Database> openLocalDatabase(String filePath) async {
   ensureSqfliteInit();
 
-  final appDir = await getApplicationSupportDirectory();
-  final dbPath = join(appDir.path, filePath);
+  String dbPath;
+  final prefs = await SharedPreferences.getInstance();
+  final customDir = prefs.getString('db_path');
+  if (customDir != null && customDir.isNotEmpty) {
+    final dir = Directory(customDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    dbPath = join(customDir, filePath);
+  } else {
+    final appDir = await getApplicationSupportDirectory();
+    dbPath = join(appDir.path, filePath);
+  }
 
   return openDatabase(
     dbPath,

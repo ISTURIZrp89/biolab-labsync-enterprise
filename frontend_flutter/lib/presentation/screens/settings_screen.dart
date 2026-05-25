@@ -40,6 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoSync = true;
   String _savePath = '';
   String _backupPath = '';
+  String _dbPath = '';
+  bool _isPrimaryDevice = false;
+  bool _autoBackup = false;
   bool _encryptLocal = true;
   List<Map<String, String>> _equipmentList = [];
   List<Map<String, String>> _users = [];
@@ -83,6 +86,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final broadcast = prefs.getBool('lan_broadcast_discovery') ?? true;
     final lanPort = prefs.getString('lan_port') ?? '8765';
     final lanServerPort = prefs.getInt('lan_server_port') ?? 8766;
+    final dbPath = prefs.getString('db_path') ?? '';
+    final isPrimary = prefs.getBool('is_primary_device') ?? false;
+    final autoBackup = prefs.getBool('auto_backup') ?? false;
 
     setState(() {
       _deviceId = deviceId;
@@ -91,6 +97,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _lastSync = lastSync != null ? _formatTimestamp(lastSync) : 'Nunca';
       _savePath = savePath;
       _backupPath = backupPath;
+      _dbPath = dbPath;
+      _isPrimaryDevice = isPrimary;
+      _autoBackup = autoBackup;
       _encryptLocal = encryptLocal;
       _lanSyncEnabled = lanSync;
       _broadcastDiscovery = broadcast;
@@ -245,6 +254,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveUsers() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('users_list', jsonEncode(_users));
+  }
+
+  Future<void> _saveSetting(String key, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
   }
 
   String _formatTimestamp(String timestamp) {
@@ -812,17 +826,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.sync, color: OmniTheme.accentBlue),
                 title: const Text('Sincronizar Ahora', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text('${context.watch<SyncEngine>().failedCount > 0 ? "${context.watch<SyncEngine>().failedCount} fallos | " : ""}${context.watch<SyncEngine>().syncCount} exitosas', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 onTap: () async {
                   final sync = context.read<SyncEngine>();
                   final success = await sync.synchronize();
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(success ? 'Sincronizacion completada' : 'Error al sincronizar')),
+                      SnackBar(content: Text(success ? 'Sincronizacion completada' : 'Error al sincronizar. Verifica que el servidor este corriendo en $_backendUrl')),
                     );
                     _loadSettings();
                   }
                 },
               ),
+              if (context.watch<SyncEngine>().failedCount > 0)
+                ListTile(
+                  leading: const Icon(Icons.refresh, color: OmniTheme.orange400),
+                  title: const Text('Reintentar sincronizaciones fallidas', style: TextStyle(color: OmniTheme.orange400)),
+                  onTap: () async {
+                    final sync = context.read<SyncEngine>();
+                    await sync.retryFailed();
+                    if (mounted) _loadSettings();
+                  },
+                ),
             ]),
             _buildAccordion('Red LAN', Icons.lan, false, [
               SwitchListTile(
@@ -924,11 +949,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 activeColor: OmniTheme.accentBlue,
                 onChanged: _toggleEncryption,
               ),
+              SwitchListTile(
+                title: const Text('Respaldo automatico al guardar', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_autoBackup ? 'Copia JSON en cada guardado' : 'Solo respaldo manual', style: const TextStyle(color: OmniTheme.textMuted)),
+                value: _autoBackup,
+                activeColor: OmniTheme.accentBlue,
+                onChanged: (v) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('auto_backup', v);
+                  setState(() => _autoBackup = v);
+                },
+              ),
             ]),
             _buildAccordion('Base de Datos', Icons.storage_outlined, false, [
               _buildInfoRow('Registros totales', _dbSize, Icons.storage),
               _buildInfoRow('Dispositivo', _deviceId, Icons.fingerprint),
               _buildInfoRow('Version App', _appVersion, Icons.info),
+              ListTile(
+                leading: const Icon(Icons.folder, color: OmniTheme.accentBlue),
+                title: const Text('Ubicacion de la Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_dbPath.isNotEmpty ? _dbPath : 'Predeterminada (AppData)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () => _changePathDialog('db_path', 'Ubicacion de la BD', 'Ruta donde se almacena la BD (ej: Google Drive). Requiere reinicio.', _dbPath, (v) {
+                  _dbPath = v;
+                  _saveSetting('db_path', v);
+                }),
+              ),
+              SwitchListTile(
+                title: const Text('Dispositivo Principal', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_isPrimaryDevice ? 'Fuente de verdad para LAN' : 'Sincroniza desde el principal', style: const TextStyle(color: OmniTheme.textMuted)),
+                value: _isPrimaryDevice,
+                activeColor: OmniTheme.accentBlue,
+                onChanged: (v) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('is_primary_device', v);
+                  setState(() => _isPrimaryDevice = v);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.clean_hands, color: OmniTheme.orange400),
                 title: const Text('Limpiar cache local', style: TextStyle(color: OmniTheme.textPrimary)),

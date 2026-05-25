@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
@@ -499,6 +501,29 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           deviceId: deviceId,
           data: _formData,
         );
+      }
+
+      if (mounted) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getBool('auto_backup') == true) {
+            final backupPath = prefs.getString('backup_path') ?? '';
+            if (backupPath.isNotEmpty) {
+              final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+              final dir = Directory(backupPath);
+              if (!await dir.exists()) await dir.create(recursive: true);
+              final file = File('${dir.path}/LABSYNC_AutoBackup_$ts.json');
+              final backup = {
+                'module': widget.module,
+                'section': widget.section['key'],
+                'date': _formData['fecha'],
+                'data': _formData,
+                'saved_at': DateTime.now().toUtc().toIso8601String(),
+              };
+              await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
+            }
+          }
+        } catch (_) {}
       }
 
       if (mounted) {

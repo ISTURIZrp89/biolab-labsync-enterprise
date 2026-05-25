@@ -64,6 +64,45 @@ class _MainScaffoldState extends State<MainScaffold> {
     super.initState();
     _loadPermissions();
     _loadStats();
+    _checkUpdates();
+  }
+
+  void _checkUpdates() async {
+    try {
+      final updateService = context.read<UpdateService>();
+      await updateService.checkForUpdates();
+      if (mounted && updateService.hasUpdate) {
+        await Future.delayed(const Duration(seconds: 1));
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: OmniTheme.bg900,
+              title: const Row(children: [
+                Icon(Icons.system_update, color: OmniTheme.accentBlue, size: 20),
+                SizedBox(width: 8),
+                Text('Actualizacion disponible', style: TextStyle(color: Colors.white, fontSize: 15)),
+              ]),
+              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Version ${updateService.latestVersion} disponible', style: const TextStyle(color: OmniTheme.textPrimary)),
+                if (updateService.releaseNotes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(updateService.releaseNotes, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
+                ],
+              ]),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Despues', style: TextStyle(color: Colors.white54))),
+                ElevatedButton(
+                  onPressed: () { Navigator.pop(ctx); updateService.installNow(); },
+                  style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+                  child: const Text('Actualizar', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadPermissions() async {
