@@ -40,6 +40,9 @@ void main() async {
       await prefs.setString('device_id', deviceId);
     }
 
+    final db = await LocalDatabase.instance.database;
+    debugPrint('Database initialized at: ${db.path}');
+
     final authRepo = AuthRepositoryImpl();
     final authService = AuthService(authRepo);
     final syncEngine = SyncEngine();

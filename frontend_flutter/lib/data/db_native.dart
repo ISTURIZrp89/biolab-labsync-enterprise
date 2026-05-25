@@ -21,18 +21,25 @@ Future<Database> openLocalDatabase(String filePath) async {
   ensureSqfliteInit();
 
   String dbPath;
-  final prefs = await SharedPreferences.getInstance();
-  final customDir = prefs.getString('db_path');
-  if (customDir != null && customDir.isNotEmpty) {
-    final dir = Directory(customDir);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final customDir = prefs.getString('db_path');
+    if (customDir != null && customDir.isNotEmpty) {
+      final dir = Directory(customDir);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      dbPath = join(customDir, filePath);
+    } else {
+      final appDir = await getApplicationSupportDirectory();
+      dbPath = join(appDir.path, filePath);
     }
-    dbPath = join(customDir, filePath);
-  } else {
+  } catch (e) {
     final appDir = await getApplicationSupportDirectory();
     dbPath = join(appDir.path, filePath);
+    debugPrint('openLocalDatabase: fallback to default path: $e');
   }
+  debugPrint('openLocalDatabase path: $dbPath');
 
   return openDatabase(
     dbPath,
