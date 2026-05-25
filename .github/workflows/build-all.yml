@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
     defaults:
       run:
         working-directory: frontend_flutter
@@ -22,11 +22,14 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.24.0'
+          flutter-version: '3.27.4'
           cache: true
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Clean previous build
+        run: if (Test-Path build/windows) { Remove-Item -Recurse -Force build/windows }
 
       - name: Build Windows
         run: flutter build windows --release
