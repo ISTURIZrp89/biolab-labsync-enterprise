@@ -8,6 +8,7 @@ import '../../sync/sync_engine.dart';
 import '../../services/notification_service.dart';
 import '../../services/closure_service.dart';
 import '../../services/user_service.dart';
+import '../../services/update_service.dart';
 import '../../security/permission_service.dart';
 import '../../security/edit_lock_service.dart';
 import '../../ai/ai_service.dart';
