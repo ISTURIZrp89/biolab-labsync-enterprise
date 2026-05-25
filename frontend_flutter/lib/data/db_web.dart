@@ -5,8 +5,8 @@ Future<Database> openLocalDatabase(String filePath) async {
   final factory = databaseFactoryFfiWeb;
   return factory.openDatabase(
     filePath,
-    options: OpenDatabaseOptions(
-      version: 1,
+      options: OpenDatabaseOptions(
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE form_entries (
@@ -61,6 +61,48 @@ Future<Database> openLocalDatabase(String filePath) async {
           CREATE TABLE settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS month_closures (
+            id TEXT PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            closed_by TEXT NOT NULL,
+            closed_at TEXT NOT NULL,
+            notes TEXT,
+            days_total INTEGER DEFAULT 30,
+            days_closed INTEGER DEFAULT 0,
+            reopen_log_json TEXT NOT NULL DEFAULT '[]',
+            UNIQUE(year, month)
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS day_module_status (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            module TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pendiente',
+            updated_by TEXT,
+            updated_at TEXT NOT NULL,
+            notes TEXT,
+            entry_count INTEGER DEFAULT 0,
+            UNIQUE(date, module)
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS form_entry_drafts (
+            id TEXT PRIMARY KEY,
+            module TEXT NOT NULL,
+            section_key TEXT,
+            date TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            saved_at TEXT NOT NULL
           )
         ''');
       },

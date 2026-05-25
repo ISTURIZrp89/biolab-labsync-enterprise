@@ -19,6 +19,10 @@ class UserCreate(BaseModel):
     id: str
     nombre: str
     cargo: Optional[str] = None
+    cargo_operativo: Optional[str] = None
+    area: Optional[str] = None
+    supervisor: Optional[str] = None
+    firma: Optional[str] = None
     rol: str
     pin: Optional[str] = None
     password: Optional[str] = None

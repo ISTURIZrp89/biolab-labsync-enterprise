@@ -8,6 +8,7 @@ from database import engine, get_db
 from config import CORS_ORIGINS
 import json
 from routers import health, auth, sync, audit, updates, pdf, templates, calendar, users
+from ai.router import router as ai_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -31,7 +32,11 @@ def seed_users():
             admin = models.Usuario(
                 id="usr-admin",
                 nombre="Administrador",
-                cargo="Administrador del Sistema",
+                cargo="ADMINISTRADOR",
+                cargo_operativo="ADMINISTRADOR",
+                area="Administracion",
+                supervisor="",
+                firma="Administrador",
                 rol="ADMIN",
                 pin_hash=pwd_context.hash("1234"),
                 pass_hash=pwd_context.hash("admin"),
@@ -40,7 +45,11 @@ def seed_users():
             jefe = models.Usuario(
                 id="usr-jefe",
                 nombre="Dr. Alberto Parra Barrera",
-                cargo="Jefe de Laboratorio",
+                cargo="JEFE DE LABORATORIO",
+                cargo_operativo="JEFE DE LABORATORIO",
+                area="Laboratorio Central",
+                supervisor="Director General",
+                firma="Dr. Alberto Parra Barrera",
                 rol="JEFE",
                 pin_hash=pwd_context.hash("0000"),
                 pass_hash=pwd_context.hash("biolab"),
@@ -49,7 +58,11 @@ def seed_users():
             tecnico = models.Usuario(
                 id="usr-t1",
                 nombre="Biol. Maria Guadalupe Ramirez Padilla",
-                cargo="Tecnico de Laboratorio",
+                cargo="BIÓLOGO",
+                cargo_operativo="BIÓLOGO",
+                area="Cultivo Celular",
+                supervisor="Dr. Alberto Parra Barrera",
+                firma="Biol. Maria Guadalupe Ramirez Padilla",
                 rol="LABORATORIO",
                 pin_hash=pwd_context.hash("1111"),
                 pass_hash=pwd_context.hash("biolab"),
@@ -58,7 +71,11 @@ def seed_users():
             auditor = models.Usuario(
                 id="usr-auditor",
                 nombre="Auditor Externo",
-                cargo="Auditor",
+                cargo="QFB",
+                cargo_operativo="QFB",
+                area="Calidad",
+                supervisor="Director General",
+                firma="Auditor Externo",
                 rol="AUDITOR",
                 pin_hash=pwd_context.hash("2222"),
                 pass_hash=pwd_context.hash("biolab"),
@@ -67,7 +84,11 @@ def seed_users():
             dueno = models.Usuario(
                 id="usr-dueno",
                 nombre="Director General",
-                cargo="Dueno",
+                cargo="DIRECTOR GENERAL",
+                cargo_operativo="DIRECTOR GENERAL",
+                area="Direccion General",
+                supervisor="",
+                firma="Director General",
                 rol="DUEÑO",
                 pin_hash=pwd_context.hash("3333"),
                 pass_hash=pwd_context.hash("biolab"),
@@ -98,3 +119,4 @@ app.include_router(pdf.router)
 app.include_router(templates.router)
 app.include_router(calendar.router)
 app.include_router(users.router)
+app.include_router(ai_router)

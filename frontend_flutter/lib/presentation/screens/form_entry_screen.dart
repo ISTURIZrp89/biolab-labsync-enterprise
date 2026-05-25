@@ -11,6 +11,8 @@ import '../../domain/form_definitions.dart';
 import '../../domain/entities/form_entry.dart';
 import '../widgets/smart_form_field.dart';
 import '../../security/auth_service.dart';
+import '../../security/edit_lock_service.dart';
+import '../../ai/ai_service.dart';
 import '../../services/user_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -151,11 +153,28 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
     final actividades = data['_actividades'] as List? ?? [];
     final recursos = data['_recursos'] as List? ?? [];
     final incidencias = data['incidencias'] as String? ?? '';
+    String? lockHolder;
+    try {
+      final lockSvc = context.read<EditLockService>();
+      lockHolder = lockSvc.getLockHolder(entry.id);
+    } catch (_) { lockHolder = null; }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () {
+          try {
+            final lockSvc = context.read<EditLockService>();
+            final auth = context.read<AuthService>();
+            if (lockSvc.isLocked(entry.id) && !lockSvc.canEdit(entry.id, auth.currentUser?.id ?? '')) {
+              final holder = lockSvc.getLockHolder(entry.id);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Editado por: ${holder ?? "otro usuario"}'),
+                backgroundColor: OmniTheme.orange400,
+              ));
+              return;
+            }
+          } catch (_) {}
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => _DailyLogForm(
               module: widget.module,
@@ -183,6 +202,10 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
                 Expanded(child: Text(fecha, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary))),
                 if (horaInicio.isNotEmpty)
                   Text('$horaInicio${horaFin.isNotEmpty ? ' - $horaFin' : ''}', style: const TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+                if (lockHolder != null) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.lock_outline, size: 12, color: OmniTheme.orange400),
+                ],
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -241,6 +264,12 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   bool _isSaving = false;
   bool _saveSuccess = false;
   String? _saveError;
+  String? _lockToken;
+  EditLockService? _lockService;
+  AiService? _aiService;
+  Timer? _autosaveTimer;
+  DateTime _lastAutosave = DateTime.now();
+  bool _dirty = false;
   List<Map<String, dynamic>> _activities = [];
   List<Map<String, dynamic>> _resources = [];
   List<Map<String, dynamic>> _cajas = [];
@@ -260,10 +289,27 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   void initState() {
     super.initState();
     _initForm();
+    _loadDraft();
+    try {
+      _lockService = context.read<EditLockService>();
+      if (widget.existingEntry != null) {
+        final auth = context.read<AuthService>();
+        _lockService!.acquireLock(widget.existingEntry!.id, auth.currentUser?.id ?? '', auth.currentUser?.nombre ?? '', widget.module).then((token) {
+          if (mounted) setState(() => _lockToken = token);
+        });
+      }
+      _aiService = context.read<AiService>();
+    } catch (_) {}
+    _autosaveTimer = Timer.periodic(const Duration(seconds: 30), (_) => _autosave());
   }
 
   @override
   void dispose() {
+    if (_dirty) _autosave();
+    _autosaveTimer?.cancel();
+    if (_lockToken != null && widget.existingEntry != null && _lockService != null) {
+      _lockService!.releaseLock(widget.existingEntry!.id, _lockToken!);
+    }
     _fieldsScroll.dispose();
     _activitiesScrollH.dispose();
     _resourcesScrollH.dispose();
@@ -381,10 +427,16 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       _formData['_cajas'] = _cajas.where((c) => c.values.any((v) => v.toString().isNotEmpty)).toList();
       _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
 
-      for (final f in _generalFields) {
-        final key = f['key'] as String;
-        final val = _controllers[key]?.text ?? '';
-        if (val.isNotEmpty && f['type'] == 'autofill') _saveHistory(key, val);
+      if (_aiService != null) {
+        for (final f in _generalFields) {
+          final key = f['key'] as String;
+          final val = _controllers[key]?.text ?? '';
+          if (val.isNotEmpty) {
+            if (f['type'] == 'autofill') _saveHistory(key, val);
+            _aiService!.recordValue(key, val);
+          }
+        }
+        _aiService!.recordContextualSuggestion(widget.module, widget.section['key'] as String? ?? '', _formData);
       }
 
       final version = (widget.existingEntry?.version ?? 0) + 1;
@@ -434,6 +486,116 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     }
   }
 
+  Future<void> _autosave() async {
+    if (!_dirty || widget.existingEntry != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final auth = context.read<AuthService>();
+      final data = _collectFormData();
+      await prefs.setString('draft_${widget.module}', jsonEncode({
+        'module': widget.module,
+        'section_key': widget.section['key'] as String? ?? '',
+        'date': data['fecha'] ?? DateTime.now().toIso8601String().split('T')[0],
+        'data': data,
+        'user_id': auth.currentUser?.id ?? 'offline',
+        'saved_at': DateTime.now().toUtc().toIso8601String(),
+      }));
+      _lastAutosave = DateTime.now();
+      _dirty = false;
+    } catch (_) {}
+  }
+
+  Future<void> _loadDraft() async {
+    if (widget.existingEntry != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('draft_${widget.module}');
+      if (raw == null) return;
+      final draft = jsonDecode(raw) as Map<String, dynamic>;
+      final draftDate = draft['date'] as String? ?? '';
+      final formDate = _controllers['fecha']?.text ?? '';
+      if (draftDate != formDate) return;
+      final data = draft['data'] as Map<String, dynamic>? ?? {};
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        if (data.containsKey(key) && data[key].toString().isNotEmpty) {
+          _formData[key] = data[key];
+          _controllers[key]?.text = data[key].toString();
+        }
+      }
+      if (data['_actividades'] is List) {
+        _activities = (data['_actividades'] as List).map((a) => Map<String, dynamic>.from(a as Map)).toList();
+      }
+      if (data['_recursos'] is List) {
+        _resources = (data['_recursos'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      }
+      if (mounted) setState(() {});
+      prefs.remove('draft_${widget.module}');
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _collectFormData() {
+    for (final f in _generalFields) {
+      final key = f['key'] as String;
+      final c = _controllers[key];
+      if (c != null) _formData[key] = c.text;
+    }
+    _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+    _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
+    return Map<String, dynamic>.from(_formData);
+  }
+
+  void _markDirty() {
+    _dirty = true;
+  }
+
+  Future<void> _copyFromPreviousDay() async {
+    try {
+      final repo = context.read<FormRepositoryImpl>();
+      final allEntries = await repo.getEntriesByModule(widget.module);
+      if (allEntries.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay entradas anteriores para copiar'), backgroundColor: OmniTheme.orange400));
+        return;
+      }
+      final lastEntry = allEntries.last;
+      final sourceData = lastEntry.data;
+      int fechaIdx = -1;
+      for (int i = 0; i < _generalFields.length; i++) {
+        if (_generalFields[i]['type'] == 'date') { fechaIdx = i; break; }
+      }
+      final fechaField = fechaIdx >= 0 ? _generalFields[fechaIdx] : null;
+      if (fechaField != null) {
+        final key = fechaField['key'] as String;
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        _formData[key] = today;
+        _controllers[key]?.text = today;
+      }
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        final type = f['type'] as String;
+        if (type == 'date' || type == 'time') continue;
+        if (sourceData.containsKey(key) && sourceData[key].toString().isNotEmpty) {
+          _formData[key] = sourceData[key];
+          if (_controllers.containsKey(key)) {
+            _controllers[key]!.text = sourceData[key].toString();
+          }
+        }
+      }
+      if (sourceData['_actividades'] is List) {
+        _activities = (sourceData['_actividades'] as List).map((a) => Map<String, dynamic>.from(a as Map)).toList();
+      }
+      if (sourceData['_recursos'] is List) {
+        _resources = (sourceData['_recursos'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      }
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Datos copiados de entrada anterior'), backgroundColor: OmniTheme.green400));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al copiar: $e'), backgroundColor: OmniTheme.red400));
+    }
+  }
+
   void _showPreview() {
     for (final f in _generalFields) {
       final key = f['key'] as String;
@@ -449,61 +611,179 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       builder: (ctx) => AlertDialog(
         backgroundColor: OmniTheme.bg900,
         title: Row(children: [
-          const Icon(Icons.preview, size: 20, color: OmniTheme.accentBlue),
-          const SizedBox(width: 8),
-          Expanded(child: Text('Vista previa - ${widget.moduleLabel}', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary))),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(color: OmniTheme.accentBlue.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+            child: const Icon(Icons.preview, size: 18, color: OmniTheme.accentBlue),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Vista previa - ${widget.moduleLabel}', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary, fontWeight: FontWeight.bold))),
         ]),
         content: SizedBox(
-          width: 600,
+          width: 640,
           child: ListView(
             shrinkWrap: true,
             children: [
-              ..._generalFields.map((f) {
-                final key = f['key'] as String;
-                final label = f['label'] as String? ?? key;
-                final val = _formData[key]?.toString() ?? '';
-                if (val.isEmpty) return const SizedBox.shrink();
-                return Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 130, child: Text('$label:', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
-                    Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary))),
-                  ],
-                ));
+              _buildPreviewSection('Información General', OmniTheme.accentBlue, () {
+                return _generalFields.where((f) {
+                  final val = _formData[f['key'] as String]?.toString() ?? '';
+                  return val.isNotEmpty;
+                }).map((f) {
+                  final key = f['key'] as String;
+                  final label = f['label'] as String? ?? key;
+                  final val = _formData[key]?.toString() ?? '';
+                  return Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 150, child: Text('$label:', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
+                      Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary, fontWeight: FontWeight.w500))),
+                    ],
+                  ));
+                }).toList();
               }),
-              if (_activities.isNotEmpty && _activities[0].isNotEmpty) ...[
-                const Divider(color: OmniTheme.bg800),
-                Text('${_activitiesTable?['label'] ?? 'Actividades'}: ${_activities.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
-                ..._activities.map((a) => Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(a.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
-                )),
+              if (_activities.any((a) => a.values.any((v) => v.toString().isNotEmpty))) ...[
+                const SizedBox(height: 12),
+                _buildPreviewSection('${_activitiesTable?['label'] ?? 'Actividades'} (${_activities.length})', OmniTheme.green400, () {
+                  return _activities.map((a) {
+                    final items = a.entries.where((e) => e.value.toString().isNotEmpty).map((e) => '${e.key}: ${e.value}').join(' | ');
+                    if (items.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.bg800.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(items, style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                      ),
+                    );
+                  }).toList();
+                }),
               ],
-              if (_cajas.isNotEmpty && _cajas[0].isNotEmpty) ...[
-                const Divider(color: OmniTheme.bg800),
-                Text('${_cajasTable?['label'] ?? 'Cajas Procesadas'}: ${_cajas.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
-                ..._cajas.map((c) => Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(c.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
-                )),
+              if (_cajas.any((c) => c.values.any((v) => v.toString().isNotEmpty))) ...[
+                const SizedBox(height: 12),
+                _buildPreviewSection('${_cajasTable?['label'] ?? 'Cajas Procesadas'} (${_cajas.length})', OmniTheme.accentBlue, () {
+                  return _cajas.map((c) {
+                    final items = c.entries.where((e) => e.value.toString().isNotEmpty).map((e) => '${e.key}: ${e.value}').join(' | ');
+                    if (items.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.bg800.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(items, style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                      ),
+                    );
+                  }).toList();
+                }),
               ],
-              if (_resources.isNotEmpty && _resources[0].isNotEmpty) ...[
-                const Divider(color: OmniTheme.bg800),
-                Text('${_resourcesTable?['label'] ?? 'Recursos'}: ${_resources.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.green400)),
-                ..._resources.map((r) => Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(r.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
-                )),
+              if (_resources.any((r) => r.values.any((v) => v.toString().isNotEmpty))) ...[
+                const SizedBox(height: 12),
+                _buildPreviewSection('${_resourcesTable?['label'] ?? 'Recursos'} (${_resources.length})', OmniTheme.orange400, () {
+                  return _resources.map((r) {
+                    final items = r.entries.where((e) => e.value.toString().isNotEmpty).map((e) => '${e.key}: ${e.value}').join(' | ');
+                    if (items.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.bg800.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(items, style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                      ),
+                    );
+                  }).toList();
+                }),
+              ],
+              if (_formData['incidencias']?.toString().isNotEmpty == true) ...[
+                const SizedBox(height: 12),
+                _buildPreviewSection('Incidencias', OmniTheme.red400, () {
+                  return [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: OmniTheme.red400.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: OmniTheme.red400.withOpacity(0.2)),
+                        ),
+                        child: Text(_formData['incidencias'].toString(), style: const TextStyle(fontSize: 10, color: OmniTheme.red400)),
+                      ),
+                    ),
+                  ];
+                }),
               ],
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Editar', style: TextStyle(color: OmniTheme.textMuted))),
-          ElevatedButton(onPressed: () { Navigator.pop(ctx); _save(); }, style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400, foregroundColor: Colors.white), child: const Text('GUARDAR')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Editar', style: TextStyle(color: OmniTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _validateAndSave();
+            },
+            style: TextButton.styleFrom(foregroundColor: OmniTheme.green400),
+            child: const Text('Validar y Guardar'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save, size: 16),
+            onPressed: () { Navigator.pop(ctx); _save(); },
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue, foregroundColor: Colors.white),
+            label: const Text('GUARDAR'),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildPreviewSection(String title, Color color, List<Widget> Function() buildContent) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(width: 3, height: 14, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 8),
+          Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+        ]),
+        const SizedBox(height: 6),
+        ...buildContent(),
+      ],
+    );
+  }
+
+  Future<void> _validateAndSave() async {
+    final missingFields = <String>[];
+    for (final f in _generalFields) {
+      if (f['required'] == true) {
+        final key = f['key'] as String;
+        final val = _controllers[key]?.text ?? '';
+        if (val.isEmpty) {
+          missingFields.add(f['label'] as String? ?? key);
+        }
+      }
+    }
+    if (missingFields.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Campos requeridos faltantes: ${missingFields.join(", ")}'),
+          backgroundColor: OmniTheme.red400,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+      return;
+    }
+    await _save();
   }
 
   void _addRow(List<Map<String, dynamic>> list, List<Map<String, dynamic>>? columns) {
@@ -517,17 +797,18 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         }
       }
       list.add(row);
+      _markDirty();
     });
   }
 
   void _duplicateRow(List<Map<String, dynamic>> list, int index) {
     if (index >= list.length) return;
-    setState(() => list.insert(index + 1, Map<String, dynamic>.from(list[index])));
+    setState(() { list.insert(index + 1, Map<String, dynamic>.from(list[index])); _markDirty(); });
   }
 
   void _removeRow(List<Map<String, dynamic>> list, int index) {
     if (list.length <= 1) return;
-    setState(() => list.removeAt(index));
+    setState(() { list.removeAt(index); _markDirty(); });
   }
 
   @override
@@ -543,6 +824,9 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         backgroundColor: OmniTheme.bg900,
         elevation: 0,
         actions: [
+          if (widget.existingEntry == null) ...[
+            IconButton(icon: const Icon(Icons.content_copy, size: 18), tooltip: 'Copiar de entrada anterior', onPressed: _copyFromPreviousDay, color: OmniTheme.textMuted),
+          ],
           if (_saveSuccess)
             const Icon(Icons.check_circle, color: OmniTheme.green400, size: 20)
           else
@@ -563,7 +847,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                 child: SingleChildScrollView(
                   controller: _fieldsScroll,
                   padding: const EdgeInsets.all(16),
-                  child: Column(
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_generalFields.isNotEmpty) ...[
@@ -606,6 +893,8 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                       ],
                       const SizedBox(height: 100),
                     ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -655,6 +944,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                       if (picked != null) {
                         controller.text = picked.toIso8601String().split('T')[0];
                         _formData[key] = controller.text;
+                        _markDirty();
                       }
                     },
                     child: Container(
@@ -679,6 +969,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                           if (picked != null) {
                             controller.text = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                             _formData[key] = controller.text;
+                            _markDirty();
                           }
                         },
                         child: Container(
@@ -694,7 +985,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ? DropdownButtonFormField<String>(
                             value: controller.text.isEmpty ? null : controller.text,
                             items: (f['options'] as List?)?.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)))).toList(),
-                            onChanged: (v) { controller.text = v ?? ''; _formData[key] = v; },
+                            onChanged: (v) { controller.text = v ?? ''; _formData[key] = v; _markDirty(); },
                             dropdownColor: OmniTheme.bg800,
                             style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
                             decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
@@ -703,13 +994,17 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                             controller: controller,
                             focusNode: _focusNodes[key],
                             style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary),
+                            textInputAction: index < _generalFields.length - 1 ? TextInputAction.next : TextInputAction.newline,
                             decoration: InputDecoration(
                               border: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
                               enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               isDense: true,
                             ),
-                            onChanged: (v) { _formData[key] = v; },
+                            onChanged: (v) { _formData[key] = v; _markDirty(); },
+                            onFieldSubmitted: index < _generalFields.length - 1
+                                ? (_) { FocusScope.of(context).requestFocus(_focusNodes[_generalFields[index + 1]['key'] as String]); }
+                                : null,
                           ),
           ),
         ],
@@ -806,15 +1101,17 @@ class _DailyLogFormState extends State<_DailyLogForm> {
               cell = DropdownButtonFormField<String>(
                 value: options.contains(cellValue) ? cellValue : null,
                 items: options.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 11, color: Colors.white)))).toList(),
-                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; }); },
+                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; _markDirty(); }); },
                 dropdownColor: OmniTheme.bg800,
                 style: const TextStyle(fontSize: 11, color: Colors.white),
                 decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 4)),
               );
             } else {
+              final isLastCol = columns.indexOf(col) == columns.length - 1;
               cell = TextFormField(
                 initialValue: cellValue,
                 style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary),
+                textInputAction: isLastCol && rowIdx < rows.length - 1 ? TextInputAction.next : TextInputAction.done,
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
@@ -828,7 +1125,16 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         )
                       : null,
                 ),
-                onChanged: (v) { rows[rowIdx][key] = v; },
+                onChanged: (v) { rows[rowIdx][key] = v; _markDirty(); },
+                onFieldSubmitted: isLastCol && rowIdx < rows.length - 1
+                    ? (_) {
+                        final nextColKey = columns.isNotEmpty ? columns[0]['key'] as String : '';
+                        // Focus next row by using a post-frame callback
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          FocusScope.of(context).nextFocus();
+                        });
+                      }
+                    : null,
               );
             }
             return SizedBox(width: width, child: cell);

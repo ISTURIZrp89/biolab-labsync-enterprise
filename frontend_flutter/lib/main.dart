@@ -4,9 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'data/db.dart';
+import 'data/db_native.dart';
 import 'data/repositories/auth_repository_impl.dart';
 import 'data/repositories/form_repository_impl.dart';
 import 'security/auth_service.dart';
+import 'security/permission_service.dart';
+import 'security/edit_lock_service.dart';
+import 'ai/ai_service.dart';
 import 'sync/sync_engine.dart';
 import 'sync/lan_discovery_service.dart';
 import 'sync/lan_sync_server.dart';
@@ -14,6 +19,7 @@ import 'services/update_service.dart';
 import 'services/notification_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/user_service.dart';
+import 'services/closure_service.dart';
 import 'presentation/screens/login_screen.dart';
 import 'theme/omni_theme.dart';
 
@@ -25,6 +31,8 @@ void main() async {
   };
 
   try {
+    ensureSqfliteInit();
+
     final prefs = await SharedPreferences.getInstance();
     var deviceId = prefs.getString('device_id');
     if (deviceId == null) {
@@ -39,8 +47,12 @@ void main() async {
     final updateService = UpdateService();
     final notificationService = NotificationService();
     final dashboardService = DashboardService();
+    final closureService = ClosureService();
     final userService = UserService();
     userService.loadFromAuth(authService);
+    final permissionService = PermissionService();
+    final editLockService = EditLockService();
+    final aiService = AiService(LocalDatabase.instance);
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
 
@@ -60,7 +72,11 @@ void main() async {
           ChangeNotifierProvider<UpdateService>.value(value: updateService),
           ChangeNotifierProvider<NotificationService>.value(value: notificationService),
           ChangeNotifierProvider<DashboardService>.value(value: dashboardService),
+          ChangeNotifierProvider<ClosureService>.value(value: closureService),
           ChangeNotifierProvider<UserService>.value(value: userService),
+          ChangeNotifierProvider<PermissionService>.value(value: permissionService),
+          ChangeNotifierProvider<EditLockService>.value(value: editLockService),
+          ChangeNotifierProvider<AiService>.value(value: aiService),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           Provider<FormRepositoryImpl>.value(value: formRepo),
