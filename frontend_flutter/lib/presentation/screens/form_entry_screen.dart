@@ -243,13 +243,16 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   String? _saveError;
   List<Map<String, dynamic>> _activities = [];
   List<Map<String, dynamic>> _resources = [];
+  List<Map<String, dynamic>> _cajas = [];
   final Map<String, List<String>> _historyCache = {};
   final ScrollController _fieldsScroll = ScrollController();
   final ScrollController _activitiesScrollH = ScrollController();
   final ScrollController _resourcesScrollH = ScrollController();
+  final ScrollController _cajasScrollH = ScrollController();
 
   List<Map<String, dynamic>> get _generalFields => ((widget.section['general_fields'] as List?) ?? []).cast<Map<String, dynamic>>();
   Map<String, dynamic>? get _activitiesTable => widget.section['activities_table'] as Map<String, dynamic>?;
+  Map<String, dynamic>? get _cajasTable => widget.section['cajas_table'] as Map<String, dynamic>?;
   Map<String, dynamic>? get _resourcesTable => widget.section['resources_table'] as Map<String, dynamic>?;
   List<Map<String, dynamic>> get _extraFields => ((widget.section['fields'] as List?) ?? []).cast<Map<String, dynamic>>();
 
@@ -264,6 +267,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     _fieldsScroll.dispose();
     _activitiesScrollH.dispose();
     _resourcesScrollH.dispose();
+    _cajasScrollH.dispose();
     for (final c in _controllers.values) { c.dispose(); }
     for (final f in _focusNodes.values) { f.dispose(); }
     super.dispose();
@@ -300,10 +304,15 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       _activities = acts.map((a) => Map<String, dynamic>.from(a as Map)).toList();
       final res = widget.existingEntry!.data['_recursos'] as List? ?? [];
       _resources = res.map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      final cajas = widget.existingEntry!.data['_cajas'] as List? ?? [];
+      _cajas = cajas.map((c) => Map<String, dynamic>.from(c as Map)).toList();
     }
 
     if (_activities.isEmpty && _activitiesTable != null) {
       _activities = [{}];
+    }
+    if (_cajas.isEmpty && _cajasTable != null) {
+      _cajas = [{}];
     }
     if (_resources.isEmpty && _resourcesTable != null) {
       _resources = [{}];
@@ -311,6 +320,11 @@ class _DailyLogFormState extends State<_DailyLogForm> {
 
     if (_activitiesTable != null) {
       for (final col in (_activitiesTable!['columns'] as List?) ?? []) {
+        if (col['history'] == true) historyKeys.add(col['key'] as String);
+      }
+    }
+    if (_cajasTable != null) {
+      for (final col in (_cajasTable!['columns'] as List?) ?? []) {
         if (col['history'] == true) historyKeys.add(col['key'] as String);
       }
     }
@@ -364,6 +378,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         if (c != null) _formData[key] = c.text;
       }
       _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+      _formData['_cajas'] = _cajas.where((c) => c.values.any((v) => v.toString().isNotEmpty)).toList();
       _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
 
       for (final f in _generalFields) {
@@ -426,6 +441,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       if (c != null) _formData[key] = c.text;
     }
     _formData['_actividades'] = _activities.where((a) => a.values.any((v) => v.toString().isNotEmpty)).toList();
+    _formData['_cajas'] = _cajas.where((c) => c.values.any((v) => v.toString().isNotEmpty)).toList();
     _formData['_recursos'] = _resources.where((r) => r.values.any((v) => v.toString().isNotEmpty)).toList();
 
     showDialog(
@@ -461,6 +477,14 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                 ..._activities.map((a) => Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(a.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
+                )),
+              ],
+              if (_cajas.isNotEmpty && _cajas[0].isNotEmpty) ...[
+                const Divider(color: OmniTheme.bg800),
+                Text('${_cajasTable?['label'] ?? 'Cajas Procesadas'}: ${_cajas.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: OmniTheme.accentBlue)),
+                ..._cajas.map((c) => Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(c.entries.map((e) => '${e.key}: ${e.value}').join(' | '), style: const TextStyle(fontSize: 10, color: OmniTheme.textSecondary)),
                 )),
               ],
               if (_resources.isNotEmpty && _resources[0].isNotEmpty) ...[
@@ -554,6 +578,15 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                           ((_activitiesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _activities,
                           _activitiesScrollH,
+                        ),
+                      ],
+                      if (_cajasTable != null) ...[
+                        const SizedBox(height: 20),
+                        _buildTableSection(
+                          _cajasTable!['label'] as String? ?? 'Cajas Procesadas',
+                          ((_cajasTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
+                          _cajas,
+                          _cajasScrollH,
                         ),
                       ],
                       if (_resourcesTable != null) ...[

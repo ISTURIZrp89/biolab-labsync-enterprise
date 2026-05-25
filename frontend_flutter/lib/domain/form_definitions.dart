@@ -26,6 +26,7 @@ final List<FormModuleDef> formModules = [
   _ultracongeladoresModule(),
   _equiposModule(),
   _procesamientoModule(),
+  _solucionCobreModule(),
 ];
 
 FormModuleDef _bitacoraModule() => {
@@ -44,17 +45,23 @@ FormModuleDef _bitacoraModule() => {
         {'key': 'hora_fin', 'label': 'Hora Final', 'type': 'time', 'required': true},
         {'key': 'responsable', 'label': 'Elaborado por', 'type': 'autofill', 'required': true},
         {'key': 'cargo', 'label': 'Cargo', 'type': 'autofill'},
-        {'key': 'area', 'label': 'Area', 'type': 'autofill'},
-        {'key': 'turno', 'label': 'Turno', 'type': 'autofill'},
-        {'key': 'supervisor', 'label': 'Supervisor', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Actividades',
         'key': 'actividades',
         'columns': [
-          {'key': 'hora', 'label': 'Hora', 'type': 'time', 'width': 80},
-          {'key': 'descripcion', 'label': 'Descripcion de la Actividad', 'type': 'text', 'width': 250},
-          {'key': 'resultados', 'label': 'Observaciones / Resultados', 'type': 'text', 'width': 250},
+          {'key': 'descripcion', 'label': 'Descripcion de la Actividad', 'type': 'text', 'width': 350},
+          {'key': 'resultados', 'label': 'Observaciones / Resultados', 'type': 'text', 'width': 350},
+        ],
+      },
+      'cajas_table': {
+        'label': 'Cajas Procesadas',
+        'key': 'cajas_procesadas',
+        'columns': [
+          {'key': 'cajas', 'label': 'Cajas Procesadas', 'type': 'text', 'width': 150},
+          {'key': 'tipo_tejido', 'label': 'Tipo de Tejido', 'type': 'select', 'options': ['Tejido Adiposo', 'Placenta', 'Membrana', 'Endometrio', 'Pulpa', 'GW', 'Autologas', 'Alogenicas'], 'width': 150},
+          {'key': 'viales', 'label': 'Viales Solicitados', 'type': 'text', 'width': 200},
+          {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 250},
         ],
       },
       'resources_table': {
@@ -321,6 +328,37 @@ FormModuleDef _equiposModule() => {
         ],
       },
       'fields': [],
+    },
+  ],
+};
+
+FormModuleDef _solucionCobreModule() => {
+  'module': 'solucion_cobre',
+  'label': 'Solucion de Iones Libres de Cobre',
+  'icon': 'science',
+  'color': '0xFF00BCD4',
+  'sections': [
+    {
+      'key': 'preparacion',
+      'label': 'Preparacion y Actividades del Dia',
+      'type': 'daily_log',
+      'general_fields': [
+        {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
+        {'key': 'hora_inicio', 'label': 'Hora Inicio', 'type': 'time', 'required': true},
+        {'key': 'hora_fin', 'label': 'Hora Final', 'type': 'time', 'required': true},
+        {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
+      ],
+      'activities_table': {
+        'label': 'Actividades Realizadas',
+        'key': 'actividades',
+        'columns': [
+          {'key': 'descripcion', 'label': 'Descripcion de la Actividad', 'type': 'text', 'width': 350},
+          {'key': 'resultados', 'label': 'Observaciones / Resultados', 'type': 'text', 'width': 350},
+        ],
+      },
+      'fields': [
+        {'key': 'incidencias', 'label': 'Incidencias', 'type': 'text', 'multiline': true},
+      ],
     },
   ],
 };
