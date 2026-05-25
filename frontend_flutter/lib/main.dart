@@ -195,6 +195,17 @@ class _BioLabAppState extends State<BioLabApp> {
             );
           }
         });
+
+        Timer.periodic(const Duration(hours: 6), (_) async {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final autoBackup = prefs.getBool('auto_backup') ?? false;
+            final backupPath = prefs.getString('backup_path') ?? '';
+            if (autoBackup && backupPath.isNotEmpty) {
+              await LocalDatabase.instance.exportToDirectory(backupPath, label: 'auto');
+            }
+          } catch (_) {}
+        });
       } catch (e) {
         debugPrint('Init error: $e');
       }

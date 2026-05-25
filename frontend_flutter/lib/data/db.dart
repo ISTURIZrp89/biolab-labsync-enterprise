@@ -51,16 +51,57 @@ class LocalDatabase {
     _currentDbPath = newPath;
   }
 
-  Future<void> exportToDirectory(String exportDir) async {
+  Future<String> exportToDirectory(String baseDir, {String? label}) async {
     final db = await database;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final exportDir = p.join(baseDir, 'BioLab', 'Backups', dateStr);
     final dir = Directory(exportDir);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
 
-    final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final exportPath = p.join(exportDir, 'labsync_backup_$timestamp.db');
+    final suffix = label != null ? '_$label' : '';
+    final exportPath = p.join(exportDir, 'labsync$suffix.db');
+    if (await File(exportPath).exists()) {
+      final olderPath = '$exportPath.${now.millisecondsSinceEpoch}';
+      await File(exportPath).copy(olderPath);
+    }
     await File(db.path).copy(exportPath);
+    return exportPath;
+  }
+
+  Future<String> exportForVerification(String baseDir) async {
+    final db = await database;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final exportDir = p.join(baseDir, 'BioLab', 'Verificacion', dateStr);
+    final dir = Directory(exportDir);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final entries = await db.query('form_entries', orderBy: 'date ASC');
+    final closures = await db.query('day_closures', orderBy: 'date ASC');
+    final queue = await db.query('sync_queue', orderBy: 'timestamp ASC');
+    final audit = await db.query('audit_log', orderBy: 'timestamp ASC');
+
+    final data = {
+      'exported_at': now.toUtc().toIso8601String(),
+      'version': 1,
+      'entries_count': entries.length,
+      'closures_count': closures.length,
+      'queue_count': queue.length,
+      'audit_count': audit.length,
+      'form_entries': entries,
+      'day_closures': closures,
+      'sync_queue': queue,
+      'audit_log': audit,
+    };
+
+    final exportPath = p.join(exportDir, 'verificacion.json');
+    await File(exportPath).writeAsString(jsonEncode(data));
+    return exportPath;
   }
 
   Future<void> importFromFile(String importFilePath) async {

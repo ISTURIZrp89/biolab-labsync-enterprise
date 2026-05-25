@@ -440,7 +440,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showExportDbDialog() async {
-    final controller = TextEditingController();
+    final defaultPath = _backupPath.isNotEmpty ? _backupPath : r'C:\Users\...\Google Drive';
+    final controller = TextEditingController(text: defaultPath);
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -450,7 +451,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Carpeta destino para la copia de seguridad (USB).',
+              'Carpeta destino. Se creara: BioLab/Backups/YYYY-MM-DD/',
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 12),
@@ -458,7 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: controller,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
-                hintText: r'D:\BioLab_Backup',
+                hintText: r'C:\Users\...\Google Drive',
                 hintStyle: TextStyle(color: Colors.white38),
                 prefixIcon: Icon(Icons.folder, color: Colors.white54),
               ),
@@ -478,10 +479,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (result != null && result.isNotEmpty) {
       try {
-        await LocalDatabase.instance.exportToDirectory(result);
+        final path = await LocalDatabase.instance.exportToDirectory(result);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Base de datos exportada exitosamente')),
+            SnackBar(content: Text('Exportado a: $path')),
           );
         }
       } catch (e) {
@@ -543,6 +544,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error al importar: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showVerifyDialog() async {
+    final defaultPath = _backupPath.isNotEmpty ? _backupPath : r'C:\Users\...\Google Drive';
+    final controller = TextEditingController(text: defaultPath);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Verificar Datos', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Exporta todos los datos como JSON legible para revisar en Google Drive.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: r'C:\Users\...\Google Drive',
+                hintStyle: TextStyle(color: Colors.white38),
+                prefixIcon: Icon(Icons.folder, color: Colors.white54),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+            child: const Text('Exportar JSON', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        final path = await LocalDatabase.instance.exportForVerification(result);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('JSON exportado a: $path')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al exportar: $e'), backgroundColor: Colors.red),
           );
         }
       }
@@ -1139,18 +1196,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _showMoveDbDialog,
               ),
               ListTile(
-                leading: const Icon(Icons.file_upload_outlined, color: OmniTheme.green400),
+                leading: const Icon(Icons.upload_file, color: OmniTheme.green400),
                 title: const Text('Exportar Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: const Text('Copia de seguridad a USB', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                subtitle: const Text('Copia a Google Drive/USB (organizado por fecha)', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.upload, color: OmniTheme.textMuted),
                 onTap: _showExportDbDialog,
               ),
               ListTile(
-                leading: const Icon(Icons.file_download_outlined, color: OmniTheme.orange400),
+                leading: const Icon(Icons.download_file, color: OmniTheme.orange400),
                 title: const Text('Importar Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: const Text('Restaurar desde USB', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.download, color: OmniTheme.textMuted),
                 onTap: _showImportDbDialog,
+              ),
+              ListTile(
+                leading: const Icon(Icons.verified, color: OmniTheme.accentBlue),
+                title: const Text('Verificar Datos en Google Drive', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Exporta JSON legible para revision', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.open_in_new, color: OmniTheme.textMuted),
+                onTap: _showVerifyDialog,
               ),
               SwitchListTile(
                 title: const Text('Dispositivo Principal', style: TextStyle(color: OmniTheme.textPrimary)),
