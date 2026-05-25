@@ -59,11 +59,12 @@ void main() async {
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
 
-    final lanEnabled = prefs.getBool('lan_sync_enabled') ?? false;
-    if (lanEnabled) {
-      final lanPort = prefs.getString('lan_port') ?? '8765';
+    final lanDiscoveryPort = int.tryParse(prefs.getString('lan_port') ?? '8765') ?? 8765;
+    lanDiscovery.start(port: lanDiscoveryPort);
+
+    final lanSyncServerEnabled = prefs.getBool('lan_sync_server_enabled') ?? false;
+    if (lanSyncServerEnabled) {
       final serverPort = prefs.getInt('lan_server_port') ?? 8766;
-      lanDiscovery.start(port: int.tryParse(lanPort) ?? 8765);
       lanSyncServer.start(port: serverPort);
     }
 
@@ -196,7 +197,7 @@ class _BioLabAppState extends State<BioLabApp> {
           }
         });
 
-        Timer.periodic(const Duration(hours: 6), (_) async {
+        Timer.periodic(const Duration(minutes: 30), (_) async {
           try {
             final prefs = await SharedPreferences.getInstance();
             final autoBackup = prefs.getBool('auto_backup') ?? false;

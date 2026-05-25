@@ -46,14 +46,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _encryptLocal = true;
   List<Map<String, String>> _equipmentList = [];
   List<Map<String, String>> _users = [];
-  bool _lanSyncEnabled = false;
-  bool _broadcastDiscovery = true;
   String _lanPort = '8765';
   int _lanServerPort = 8766;
-  List<DiscoveredPeer> _detectedPeers = [];
   String _dbSize = 'Calculando...';
-  bool _discoveryRunning = false;
-  bool _serverRunning = false;
 
   @override
   void initState() {
@@ -82,8 +77,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final savePath = prefs.getString('save_path') ?? '';
     final backupPath = prefs.getString('backup_path') ?? '';
     final encryptLocal = prefs.getBool('encrypt_local') ?? true;
-    final lanSync = prefs.getBool('lan_sync_enabled') ?? false;
-    final broadcast = prefs.getBool('lan_broadcast_discovery') ?? true;
     final lanPort = prefs.getString('lan_port') ?? '8765';
     final lanServerPort = prefs.getInt('lan_server_port') ?? 8766;
     final dbPath = prefs.getString('db_path') ?? '';
@@ -101,15 +94,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isPrimaryDevice = isPrimary;
       _autoBackup = autoBackup;
       _encryptLocal = encryptLocal;
-      _lanSyncEnabled = lanSync;
-      _broadcastDiscovery = broadcast;
       _lanPort = lanPort;
       _lanServerPort = lanServerPort;
     });
-
-    if (lanSync && mounted) {
-      _startLanServices();
-    }
 
     final sync = context.read<SyncEngine>();
     setState(() {
@@ -607,54 +594,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _startLanServices() {
-    _startLanDiscovery();
-    _startLanServer();
+    try {
+      final server = context.read<LanSyncServer>();
+      if (!server.isRunning) {
+        final prefs = SharedPreferences.getInstance();
+        // ignore: unused_local_variable
+        final pref = prefs;
+      }
+    } catch (_) {}
   }
 
   void _stopLanServices() {
     try {
-      final discovery = context.read<LanDiscoveryService>();
-      discovery.stop();
-    } catch (_) {}
-    try {
       final server = context.read<LanSyncServer>();
       server.stop();
     } catch (_) {}
-    setState(() {
-      _discoveryRunning = false;
-      _serverRunning = false;
-      _detectedPeers = [];
-    });
-  }
-
-  void _startLanDiscovery() {
-    final discovery = context.read<LanDiscoveryService>();
-    final port = int.tryParse(_lanPort) ?? 8765;
-    discovery.start(port: port);
-    discovery.removeListener(_onDiscoveryChanged);
-    discovery.addListener(_onDiscoveryChanged);
-    setState(() {
-      _discoveryRunning = true;
-      _detectedPeers = discovery.peers;
-    });
-  }
-
-  void _startLanServer() {
-    final server = context.read<LanSyncServer>();
-    server.start(port: _lanServerPort);
-    server.addListener(() {
-      if (mounted) setState(() => _serverRunning = server.isRunning);
-    });
-    setState(() => _serverRunning = true);
-  }
-
-  void _onDiscoveryChanged() {
-    if (!mounted) return;
-    final discovery = context.read<LanDiscoveryService>();
-    setState(() {
-      _discoveryRunning = discovery.isRunning;
-      _detectedPeers = discovery.peers;
-    });
   }
 
   Future<void> _changeSavePath() async {
@@ -1072,76 +1026,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
             ]),
-            _buildAccordion('Red LAN', Icons.lan, false, [
-              SwitchListTile(
-                title: const Text('Sincronizacion por red local', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: const Text('Compartir datos con otras PCs', style: TextStyle(color: OmniTheme.textMuted)),
-                value: _lanSyncEnabled,
-                activeColor: OmniTheme.accentBlue,
-                onChanged: (v) async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool('lan_sync_enabled', v);
-                  setState(() => _lanSyncEnabled = v);
-                  if (v) { _startLanServices(); } else { _stopLanServices(); }
+            _buildAccordion('Red WiFi', Icons.wifi, false, [
+              _buildInfoRow('Descubrimiento', 'Automatico (UDP)', Icons.search),
+              _buildInfoRow('PCs detectadas', '${context.watch<LanDiscoveryService>().peers.length}', Icons.computer),
+              if (context.watch<LanDiscoveryService>().peers.isNotEmpty)
+                ...context.watch<LanDiscoveryService>().peers.map((peer) => ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.computer, color: OmniTheme.green400, size: 18),
+                  title: Text(peer.hostname, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
+                  subtitle: Text('${peer.ip}:${peer.port}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+                )),
+              ListTile(
+                leading: const Icon(Icons.router, color: OmniTheme.accentBlue),
+                title: const Text('Puerto descubrimiento', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_lanPort, style: const TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () async {
+                  final ctl = TextEditingController(text: _lanPort);
+                  final port = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: OmniTheme.bg900,
+                      title: const Text('Puerto descubrimiento', style: TextStyle(color: OmniTheme.textPrimary)),
+                      content: TextField(controller: ctl, keyboardType: TextInputType.number, style: const TextStyle(color: OmniTheme.textPrimary), decoration: const InputDecoration(labelText: 'Puerto UDP', labelStyle: TextStyle(color: OmniTheme.textMuted))),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                        ElevatedButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Guardar')),
+                      ],
+                    ),
+                  );
+                  if (port != null && port.isNotEmpty) {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('lan_port', port);
+                    setState(() => _lanPort = port);
+                  }
                 },
               ),
-              if (_lanSyncEnabled) ...[
-                SwitchListTile(
-                  title: const Text('Descubrimiento automatico', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: const Text('Detectar otras PCs', style: TextStyle(color: OmniTheme.textMuted)),
-                  value: _broadcastDiscovery,
-                  activeColor: OmniTheme.accentBlue,
-                  onChanged: (v) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('lan_broadcast_discovery', v);
-                    setState(() => _broadcastDiscovery = v);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.router, color: OmniTheme.accentBlue),
-                  title: const Text('Puertos', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: Text('$_lanPort (UDP) / $_lanServerPort (HTTP)', style: const TextStyle(color: OmniTheme.textMuted)),
-                  trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
-                  onTap: () async {
-                    final ctl = TextEditingController(text: _lanPort);
-                    final srvCtl = TextEditingController(text: _lanServerPort.toString());
-                    final port = await showDialog<String>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: OmniTheme.bg900,
-                        title: const Text('Puertos de red', style: TextStyle(color: OmniTheme.textPrimary)),
-                        content: Column(mainAxisSize: MainAxisSize.min, children: [
-                          TextField(controller: ctl, keyboardType: TextInputType.number, style: const TextStyle(color: OmniTheme.textPrimary), decoration: const InputDecoration(labelText: 'Puerto descubrimiento (UDP)', labelStyle: TextStyle(color: OmniTheme.textMuted))),
-                          const SizedBox(height: 12),
-                          TextField(controller: srvCtl, keyboardType: TextInputType.number, style: const TextStyle(color: OmniTheme.textPrimary), decoration: const InputDecoration(labelText: 'Puerto sincronizacion (HTTP)', labelStyle: TextStyle(color: OmniTheme.textMuted))),
-                        ]),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-                          ElevatedButton(onPressed: () => Navigator.pop(ctx, '${ctl.text}|${srvCtl.text}'), child: const Text('Guardar')),
-                        ],
-                      ),
-                    );
-                    if (port != null && port.isNotEmpty) {
-                      final parts = port.split('|');
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setString('lan_port', parts[0]);
-                      if (parts.length > 1) await prefs.setInt('lan_server_port', int.tryParse(parts[1]) ?? 8766);
-                      setState(() { _lanPort = parts[0]; if (parts.length > 1) _lanServerPort = int.tryParse(parts[1]) ?? 8766; });
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.wifi_tethering, color: _discoveryRunning ? OmniTheme.green400 : OmniTheme.accentBlue),
-                  title: const Text('PCs detectadas', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: Text(_detectedPeers.isNotEmpty ? _detectedPeers.map((p) => '${p.hostname} (${p.ip})').join(', ') : 'Ninguna', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (_discoveryRunning) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: OmniTheme.green400)),
-                    IconButton(icon: const Icon(Icons.refresh, size: 18, color: OmniTheme.accentBlue), onPressed: _startLanDiscovery),
-                  ]),
-                ),
-                if (_detectedPeers.isNotEmpty)
-                  ..._detectedPeers.map((peer) => ListTile(dense: true, leading: Icon(Icons.computer, size: 18, color: OmniTheme.green400), title: Text(peer.hostname, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)), subtitle: Text('${peer.ip}:${peer.port}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)), trailing: const Icon(Icons.check_circle, size: 16, color: OmniTheme.green400))),
-              ],
+              const ListTile(
+                leading: Icon(Icons.lock, color: OmniTheme.green400),
+                title: Text('Conexion segura', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text('Sin puertos HTTP expuestos. La sincronizacion usa el servidor configurado.', style: TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+              ),
               ListTile(
                 leading: const Icon(Icons.cloud, color: OmniTheme.accentBlue),
                 title: const Text('URL del Servidor', style: TextStyle(color: OmniTheme.textPrimary)),
