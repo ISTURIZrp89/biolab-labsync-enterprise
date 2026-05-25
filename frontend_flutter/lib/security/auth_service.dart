@@ -38,6 +38,16 @@ class AuthService extends ChangeNotifier {
   bool get canManageClosures => isAdmin || isSupervisor;
   bool get canViewReports => isAdmin || isSupervisor || isAuditor || isOwner;
 
+  static String _mapRol(String rol) {
+    final upper = rol.toUpperCase();
+    if (upper == 'ADMIN') return 'ADMIN';
+    if (upper == 'SUPERVISOR' || upper == 'JEFE') return 'JEFE';
+    if (upper == 'LABORATORIO' || upper == 'TÉCNICO' || upper == 'TECNICO') return 'LABORATORIO';
+    if (upper == 'AUDITOR') return 'AUDITOR';
+    if (upper == 'DUENO' || upper == 'DUEÑO' || upper == 'OWNER') return 'DUEÑO';
+    return 'LABORATORIO';
+  }
+
   static const List<String> rolesSistema = ['ADMIN', 'JEFE', 'LABORATORIO', 'AUDITOR', 'DUEÑO'];
   static const List<String> cargosOperativos = ['TÉCNICO', 'BIÓLOGO', 'QFB', 'JEFE DE LABORATORIO', 'ADMINISTRADOR'];
 
@@ -103,18 +113,19 @@ class AuthService extends ChangeNotifier {
       try {
         final List users = jsonDecode(usersRaw);
         for (final u in users) {
-          if (u['pin'] == pin) {
+          final uid = u['id']?.toString() ?? '';
+          if (uid == userId && u['pin']?.toString() == pin) {
             await prefs.setString('jwt_token', 'local-offline-session');
             final cargoOperativo = u['cargo_operativo'] as String? ?? u['rol'] as String? ?? '';
             _currentUser = User(
-              id: u['pin'] as String,
-              nombre: u['nombre'] as String,
-              rol: u['rol'] as String,
+              id: uid,
+              nombre: u['nombre'] as String? ?? 'Usuario',
+              rol: _mapRol(u['rol'] as String? ?? 'Laboratorio'),
               cargo: u['cargo'] as String? ?? '',
               cargoOperativo: cargoOperativo,
               area: u['area'] as String? ?? '',
               supervisor: u['supervisor'] as String? ?? '',
-              firma: u['firma'] as String? ?? u['nombre'] as String,
+              firma: u['firma'] as String? ?? u['nombre'] as String? ?? '',
             );
             _isAuthenticated = true;
             _isLoading = false;

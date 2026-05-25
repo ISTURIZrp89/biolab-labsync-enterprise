@@ -50,8 +50,9 @@ FormModuleDef _bitacoraModule() => {
         'label': 'Actividades Realizadas',
         'key': 'actividades',
         'columns': [
+          {'key': 'actividad', 'label': 'Actividad', 'type': 'text', 'width': 200},
           {'key': 'descripcion', 'label': 'Descripcion de la Actividad', 'type': 'text', 'width': 350},
-          {'key': 'resultados', 'label': 'Observaciones / Resultados', 'type': 'text', 'width': 350},
+          {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 350},
         ],
       },
       'cajas_table': {

@@ -125,17 +125,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  static const _defaultEquipment = [
+    {'name': 'SANYO MCO-18AIC', 'model': 'MCO-18AIC', 'serial': '', 'category': 'Incubadoras'},
+    {'name': 'HERACELL VIOS 160i', 'model': 'VIOS 160i', 'serial': '', 'category': 'Incubadoras'},
+    {'name': 'STERI-CULT 200', 'model': '200', 'serial': '', 'category': 'Incubadoras'},
+    {'name': 'FORMA 3110', 'model': '3110', 'serial': '', 'category': 'Incubadoras'},
+    {'name': 'NUAIRE NU-8700', 'model': 'NU-8700', 'serial': '', 'category': 'Incubadoras'},
+    {'name': 'UC-1 (-80°C)', 'model': '', 'serial': '', 'category': 'Ultracongeladores'},
+    {'name': 'UC-2 (-80°C)', 'model': '', 'serial': '', 'category': 'Ultracongeladores'},
+    {'name': 'UC-3 (-20°C)', 'model': '', 'serial': '', 'category': 'Ultracongeladores'},
+    {'name': 'UC-4 (-80°C)', 'model': '', 'serial': '', 'category': 'Ultracongeladores'},
+    {'name': 'UC-5 (-150°C)', 'model': '', 'serial': '', 'category': 'Ultracongeladores'},
+    {'name': 'AUTOCLAVE 1 - TUTTNAUER', 'model': '', 'serial': '', 'category': 'Autoclaves'},
+    {'name': 'AUTOCLAVE 2 - STERIS', 'model': '', 'serial': '', 'category': 'Autoclaves'},
+    {'name': 'AUTOCLAVE 3 - GETINGE', 'model': '', 'serial': '', 'category': 'Autoclaves'},
+    {'name': 'CABINA 1 - BIOSAFETY II', 'model': '', 'serial': '', 'category': 'Campanas'},
+    {'name': 'CABINA 2 - BIOSAFETY II', 'model': '', 'serial': '', 'category': 'Campanas'},
+    {'name': 'CABINA 3 - LAMINAR FLOW', 'model': '', 'serial': '', 'category': 'Campanas'},
+    {'name': 'CABINA 4 - PCR', 'model': '', 'serial': '', 'category': 'Campanas'},
+    {'name': 'CENTRI-1 SORVALL', 'model': '', 'serial': '', 'category': 'Centrifugas'},
+    {'name': 'CENTRI-2 EPPENDORF', 'model': '', 'serial': '', 'category': 'Centrifugas'},
+    {'name': 'CENTRI-3 BECKMAN', 'model': '', 'serial': '', 'category': 'Centrifugas'},
+    {'name': 'MICROCENTRI-1', 'model': '', 'serial': '', 'category': 'Centrifugas'},
+    {'name': 'MICROCENTRI-2', 'model': '', 'serial': '', 'category': 'Centrifugas'},
+    {'name': 'MICROSCOPIO INVERTIDO LEICA', 'model': '', 'serial': '', 'category': 'Microscopios'},
+    {'name': 'MICROSCOPIO COMPUESTO ZEISS', 'model': '', 'serial': '', 'category': 'Microscopios'},
+    {'name': 'ESTEREOSCOPIO NIKON', 'model': '', 'serial': '', 'category': 'Microscopios'},
+    {'name': 'MICROSCOPIO CONFOCAL', 'model': '', 'serial': '', 'category': 'Microscopios'},
+    {'name': 'MICROSCOPIO FLUORESCENCIA', 'model': '', 'serial': '', 'category': 'Microscopios'},
+    {'name': 'pHmetro 1 - HANNA', 'model': '', 'serial': '', 'category': 'Potenciometros'},
+    {'name': 'pHmetro 2 - METTLER', 'model': '', 'serial': '', 'category': 'Potenciometros'},
+    {'name': 'CONDUCTIMETRO', 'model': '', 'serial': '', 'category': 'Potenciometros'},
+    {'name': 'SPECTROPHOTOMETER', 'model': '', 'serial': '', 'category': 'Potenciometros'},
+  ];
+
   Future<void> _loadEquipment() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('equipment_list');
     if (raw != null) {
       try {
         final list = jsonDecode(raw) as List;
-        setState(() {
-          _equipmentList = list.map((e) => Map<String, String>.from(e as Map)).toList();
-        });
+        if (list.isNotEmpty) {
+          setState(() {
+            _equipmentList = list.map((e) => Map<String, String>.from(e as Map)).toList();
+          });
+          return;
+        }
       } catch (_) {}
     }
+    setState(() {
+      _equipmentList = _defaultEquipment.map((e) => Map<String, String>.from(e)).toList();
+    });
+    await prefs.setString('equipment_list', jsonEncode(_equipmentList));
   }
 
   Future<void> _saveEquipment() async {

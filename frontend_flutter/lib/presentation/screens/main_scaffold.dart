@@ -136,24 +136,29 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width > 800;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth > 800;
+        final isCompact = constraints.maxWidth < 600;
 
-    Widget content;
-    if (_selectedIndex == 0) {
-      content = _buildDashboard();
-    } else {
-      content = const SizedBox.shrink();
-    }
+        Widget content;
+        if (_selectedIndex == 0) {
+          content = _buildDashboard();
+        } else {
+          content = const SizedBox.shrink();
+        }
 
-    return Scaffold(
-      backgroundColor: OmniTheme.bg950,
-      body: Row(
-        children: [
-          _buildNavRail(isDesktop),
-          const VerticalDivider(width: 1, color: OmniTheme.bg800),
-          Expanded(child: content),
-        ],
-      ),
+        return Scaffold(
+          backgroundColor: OmniTheme.bg950,
+          body: Row(
+            children: [
+              _buildNavRail(isDesktop, isCompact),
+              const VerticalDivider(width: 1, color: OmniTheme.bg800),
+              Expanded(child: content),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -183,7 +188,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       .toList();
   }
 
-  Widget _buildNavRail(bool extended) {
+  Widget _buildNavRail(bool extended, bool isCompact) {
     final auth = context.watch<AuthService>();
     final sync = context.watch<SyncEngine>();
     final filteredIndices = _getFilteredIndices();
@@ -202,9 +207,9 @@ class _MainScaffoldState extends State<MainScaffold> {
           _openModule(_moduleKeys[i], _navItems[i].label);
         }
       },
-      labelType: NavigationRailLabelType.all,
+      labelType: isCompact ? NavigationRailLabelType.none : NavigationRailLabelType.all,
       backgroundColor: OmniTheme.bg900,
-      minWidth: extended ? 80 : 64,
+      minWidth: isCompact ? 48 : (extended ? 80 : 64),
       groupAlignment: -1,
       leading: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

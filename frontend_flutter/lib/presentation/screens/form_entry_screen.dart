@@ -363,7 +363,17 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       _cajas = [{}];
     }
     if (_resources.isEmpty && _resourcesTable != null) {
-      _resources = [{}];
+      if (widget.module == 'bitacora' && widget.existingEntry == null) {
+        _resources = [
+          {'reactivo': 'Medio de Cultivo DMEM', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'Suero Fetal Bovino (SFB)', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'Tripsina-EDTA', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'PBS 1X', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'Agua Grado Reactivo', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+        ];
+      } else {
+        _resources = [{}];
+      }
     }
 
     if (_activitiesTable != null) {
@@ -878,8 +888,9 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                   controller: _fieldsScroll,
                   padding: const EdgeInsets.all(16),
                   child: Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 800),
+                    child: LayoutBuilder(
+                    builder: (context, constraints) => Container(
+                      constraints: BoxConstraints(maxWidth: constraints.maxWidth > 800 ? 800 : constraints.maxWidth),
                       child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -930,6 +941,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                       ],
                       const SizedBox(height: 100),
                     ],
+                      ),
                       ),
                     ),
                   ),

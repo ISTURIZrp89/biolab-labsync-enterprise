@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,7 +6,6 @@ import '../../security/auth_service.dart';
 import '../../services/user_service.dart';
 import '../../theme/omni_theme.dart';
 import 'main_scaffold.dart';
-import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,8 +16,10 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _pinController = TextEditingController();
-  final TextEditingController _userIdController = TextEditingController(text: 'usr-admin');
   String _errorMessage = '';
+  String? _selectedUserId;
+  List<Map<String, dynamic>> _users = [];
+  bool _loading = true;
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -37,25 +39,51 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
     _animController.forward();
+    _loadUsers();
   }
 
   @override
   void dispose() {
     _pinController.dispose();
-    _userIdController.dispose();
     _animController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('users_list');
+    if (raw != null && raw != '[]') {
+      try {
+        final list = jsonDecode(raw) as List;
+        _users = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {}
+    }
+    if (_users.isEmpty) {
+      _users = [
+        {'id': '1', 'nombre': 'Admin', 'pin': '1234', 'rol': 'Admin', 'cargo_operativo': 'ADMINISTRADOR', 'area': '', 'supervisor': '', 'firma': ''},
+        {'id': '2', 'nombre': 'Jefe', 'pin': '0000', 'rol': 'Supervisor', 'cargo_operativo': 'JEFE DE LABORATORIO', 'area': '', 'supervisor': '', 'firma': ''},
+        {'id': '3', 'nombre': 'Tecnico', 'pin': '1111', 'rol': 'Laboratorio', 'cargo_operativo': 'TÉCNICO', 'area': '', 'supervisor': '', 'firma': ''},
+        {'id': '4', 'nombre': 'Auditor', 'pin': '2222', 'rol': 'Auditor', 'cargo_operativo': 'QFB', 'area': '', 'supervisor': '', 'firma': ''},
+        {'id': '5', 'nombre': 'Director General', 'pin': '3333', 'rol': 'Dueno', 'cargo_operativo': 'DIRECTOR GENERAL', 'area': '', 'supervisor': '', 'firma': ''},
+      ];
+    }
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _attemptLogin() async {
     setState(() => _errorMessage = '');
     final pin = _pinController.text;
-    final userId = _userIdController.text;
-    final prefs = await SharedPreferences.getInstance();
-    final deviceId = prefs.getString('device_id') ?? '';
+    if (_selectedUserId == null) {
+      setState(() => _errorMessage = 'Selecciona un usuario');
+      return;
+    }
+    if (pin.isEmpty) {
+      setState(() => _errorMessage = 'Ingresa tu PIN');
+      return;
+    }
 
     final authService = context.read<AuthService>();
-    final success = await authService.login(userId, pin, deviceId);
+    final success = await authService.login(_selectedUserId!, pin, '');
 
     if (success && mounted) {
       context.read<UserService>().loadFromAuth(authService);
@@ -76,6 +104,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final selectedUser = _selectedUserId != null
+        ? _users.where((u) => u['id'].toString() == _selectedUserId).firstOrNull
+        : null;
+
     return Scaffold(
       backgroundColor: OmniTheme.bg950,
       body: Stack(
@@ -87,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               child: SlideTransition(
                 position: _slideAnim,
                 child: Container(
-                  width: 380,
+                  width: 400,
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Card(
                     child: Padding(
@@ -96,8 +128,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 48,
-                            height: 48,
+                            width: 48, height: 48,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                 colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo],
@@ -139,33 +170,53 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                           ),
                           const SizedBox(height: 24),
-                          TextField(
-                            controller: _userIdController,
-                            style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 14),
-                            decoration: const InputDecoration(
-                              labelText: 'USUARIO',
-                              prefixIcon: Icon(Icons.person_outline, size: 18, color: OmniTheme.textMuted),
+                          if (_loading)
+                            const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else ...[
+                            DropdownButtonFormField<String>(
+                              value: _selectedUserId,
+                              items: _users.map((u) => DropdownMenuItem(
+                                value: u['id'].toString(),
+                                child: Row(children: [
+                                  Icon(Icons.person, size: 16, color: OmniTheme.accentBlue),
+                                  const SizedBox(width: 8),
+                                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(u['nombre'] ?? '', style: const TextStyle(fontSize: 14, color: Colors.white)),
+                                    Text(u['rol'] ?? '', style: TextStyle(fontSize: 10, color: OmniTheme.textMuted)),
+                                  ]),
+                                ]),
+                              )).toList(),
+                              onChanged: (v) => setState(() => _selectedUserId = v),
+                              dropdownColor: OmniTheme.bg800,
+                              style: const TextStyle(fontSize: 14, color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'USUARIO',
+                                prefixIcon: Icon(Icons.person_outline, size: 18, color: OmniTheme.textMuted),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _pinController,
-                            obscureText: true,
-                            keyboardType: TextInputType.number,
-                            maxLength: 4,
-                            style: const TextStyle(
-                              color: OmniTheme.textPrimary,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 12,
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _pinController,
+                              obscureText: true,
+                              keyboardType: TextInputType.number,
+                              maxLength: 4,
+                              style: const TextStyle(
+                                color: OmniTheme.textPrimary,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 12,
+                              ),
+                              textAlign: TextAlign.center,
+                              decoration: const InputDecoration(
+                                labelText: 'PIN',
+                                counterText: '',
+                                prefixIcon: Icon(Icons.lock_outline, size: 18, color: OmniTheme.textMuted),
+                              ),
                             ),
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              labelText: 'PIN',
-                              counterText: '',
-                              prefixIcon: Icon(Icons.lock_outline, size: 18, color: OmniTheme.textMuted),
-                            ),
-                          ),
+                          ],
                           if (_errorMessage.isNotEmpty) ...[
                             const SizedBox(height: 12),
                             Container(
@@ -180,10 +231,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 children: [
                                   const Icon(Icons.error_outline, size: 16, color: OmniTheme.red400),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    _errorMessage,
-                                    style: const TextStyle(color: OmniTheme.red400, fontSize: 12),
-                                  ),
+                                  Text(_errorMessage, style: const TextStyle(color: OmniTheme.red400, fontSize: 12)),
                                 ],
                               ),
                             ),
@@ -195,14 +243,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               child: ElevatedButton(
                                 onPressed: auth.isLoading ? null : _attemptLogin,
                                 child: auth.isLoading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                     : const Text('INICIAR SESION'),
                               ),
                             ),
