@@ -274,6 +274,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   List<Map<String, dynamic>> _resources = [];
   List<Map<String, dynamic>> _cajas = [];
   final Map<String, List<String>> _historyCache = {};
+  final Map<String, List<String>> _equipmentOptionsByCategory = {};
   final ScrollController _fieldsScroll = ScrollController();
   final ScrollController _activitiesScrollH = ScrollController();
   final ScrollController _resourcesScrollH = ScrollController();
@@ -290,6 +291,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     super.initState();
     _initForm();
     _loadDraft();
+    _loadEquipmentOptions();
     try {
       _lockService = context.read<EditLockService>();
       if (widget.existingEntry != null) {
@@ -391,6 +393,26 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       if (raw != null) {
         final list = (jsonDecode(raw) as List).cast<String>();
         if (mounted) setState(() => _historyCache[fieldKey] = list);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadEquipmentOptions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('equipment_list');
+      if (raw != null) {
+        final list = jsonDecode(raw) as List;
+        final byCategory = <String, List<String>>{};
+        for (final e in list) {
+          final map = Map<String, dynamic>.from(e as Map);
+          final cat = map['category'] as String? ?? '';
+          final name = map['name'] as String? ?? '';
+          if (name.isNotEmpty) {
+            byCategory.putIfAbsent(cat, () => []).add(name);
+          }
+        }
+        if (mounted) setState(() => _equipmentOptionsByCategory..addAll(byCategory));
       }
     } catch (_) {}
   }
@@ -527,6 +549,9 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       if (data['_actividades'] is List) {
         _activities = (data['_actividades'] as List).map((a) => Map<String, dynamic>.from(a as Map)).toList();
       }
+      if (data['_cajas'] is List) {
+        _cajas = (data['_cajas'] as List).map((c) => Map<String, dynamic>.from(c as Map)).toList();
+      }
       if (data['_recursos'] is List) {
         _resources = (data['_recursos'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
       }
@@ -585,6 +610,9 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       }
       if (sourceData['_actividades'] is List) {
         _activities = (sourceData['_actividades'] as List).map((a) => Map<String, dynamic>.from(a as Map)).toList();
+      }
+      if (sourceData['_cajas'] is List) {
+        _cajas = (sourceData['_cajas'] as List).map((c) => Map<String, dynamic>.from(c as Map)).toList();
       }
       if (sourceData['_recursos'] is List) {
         _resources = (sourceData['_recursos'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
@@ -867,15 +895,21 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                           ((_activitiesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _activities,
                           _activitiesScrollH,
+                          onPaste: _makePasteCallback(_activities, ((_activitiesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>()),
                         ),
                       ],
                       if (_cajasTable != null) ...[
+                        if (widget.module == 'procesamiento') ...[
+                          const SizedBox(height: 20),
+                          _buildCopyFromBitacoraButton(),
+                        ],
                         const SizedBox(height: 20),
                         _buildTableSection(
                           _cajasTable!['label'] as String? ?? 'Cajas Procesadas',
                           ((_cajasTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _cajas,
                           _cajasScrollH,
+                          onPaste: _makePasteCallback(_cajas, ((_cajasTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>()),
                         ),
                       ],
                       if (_resourcesTable != null) ...[
@@ -885,6 +919,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                           ((_resourcesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
                           _resources,
                           _resourcesScrollH,
+                          onPaste: _makePasteCallback(_resources, ((_resourcesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>()),
                         ),
                       ],
                       if (_extraFields.isNotEmpty) ...[
@@ -1014,7 +1049,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     );
   }
 
-  Widget _buildTableSection(String label, List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows, ScrollController scrollH) {
+  Widget _buildTableSection(String label, List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows, ScrollController scrollH, {VoidCallback? onPaste}) {
     if (columns.isEmpty) return const SizedBox.shrink();
 
     double totalWidth = 70;
@@ -1029,8 +1064,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           Text('${rows.length}', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue, fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
           _tableAction(Icons.add, () => _addRow(rows, columns)),
-          const SizedBox(width: 4),
-          _tableAction(Icons.content_paste, _pasteFromClipboard),
+          if (onPaste != null) ...[const SizedBox(width: 4), _tableAction(Icons.content_paste, onPaste)],
         ]),
         const SizedBox(height: 8),
         Container(
@@ -1093,13 +1127,16 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           ...columns.map((col) {
             final key = col['key'] as String;
             final type = col['type'] as String? ?? 'text';
-            final options = col['options'] as List?;
+            final dynamicCat = col['dynamic'] as String?;
+            final options = dynamicCat != null && _equipmentOptionsByCategory.containsKey(dynamicCat)
+                ? _equipmentOptionsByCategory[dynamicCat]!
+                : col['options'] as List?;
             final width = (col['width'] as num?)?.toDouble() ?? 120;
             final cellValue = rows[rowIdx][key]?.toString() ?? '';
             final history = col['history'] == true ? _historyCache[key] : null;
 
             Widget cell;
-            if (type == 'select' && options != null) {
+            if (type == 'select' && options != null && options.isNotEmpty) {
               cell = DropdownButtonFormField<String>(
                 value: options.contains(cellValue) ? cellValue : null,
                 items: options.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 11, color: Colors.white)))).toList(),
@@ -1153,6 +1190,109 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     );
   }
 
+  Widget _buildCopyFromBitacoraButton() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.import_export, size: 14),
+        label: const Text('Importar cajas desde Bitácora', style: TextStyle(fontSize: 11)),
+        style: OutlinedButton.styleFrom(foregroundColor: OmniTheme.accentBlue, side: BorderSide(color: OmniTheme.accentBlue.withOpacity(0.4))),
+        onPressed: () async {
+          try {
+            final repo = context.read<FormRepositoryImpl>();
+            final bitacoraEntries = await repo.getEntriesByModule('bitacora');
+            final cajasDisponibles = <Map<String, dynamic>>[];
+            for (final entry in bitacoraEntries) {
+              final cajasList = entry.data['_cajas'] as List? ?? [];
+              for (final c in cajasList) {
+                final cMap = Map<String, dynamic>.from(c as Map);
+                cajasDisponibles.add({
+                  'fecha': entry.data['fecha'] ?? entry.date,
+                  'cajas': cMap['cajas'] ?? '',
+                  'tipo_tejido': cMap['tipo_tejido'] ?? '',
+                  'viales': cMap['viales'] ?? '',
+                });
+              }
+            }
+            if (cajasDisponibles.isEmpty) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay cajas registradas en Bitácora'), backgroundColor: OmniTheme.orange400));
+              return;
+            }
+            if (!mounted) return;
+            final selected = await showDialog<List<int>>(
+              context: context,
+              builder: (ctx) {
+                final selectedIndices = <int>{};
+                return StatefulBuilder(
+                  builder: (ctx, setDialogState) => AlertDialog(
+                    backgroundColor: OmniTheme.bg900,
+                    title: const Text('Importar cajas de Bitácora', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    content: SizedBox(
+                      width: 400,
+                      child: cajasDisponibles.isEmpty
+                          ? const Text('Sin cajas disponibles', style: TextStyle(color: OmniTheme.textMuted))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: cajasDisponibles.length,
+                              itemBuilder: (_, i) {
+                                final c = cajasDisponibles[i];
+                                final checked = selectedIndices.contains(i);
+                                return CheckboxListTile(
+                                  dense: true,
+                                  value: checked,
+                                  activeColor: OmniTheme.accentBlue,
+                                  title: Text('${c['cajas']} - ${c['tipo_tejido']}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                  subtitle: Text('${c['fecha']} | Viales: ${c['viales']}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+                                  onChanged: (v) {
+                                    setDialogState(() {
+                                      if (v == true) { selectedIndices.add(i); } else { selectedIndices.remove(i); }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+                      ElevatedButton(
+                        onPressed: selectedIndices.isEmpty ? null : () => Navigator.pop(ctx, selectedIndices.toList()),
+                        style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+                        child: Text('Importar (${selectedIndices.length})', style: const TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+            if (selected != null && selected.isNotEmpty) {
+              setState(() {
+                for (final i in selected) {
+                  final c = cajasDisponibles[i];
+                  _cajas.add({
+                    'pedido': '',
+                    'presentacion': '',
+                    'volumen': '',
+                    'uso': '',
+                    'tejido': c['tipo_tejido'] ?? '',
+                    'paciente': '',
+                    'enviado_a': '',
+                    'pedido_por': '',
+                    'fecha_proceso': '',
+                    'notas': 'Importado de Bitácora (${c['fecha']})',
+                  });
+                }
+                _markDirty();
+              });
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${selected.length} caja(s) importada(s)'), backgroundColor: OmniTheme.green400));
+            }
+          } catch (e) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildExtraField(int index) {
     final f = _extraFields[index];
     final key = f['key'] as String;
@@ -1185,25 +1325,26 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     );
   }
 
-  Future<void> _pasteFromClipboard() async {
-    try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      if (data?.text == null || data!.text!.trim().isEmpty) return;
-      final lines = data.text!.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
-      if (lines.isEmpty) return;
+  VoidCallback _makePasteCallback(List<Map<String, dynamic>> target, List<Map<String, dynamic>> columns) {
+    return () async {
+      try {
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        if (data?.text == null || data!.text!.trim().isEmpty) return;
+        final lines = data.text!.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+        if (lines.isEmpty) return;
 
-      final columns = (_activitiesTable?['columns'] as List?) ?? [];
-      setState(() {
-        for (final line in lines) {
-          final values = line.split('\t');
-          final row = <String, dynamic>{};
-          for (int c = 0; c < columns.length; c++) {
-            row[columns[c]['key'] as String] = c < values.length ? values[c].trim() : '';
+        setState(() {
+          for (final line in lines) {
+            final values = line.split('\t');
+            final row = <String, dynamic>{};
+            for (int c = 0; c < columns.length; c++) {
+              row[columns[c]['key'] as String] = c < values.length ? values[c].trim() : '';
+            }
+            target.add(row);
           }
-          _activities.add(row);
-        }
-      });
-    } catch (_) {}
+        });
+      } catch (_) {}
+    };
   }
 
   Widget _buildFooter() {

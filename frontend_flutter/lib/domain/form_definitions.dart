@@ -99,14 +99,12 @@ FormModuleDef _incubadorasModule() => {
         {'key': 'hora', 'label': 'Hora de Lectura', 'type': 'time', 'required': true},
         {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
         {'key': 'cargo_operativo', 'label': 'Cargo', 'type': 'autofill'},
-        {'key': 'area', 'label': 'Área', 'type': 'autofill'},
-        {'key': 'supervisor', 'label': 'Supervisor', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Lecturas de Temperatura y CO2',
         'key': 'lecturas',
         'columns': [
-          {'key': 'equipo', 'label': 'Incubadora', 'type': 'select', 'options': ['SANYO MCO-18AIC', 'HERACELL VIOS 160i', 'STERI-CULT 200', 'FORMA 3110', 'NUAIRE NU-8700'], 'width': 140},
+          {'key': 'equipo', 'label': 'Incubadora', 'type': 'select', 'dynamic': 'Incubadoras', 'width': 140},
           {'key': 'temperatura', 'label': 'Temperatura °C', 'type': 'number', 'width': 100},
           {'key': 'temp_min', 'label': 'Temp Min', 'type': 'number', 'width': 80},
           {'key': 'temp_max', 'label': 'Temp Max', 'type': 'number', 'width': 80},
@@ -150,14 +148,13 @@ FormModuleDef _autoclavesModule() => {
         {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
         {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
         {'key': 'cargo_operativo', 'label': 'Cargo', 'type': 'autofill'},
-        {'key': 'area', 'label': 'Área', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Ciclos de Esterilización',
         'key': 'ciclos',
         'columns': [
           {'key': 'ciclo_no', 'label': 'Ciclo No.', 'type': 'number', 'width': 70},
-          {'key': 'equipo', 'label': 'Autoclave', 'type': 'select', 'options': ['AUTOCLAVE 1 - TUTTNAUER', 'AUTOCLAVE 2 - STERIS', 'AUTOCLAVE 3 - GETINGE'], 'width': 160},
+          {'key': 'equipo', 'label': 'Autoclave', 'type': 'select', 'dynamic': 'Autoclaves', 'width': 160},
           {'key': 'hora_inicio', 'label': 'Hora Inicio', 'type': 'time', 'width': 90},
           {'key': 'hora_fin', 'label': 'Hora Fin', 'type': 'time', 'width': 90},
           {'key': 'contenido', 'label': 'Contenido / Carga', 'type': 'text', 'width': 180},
@@ -185,7 +182,7 @@ FormModuleDef _autoclavesModule() => {
         'label': 'Actividades de Mantenimiento',
         'key': 'actividades',
         'columns': [
-          {'key': 'equipo', 'label': 'Autoclave', 'type': 'select', 'options': ['AUTOCLAVE 1', 'AUTOCLAVE 2', 'AUTOCLAVE 3'], 'width': 120},
+          {'key': 'equipo', 'label': 'Autoclave', 'type': 'select', 'dynamic': 'Autoclaves', 'width': 120},
           {'key': 'actividad', 'label': 'Actividad Realizada', 'type': 'text', 'width': 250},
           {'key': 'realizado_por', 'label': 'Realizado por', 'type': 'text', 'width': 150},
           {'key': 'fecha_prox', 'label': 'Próximo Mantenimiento', 'type': 'date', 'width': 120},
@@ -234,14 +231,12 @@ FormModuleDef _ultracongeladoresModule() => {
         {'key': 'hora', 'label': 'Hora de Lectura', 'type': 'time', 'required': true},
         {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
         {'key': 'cargo_operativo', 'label': 'Cargo', 'type': 'autofill'},
-        {'key': 'area', 'label': 'Área', 'type': 'autofill'},
-        {'key': 'supervisor', 'label': 'Supervisor', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Lecturas de Temperatura',
         'key': 'temperaturas',
         'columns': [
-          {'key': 'equipo', 'label': 'Ultracongelador', 'type': 'select', 'options': ['UC-1 (-80°C)', 'UC-2 (-80°C)', 'UC-3 (-20°C)', 'UC-4 (-80°C)', 'UC-5 (-150°C)'], 'width': 150},
+          {'key': 'equipo', 'label': 'Ultracongelador', 'type': 'select', 'dynamic': 'Ultracongeladores', 'width': 150},
           {'key': 'temperatura', 'label': 'Temperatura °C', 'type': 'number', 'width': 100},
           {'key': 'temp_min', 'label': 'Temp Mínima', 'type': 'number', 'width': 90},
           {'key': 'temp_max', 'label': 'Temp Máxima', 'type': 'number', 'width': 90},
@@ -283,7 +278,6 @@ FormModuleDef _equiposModule() => {
         {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
         {'key': 'hora', 'label': 'Hora de Lectura', 'type': 'time', 'required': true},
         {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
-        {'key': 'area', 'label': 'Área', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Lecturas Ambientales',
@@ -312,7 +306,7 @@ FormModuleDef _equiposModule() => {
         'label': 'Registro Diario',
         'key': 'registro',
         'columns': [
-          {'key': 'campana', 'label': 'Campana', 'type': 'select', 'options': ['CABINA 1 - BIOSAFETY II', 'CABINA 2 - BIOSAFETY II', 'CABINA 3 - LAMINAR FLOW', 'CABINA 4 - PCR'], 'width': 160},
+          {'key': 'campana', 'label': 'Campana', 'type': 'select', 'dynamic': 'Campanas', 'width': 160},
           {'key': 'hora_encendido', 'label': 'Encendido', 'type': 'time', 'width': 80},
           {'key': 'estado', 'label': 'Estado', 'type': 'select', 'options': ['ENCENDIDA', 'APAGADA', 'MANTENIMIENTO'], 'width': 110},
           {'key': 'limpieza', 'label': 'Limpieza Previa', 'type': 'select', 'options': ['SÍ', 'NO', 'NA'], 'width': 100},
@@ -335,7 +329,7 @@ FormModuleDef _equiposModule() => {
         'label': 'Registro de Uso',
         'key': 'registro',
         'columns': [
-          {'key': 'centrifuga', 'label': 'Centrífuga', 'type': 'select', 'options': ['CENTRI-1 SORVALL', 'CENTRI-2 EPPENDORF', 'CENTRI-3 BECKMAN', 'MICROCENTRI-1', 'MICROCENTRI-2'], 'width': 150},
+          {'key': 'centrifuga', 'label': 'Centrífuga', 'type': 'select', 'dynamic': 'Centrifugas', 'width': 150},
           {'key': 'hora_inicio', 'label': 'Inicio', 'type': 'time', 'width': 80},
           {'key': 'hora_fin', 'label': 'Fin', 'type': 'time', 'width': 80},
           {'key': 'rpm', 'label': 'RPM', 'type': 'number', 'width': 90},
@@ -362,7 +356,7 @@ FormModuleDef _equiposModule() => {
         'label': 'Registro de Uso',
         'key': 'usos',
         'columns': [
-          {'key': 'microscopio', 'label': 'Microscopio', 'type': 'select', 'options': ['1 - INVERTIDO LEICA', '2 - COMPUESTO ZEISS', '3 - ESTEREOSCOPIO NIKON', '4 - CONFOCAL', '5 - FLUORESCENCIA'], 'width': 160},
+          {'key': 'microscopio', 'label': 'Microscopio', 'type': 'select', 'dynamic': 'Microscopios', 'width': 160},
           {'key': 'objetivo', 'label': 'Objetivo', 'type': 'text', 'width': 100},
           {'key': 'actividad', 'label': 'Actividad / Muestra', 'type': 'text', 'width': 250},
           {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 200},
@@ -386,7 +380,7 @@ FormModuleDef _equiposModule() => {
         'label': 'Mediciones',
         'key': 'mediciones',
         'columns': [
-          {'key': 'equipo', 'label': 'Equipo', 'type': 'select', 'options': ['pHmetro 1 - HANNA', 'pHmetro 2 - METTLER', 'CONDUCTIMETRO', 'SPECTROPHOTOMETER'], 'width': 150},
+          {'key': 'equipo', 'label': 'Equipo', 'type': 'select', 'dynamic': 'Potenciometros', 'width': 150},
           {'key': 'ph_obtenido', 'label': 'pH Obtenido', 'type': 'text', 'width': 100},
           {'key': 'temperatura', 'label': 'Temperatura °C', 'type': 'number', 'width': 90},
           {'key': 'calibracion', 'label': 'Calibración', 'type': 'select', 'options': ['SÍ', 'NO', 'PENDIENTE'], 'width': 100},
@@ -445,8 +439,6 @@ FormModuleDef _procesamientoModule() => {
         {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
         {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
         {'key': 'cargo_operativo', 'label': 'Cargo', 'type': 'autofill'},
-        {'key': 'area', 'label': 'Área', 'type': 'autofill'},
-        {'key': 'supervisor', 'label': 'Supervisor', 'type': 'autofill'},
       ],
       'activities_table': {
         'label': 'Procesamiento',
@@ -462,17 +454,6 @@ FormModuleDef _procesamientoModule() => {
           {'key': 'pedido_por', 'label': 'Solicitado por', 'type': 'select', 'options': ['DR. JAVIER ARENAS', 'DRA. MARÍA RIVERA', 'DR. CARLOS MENDOZA', 'OTRO'], 'width': 130},
           {'key': 'fecha_proceso', 'label': 'Fecha Proceso', 'type': 'date', 'width': 100},
           {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
-        ],
-      },
-      'resources_table': {
-        'label': 'Reactivos y Materiales',
-        'key': 'recursos',
-        'columns': [
-          {'key': 'reactivo', 'label': 'Reactivo / Material', 'type': 'text', 'width': 180, 'history': true},
-          {'key': 'lote', 'label': 'Lote No.', 'type': 'text', 'width': 120, 'history': true},
-          {'key': 'caducidad', 'label': 'Fecha Caducidad', 'type': 'date', 'width': 120},
-          {'key': 'cantidad', 'label': 'Cantidad', 'type': 'number', 'width': 80},
-          {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 200},
         ],
       },
       'fields': [
