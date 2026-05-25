@@ -64,8 +64,6 @@ FormModuleDef _bitacoraModule() => {
           {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 250},
         ],
       },
-        ],
-      },
       'resources_table': {
         'label': 'Recursos Utilizados',
         'key': 'recursos',
