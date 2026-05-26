@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../data/db.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
+import '../../ai/ai_service.dart';
 import '../../sync/lan_discovery_service.dart';
 import '../../sync/lan_sync_server.dart';
 import '../../services/update_service.dart';
@@ -1232,6 +1233,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ]),
+            _buildAccordion('Productos Registrados', Icons.inventory_2, false, [
+              _buildProductCategory('Presentaciones', 'presentacion', ['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO']),
+              _buildProductCategory('Volumenes', 'volumen', ['5CC', '3CC', '2CC', '1CC', '10CC']),
+              _buildProductCategory('Usos Terapeuticos', 'uso', ['SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'ARTICULAR TOBILLO', 'ARTICULAR LUMBAR', 'INTRAVENOSO', 'TOPICO']),
+              _buildProductCategory('Tipos de Tejido', 'tejido', ['PLACENTA', 'TEJIDO ADIPOSO', 'PULPA', 'ENDOMETRIO', 'MEMBRANA', 'GW', 'AUTOLOGAS', 'ALOGENICAS', 'EXOSOMAS', 'CORDON UMBILICAL']),
+              _buildProductCategory('Enviado a', 'enviado_a', ['INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLINICA PRIVADA', 'OTRO']),
+              _buildProductCategory('Solicitado por', 'pedido_por', ['DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK', 'OTRO']),
+            ]),
+            _buildAccordion('Supervisor AI', Icons.psychology, false, [
+              FutureBuilder<SharedPreferences>(
+                future: SharedPreferences.getInstance(),
+                builder: (ctx, snap) {
+                  final prefs = snap.data;
+                  final aiEnabled = prefs?.getBool('ai_enabled') ?? true;
+                  return Column(children: [
+                    SwitchListTile(
+                      value: aiEnabled,
+                      onChanged: (v) async {
+                        final p = await SharedPreferences.getInstance();
+                        await p.setBool('ai_enabled', v);
+                        try { context.read<AiService>().enabled = v; } catch (_) {}
+                        setState(() {});
+                      },
+                      title: const Text('Texto Predictivo', style: TextStyle(color: OmniTheme.textPrimary)),
+                      subtitle: const Text('Sugerencias inteligentes al llenar formularios', style: TextStyle(color: OmniTheme.textMuted)),
+                      activeColor: OmniTheme.accentBlue,
+                    ),
+                    const Divider(color: OmniTheme.bg800),
+                    _buildSyncStatRow('Sincronizaciones', context.watch<SyncEngine>().syncCount),
+                    _buildSyncStatRow('Fallos detectados', context.watch<SyncEngine>().failedCount),
+                    if (context.watch<SyncEngine>().failedCount > 0) ...[
+                      const Divider(color: OmniTheme.bg800),
+                      ListTile(
+                        leading: const Icon(Icons.refresh, color: OmniTheme.orange400),
+                        title: const Text('Reintentar sincronizaciones fallidas', style: TextStyle(color: OmniTheme.textPrimary)),
+                        onTap: () async {
+                          try { await context.read<SyncEngine>().retryFailed(); } catch (_) {}
+                        },
+                      ),
+                    ],
+                    const Divider(color: OmniTheme.bg800),
+                    ListTile(
+                      leading: const Icon(Icons.auto_fix_high, color: OmniTheme.green400),
+                      title: const Text('Dedup de opciones personalizadas', style: TextStyle(color: OmniTheme.textPrimary)),
+                      subtitle: const Text('La IA revisa y elimina opciones duplicadas automaticamente', style: TextStyle(color: OmniTheme.textMuted)),
+                    ),
+                  ]);
+                },
+              ),
+            ]),
             _buildAccordion('Importar / Exportar', Icons.file_copy, false, [
               ListTile(
                 leading: const Icon(Icons.file_upload, color: OmniTheme.accentBlue),
@@ -1322,6 +1373,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: Text(value, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 13)),
       dense: false,
     );
+  }
+
+  Widget _buildSyncStatRow(String label, int count) {
+    return ListTile(
+      leading: Icon(count > 0 ? Icons.warning_amber_rounded : Icons.check_circle, color: count > 0 ? OmniTheme.orange400 : OmniTheme.green400, size: 20),
+      title: Text(label, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 14)),
+      trailing: Text('$count', style: TextStyle(color: count > 0 ? OmniTheme.orange400 : OmniTheme.textMuted, fontWeight: FontWeight.bold)),
+      dense: true,
+    );
+  }
+
+  Widget _buildProductCategory(String label, String key, List<String> defaults) {
+    return FutureBuilder<SharedPreferences>(
+      future: SharedPreferences.getInstance(),
+      builder: (ctx, snap) {
+        final custom = snap.data?.getStringList('custom_opts_$key') ?? [];
+        final all = {...defaults, ...custom}.toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 8, bottom: 4),
+              child: Text(label.toUpperCase(), style: const TextStyle(color: OmniTheme.accentBlue, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+            ...all.map((opt) => ListTile(
+              dense: true,
+              title: Text(opt, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 13)),
+              trailing: custom.contains(opt)
+                  ? IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 16, color: OmniTheme.red400),
+                      onPressed: () async {
+                        final p = await SharedPreferences.getInstance();
+                        final updated = (p.getStringList('custom_opts_$key') ?? [])..remove(opt);
+                        await p.setStringList('custom_opts_$key', updated);
+                        setState(() {});
+                      },
+                    )
+                  : null,
+            )),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextButton.icon(
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text('Agregar', style: TextStyle(fontSize: 12)),
+                onPressed: () => _showAddOptionDialog(key, label),
+              ),
+            ),
+            const Divider(height: 4, color: OmniTheme.bg800),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showAddOptionDialog(String key, String label) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: Text('Agregar $label', style: const TextStyle(color: Colors.white, fontSize: 15)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Nueva opcion...',
+            hintStyle: const TextStyle(color: OmniTheme.textMuted),
+            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: OmniTheme.bg700)),
+            focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: OmniTheme.accentBlue)),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: OmniTheme.textMuted))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      final p = await SharedPreferences.getInstance();
+      final existing = p.getStringList('custom_opts_$key') ?? [];
+      if (!existing.contains(result) && !['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO', '5CC', '3CC', '2CC', '1CC', '10CC', 'SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'ARTICULAR TOBILLO', 'ARTICULAR LUMBAR', 'INTRAVENOSO', 'TOPICO', 'PLACENTA', 'TEJIDO ADIPOSO', 'PULPA', 'ENDOMETRIO', 'MEMBRANA', 'GW', 'AUTOLOGAS', 'ALOGENICAS', 'EXOSOMAS', 'CORDON UMBILICAL', 'INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLINICA PRIVADA', 'OTRO', 'DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK'].contains(result)) {
+        existing.add(result);
+        await p.setStringList('custom_opts_$key', existing);
+        setState(() {});
+      }
+    }
   }
 
   Future<void> _toggleEncryption(bool v) async {
