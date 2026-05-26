@@ -13,13 +13,15 @@ class LicenseService extends ChangeNotifier {
   static const String _licenseUrl = '${_apiBase}license.json';
   static String get _token => String.fromEnvironment('LICENSE_GITHUB_TOKEN');
 
+  static String? _lastFetchError;
+
   static Future<Map<String, dynamic>?> fetchPrivateFile(String path) async {
     final token = _token;
+    _lastFetchError = null;
     if (token.isEmpty) {
-      debugPrint('ERROR: LICENSE_GITHUB_TOKEN no configurado.');
+      _lastFetchError = 'TOKEN_VACIO';
       return null;
     }
-    debugPrint('Fetching: $_apiBase$path');
     try {
       final response = await http.get(
         Uri.parse('$_apiBase$path'),
@@ -29,7 +31,7 @@ class LicenseService extends ChangeNotifier {
           'Cache-Control': 'no-cache',
         },
       ).timeout(const Duration(seconds: 15));
-      debugPrint('GitHub API status: ${response.statusCode}');
+      _lastFetchError = 'HTTP_${response.statusCode}';
       if (response.statusCode == 200) {
         try {
           final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -37,24 +39,21 @@ class LicenseService extends ChangeNotifier {
             final decoded = utf8.decode(base64Decode(body['content']));
             return jsonDecode(decoded) as Map<String, dynamic>;
           }
-          debugPrint('Respuesta inesperada: encoding=${body['encoding']}');
+          _lastFetchError = 'ENCODING_INESPERADO';
           return body;
         } catch (e) {
-          debugPrint('Error parseando respuesta: $e');
+          _lastFetchError = 'PARSE_ERROR: $e';
           return null;
         }
-      } else {
-        debugPrint('GitHub API error: ${response.statusCode} ${response.reasonPhrase}');
-        debugPrint('Cuerpo: ${response.body}');
       }
     } on SocketException catch (e) {
-      debugPrint('Error de red: $e');
+      _lastFetchError = 'RED: $e';
     } on HttpException catch (e) {
-      debugPrint('Error HTTP: $e');
+      _lastFetchError = 'HTTP: $e';
     } on TimeoutException {
-      debugPrint('Timeout: el servidor no respondio en 15s');
+      _lastFetchError = 'TIMEOUT';
     } catch (e) {
-      debugPrint('Error desconocido: $e');
+      _lastFetchError = 'EXCEPTION: $e';
     }
     return null;
   }
@@ -100,7 +99,7 @@ class LicenseService extends ChangeNotifier {
     try {
       final licenseData = await _fetchLicenseJson();
       if (licenseData == null) {
-        _lastError = 'No se pudo conectar con el servidor de licencias. Verifica tu conexion a internet.';
+        _lastError = 'Error de licencia (${_lastFetchError ?? "desconocido"}). Verifica conexion a internet.';
         _checking = false;
         notifyListeners();
         return false;
