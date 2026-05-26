@@ -12,6 +12,7 @@ class LicenseService extends ChangeNotifier {
   static const String _apiBase = 'https://api.github.com/repos/ISTURIZrp89/biolab-labsync-license/contents/';
   static const String _licenseUrl = '${_apiBase}license.json';
   static String get _token => String.fromEnvironment('LICENSE_GITHUB_TOKEN');
+  static const String _demoKey = 'LABSYNC-DEMO-Y1ZZ-TGJ3';
 
   static String? _lastFetchError;
 
@@ -96,6 +97,19 @@ class LicenseService extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
 
+    if (_token.isEmpty && key == _demoKey) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('license_key', key);
+      await prefs.setString('license_branch', 'demo');
+      _storedKey = key;
+      _branch = 'demo';
+      _activated = true;
+      _offlineMode = true;
+      _checking = false;
+      notifyListeners();
+      return true;
+    }
+
     try {
       final licenseData = await _fetchLicenseJson();
       if (licenseData == null) {
@@ -150,6 +164,11 @@ class LicenseService extends ChangeNotifier {
 
   Future<void> _validateWithGitHub() async {
     if (_storedKey == null || _storedKey!.isEmpty) return;
+    if (_token.isEmpty && _storedKey == _demoKey) {
+      _offlineMode = true;
+      notifyListeners();
+      return;
+    }
     try {
       final licenseData = await _fetchLicenseJson();
       if (licenseData == null) {
