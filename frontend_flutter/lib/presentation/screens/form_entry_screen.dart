@@ -924,6 +924,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         const SizedBox(height: 8),
                         ...List.generate(_generalFields.length, (i) => _buildAutofillField(i)),
                       ],
+                      if (_activitiesTable != null && widget.module == 'procesamiento') ...[
+                        const SizedBox(height: 12),
+                        _buildImportFromBitacoraButton(),
+                      ],
                       if (_activitiesTable != null) ...[
                         const SizedBox(height: 20),
                         _buildTableSection(
@@ -1276,6 +1280,60 @@ class _DailyLogFormState extends State<_DailyLogForm> {
         });
       } catch (_) {}
     };
+  }
+
+  Widget _buildImportFromBitacoraButton() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.import_export, size: 14),
+        label: const Text('Importar cajas desde Bitácora (fecha actual)', style: TextStyle(fontSize: 11)),
+        style: OutlinedButton.styleFrom(foregroundColor: OmniTheme.accentBlue, side: BorderSide(color: OmniTheme.accentBlue.withOpacity(0.4))),
+        onPressed: () async {
+          try {
+            final fecha = _controllers['fecha']?.text;
+            if (fecha == null || fecha.isEmpty) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona una fecha primero'), backgroundColor: OmniTheme.orange400));
+              return;
+            }
+            final repo = context.read<FormRepositoryImpl>();
+            final allEntries = await repo.getEntriesByModule('bitacora');
+            final dayEntries = allEntries.where((e) => e.data['fecha']?.toString() == fecha || e.date == fecha).toList();
+            if (dayEntries.isEmpty) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No hay registros en Bitácora para la fecha $fecha'), backgroundColor: OmniTheme.orange400));
+              return;
+            }
+            int imported = 0;
+            setState(() {
+              for (final entry in dayEntries) {
+                final cajasList = entry.data['_cajas'] as List? ?? [];
+                for (final c in cajasList) {
+                  final cMap = Map<String, dynamic>.from(c as Map);
+                  _activities.add({
+                    'pedido': '',
+                    'presentacion': '',
+                    'volumen': '',
+                    'uso': '',
+                    'tejido': cMap['tipo_tejido'] ?? '',
+                    'paciente': '',
+                    'enviado_a': '',
+                    'pedido_por': '',
+                    'fecha_proceso': fecha,
+                    'notas': cMap['observaciones'] ?? 'Importado de Bitácora',
+                    'continuacion': '',
+                  });
+                  imported++;
+                }
+              }
+              _markDirty();
+            });
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$imported caja(s) importada(s) desde Bitácora'), backgroundColor: OmniTheme.green400));
+          } catch (e) {
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
+          }
+        },
+      ),
+    );
   }
 
   Widget _buildFooter() {
