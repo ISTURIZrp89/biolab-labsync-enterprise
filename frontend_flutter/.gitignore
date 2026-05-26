@@ -23,6 +23,14 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Build-time environment variables (create .env with LICENSE_GITHUB_TOKEN)
+.env
+.env.local
+*.env
+
+# License file (moved to private repo biolab-labsync-license)
+license.json
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
