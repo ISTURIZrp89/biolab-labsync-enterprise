@@ -35,7 +35,16 @@ jobs:
         run: flutter doctor -v
 
       - name: Build Windows
-        run: flutter build windows --release --verbose --dart-define=LICENSE_GITHUB_TOKEN=${{ secrets.LICENSE_GITHUB_TOKEN }} 2>&1
+        env:
+          TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+        run: |
+          if ("$env:TOKEN".Length -gt 0) {
+            Write-Host "Token OK, compilando..." -ForegroundColor Green
+            flutter build windows --release --verbose --dart-define=LICENSE_GITHUB_TOKEN="$env:TOKEN" 2>&1
+          } else {
+            Write-Host "ERROR: Token LICENSE_GITHUB_TOKEN vacio" -ForegroundColor Red
+            exit 1
+          }
 
       - name: Create installer
         run: |
@@ -79,7 +88,9 @@ jobs:
         run: flutter config --enable-linux-desktop
 
       - name: Build Linux
-        run: flutter build linux --release --dart-define=LICENSE_GITHUB_TOKEN=${{ secrets.LICENSE_GITHUB_TOKEN }}
+        env:
+          TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+        run: flutter build linux --release --dart-define=LICENSE_GITHUB_TOKEN="$TOKEN"
 
       - name: Create Linux bundle
         run: |
@@ -112,7 +123,9 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS
-        run: flutter build macos --release --dart-define=LICENSE_GITHUB_TOKEN=${{ secrets.LICENSE_GITHUB_TOKEN }}
+        env:
+          TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+        run: flutter build macos --release --dart-define=LICENSE_GITHUB_TOKEN="$TOKEN"
 
       - name: Create DMG
         run: |

@@ -21,7 +21,7 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build windows --dart-define=LICENSE_GITHUB_TOKEN=${{ secrets.LICENSE_GITHUB_TOKEN }}
+      - run: flutter build windows --dart-define=LICENSE_GITHUB_TOKEN="${{ secrets.LICENSE_GITHUB_TOKEN }}"
 
       - uses: actions/upload-artifact@v4
         with:
