@@ -10,6 +10,7 @@ import '../../services/closure_service.dart';
 import '../../services/user_service.dart';
 import '../../services/update_service.dart';
 import '../../services/license_service.dart';
+import '../../services/audit_service.dart';
 import '../../sync/lan_discovery_service.dart';
 import '../../security/permission_service.dart';
 import '../../security/edit_lock_service.dart';

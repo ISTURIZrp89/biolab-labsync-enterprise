@@ -148,7 +148,8 @@ class _BitacoraBulkImportScreenState extends State<BitacoraBulkImportScreen> {
                       ),
                     ]),
                   ))
-                : Expanded(
+                else
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

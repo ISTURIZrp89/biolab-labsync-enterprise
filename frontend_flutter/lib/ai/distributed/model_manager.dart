@@ -15,7 +15,7 @@ class ModelInfo {
   final String version;
   final String backend;
   final bool isDownloaded;
-  final double downloadProgress;
+  double downloadProgress;
 
   ModelInfo({
     required this.id,
