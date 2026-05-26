@@ -39,16 +39,17 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   static const _navItems = [
     _NavItem('Inicio', Icons.dashboard_outlined, Icons.dashboard),
-    _NavItem('Reportes diarios', Icons.bar_chart_outlined, Icons.bar_chart),
+    _NavItem('Reportes', Icons.bar_chart_outlined, Icons.bar_chart),
     _NavItem('Bitacora', Icons.book_outlined, Icons.book),
     _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Incubadoras', Icons.thermostat_outlined, Icons.thermostat),
     _NavItem('Ultracongeladores', Icons.ac_unit_outlined, Icons.ac_unit),
     _NavItem('Equipos', Icons.precision_manufacturing_outlined, Icons.precision_manufacturing),
     _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
+    _NavItem('Cobre', Icons.science_outlined, Icons.science),
   ];
 
-  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves'];
+  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre'];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
@@ -58,6 +59,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     OmniTheme.accentBlue,
     OmniTheme.green400,
     OmniTheme.orange400,
+    Color(0xFF00BCD4),
   ];
 
   @override
@@ -113,7 +115,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       await permService.loadPermissions(auth);
       _allowedModules = permService.allowedModules;
     } catch (_) {
-      _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'};
+      _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre'};
     }
     if (mounted) setState(() => _permLoaded = true);
   }
@@ -223,7 +225,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   List<int> _getFilteredIndices() {
-    return [0, 1, 2, 3, 4, 5, 6, 7]
+    return [0, 1, 2, 3, 4, 5, 6, 7, 8]
       .where((i) => i < 2 || _allowedModules.contains(_moduleKeys[i]))
       .toList();
   }
@@ -249,23 +251,23 @@ class _MainScaffoldState extends State<MainScaffold> {
       },
       labelType: isCompact ? NavigationRailLabelType.none : NavigationRailLabelType.all,
       backgroundColor: OmniTheme.bg900,
-      minWidth: isCompact ? 48 : (extended ? 80 : 64),
+      minWidth: isCompact ? 56 : (extended ? 88 : 72),
       groupAlignment: -1,
       leading: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           children: [
             Container(
-              width: 36, height: 36,
+              width: 44, height: 44,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.person, color: Colors.white, size: 20),
+              child: const Icon(Icons.biotech, color: Colors.white, size: 24),
             ),
-            const SizedBox(height: 4),
-            Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis),
-            Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 6),
+            Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis, maxLines: 1),
+            Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 8, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis, maxLines: 1),
           ],
         ),
       ),
@@ -275,18 +277,18 @@ class _MainScaffoldState extends State<MainScaffold> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildSyncDot(sync),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             _buildNotificationBell(),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             IconButton(
-              icon: const Icon(Icons.settings_outlined, size: 20),
+              icon: const Icon(Icons.settings_outlined, size: 22),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
               color: OmniTheme.textMuted,
               tooltip: 'Configuracion',
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             IconButton(
-              icon: const Icon(Icons.logout, size: 20),
+              icon: const Icon(Icons.logout, size: 22),
               onPressed: () {
                 try { sync.stopPeriodicSync(); } catch (_) {}
                 auth.logout();
@@ -303,17 +305,21 @@ class _MainScaffoldState extends State<MainScaffold> {
         final item = entry.value;
         final origIdx = filteredIndices[pos];
         final isSelected = _selectedIndex == origIdx;
+        final color = _moduleColors[origIdx] ?? OmniTheme.accentBlue;
         return NavigationRailDestination(
-          icon: Icon(item.icon, size: 18, color: OmniTheme.textMuted),
+          icon: Icon(item.icon, size: 20, color: OmniTheme.textMuted),
           selectedIcon: Container(
-            width: 28, height: 28,
+            width: 32, height: 32,
             decoration: BoxDecoration(
-              color: _moduleColors[origIdx]?.withOpacity(0.15) ?? Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
+              color: color.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(item.selectedIcon, size: 18, color: _moduleColors[origIdx] ?? OmniTheme.accentBlue),
+            child: Icon(item.selectedIcon, size: 20, color: color),
           ),
-          label: Text(item.label, style: TextStyle(fontSize: 10, color: isSelected ? OmniTheme.accentBlue : OmniTheme.textMuted)),
+          label: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(item.label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? color : OmniTheme.textMuted)),
+          ),
         );
       }).toList(),
     );
@@ -795,9 +801,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   void _showDayEntries(String dateStr) {
     final entries = _dayEntries[dateStr] ?? [];
-    final allModules = ['bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves'];
+    final allModules = ['bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre'];
     final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
-    final moduleLabels = ['Bitacora', 'Procesamiento', 'Incubadoras', 'Ultracongeladores', 'Equipos', 'Autoclaves'];
+    final moduleLabels = ['Bitacora', 'Procesamiento', 'Incubadoras', 'Ultracongeladores', 'Equipos', 'Autoclaves', 'Cobre'];
     final auth = context.read<AuthService>();
     final canCloseDay = auth.canClose;
     final isDesktop = MediaQuery.of(context).size.width > 800;
@@ -1027,6 +1033,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       ('ultracongeladores', 'Ultracongeladores', Icons.ac_unit_outlined, OmniTheme.accentBlue),
       ('equipos', 'Equipos', Icons.precision_manufacturing_outlined, OmniTheme.green400),
       ('autoclaves', 'Autoclaves', Icons.local_fire_department_outlined, OmniTheme.orange400),
+      ('solucion_cobre', 'Cobre', Icons.science_outlined, const Color(0xFF00BCD4)),
     ];
     final modules = allModules.where((m) => _allowedModules.contains(m.$1)).toList();
 

@@ -17,6 +17,7 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr const wchar_t kTrayIconTooltip[] = L"BioLab LABSYNC";
 
 /// Registry key for app theme preference.
 ///
@@ -28,6 +29,7 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
+static UINT g_taskbar_created_msg = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 
@@ -125,6 +127,8 @@ bool Win32Window::Create(const std::wstring& title,
                          const Size& size) {
   Destroy();
 
+  window_title_ = title;
+
   const wchar_t* window_class =
       WindowClassRegistrar::GetInstance()->GetWindowClass();
 
@@ -144,6 +148,8 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
+  g_taskbar_created_msg = RegisterWindowMessage(L"TaskbarCreated");
+
   UpdateTheme(window);
 
   return OnCreate();
@@ -151,6 +157,47 @@ bool Win32Window::Create(const std::wstring& title,
 
 bool Win32Window::Show() {
   return ShowWindow(window_handle_, SW_SHOWNORMAL);
+}
+
+void Win32Window::CreateTrayIcon() {
+  if (is_tray_icon_created_ || !window_handle_) return;
+
+  NOTIFYICONDATA nid = {};
+  nid.cbSize = sizeof(NOTIFYICONDATA);
+  nid.hWnd = window_handle_;
+  nid.uID = 1;
+  nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+  nid.uCallbackMessage = WM_TRAYICON;
+  nid.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  wcscpy_s(nid.szTip, kTrayIconTooltip);
+  Shell_NotifyIcon(NIM_ADD, &nid);
+  is_tray_icon_created_ = true;
+}
+
+void Win32Window::RemoveTrayIcon() {
+  if (!is_tray_icon_created_ || !window_handle_) return;
+
+  NOTIFYICONDATA nid = {};
+  nid.cbSize = sizeof(NOTIFYICONDATA);
+  nid.hWnd = window_handle_;
+  nid.uID = 1;
+  Shell_NotifyIcon(NIM_DELETE, &nid);
+  is_tray_icon_created_ = false;
+}
+
+void Win32Window::MinimizeToTray() {
+  if (window_handle_) {
+    CreateTrayIcon();
+    ShowWindow(window_handle_, SW_HIDE);
+  }
+}
+
+void Win32Window::RestoreFromTray() {
+  if (window_handle_) {
+    ShowWindow(window_handle_, SW_SHOWNORMAL);
+    SetForegroundWindow(window_handle_);
+    RemoveTrayIcon();
+  }
 }
 
 // static
@@ -180,6 +227,7 @@ Win32Window::MessageHandler(HWND hwnd,
                             LPARAM const lparam) noexcept {
   switch (message) {
     case WM_DESTROY:
+      RemoveTrayIcon();
       window_handle_ = nullptr;
       Destroy();
       if (quit_on_close_) {
@@ -198,9 +246,12 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
+      if (wparam == SIZE_MINIMIZED) {
+        MinimizeToTray();
+        return 0;
+      }
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
-        // Size and position the child window.
         MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
                    rect.bottom - rect.top, TRUE);
       }
@@ -216,12 +267,46 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
+
+    case WM_TRAYICON: {
+      if (lparam == WM_LBUTTONUP || lparam == WM_LBUTTONDBLCLK) {
+        RestoreFromTray();
+      } else if (lparam == WM_RBUTTONUP) {
+        HMENU hMenu = CreatePopupMenu();
+        AppendMenu(hMenu, MF_STRING, 1, L"Restaurar");
+        AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+        AppendMenu(hMenu, MF_STRING, 2, L"Salir");
+
+        POINT pt;
+        GetCursorPos(&pt);
+        SetForegroundWindow(hwnd);
+        int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, nullptr);
+        DestroyMenu(hMenu);
+
+        if (cmd == 1) {
+          RestoreFromTray();
+        } else if (cmd == 2) {
+          RemoveTrayIcon();
+          Destroy();
+          PostQuitMessage(0);
+        }
+      }
+      return 0;
+    }
+  }
+
+  if (message == g_taskbar_created_msg) {
+    if (is_tray_icon_created_) {
+      CreateTrayIcon();
+    }
+    return 0;
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);
 }
 
 void Win32Window::Destroy() {
+  RemoveTrayIcon();
   OnDestroy();
 
   if (window_handle_) {

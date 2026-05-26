@@ -2,10 +2,13 @@
 #define RUNNER_WIN32_WINDOW_H_
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <functional>
 #include <memory>
 #include <string>
+
+#define WM_TRAYICON (WM_APP + 1)
 
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
 // inherited from by classes that wish to specialize with custom
@@ -38,6 +41,12 @@ class Win32Window {
 
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
+
+  // Minimize to system tray.
+  void MinimizeToTray();
+
+  // Restore from system tray.
+  void RestoreFromTray();
 
   // Release OS resources associated with window.
   void Destroy();
@@ -90,7 +99,15 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // Create or update the system tray icon.
+  void CreateTrayIcon();
+
+  // Remove the system tray icon.
+  void RemoveTrayIcon();
+
   bool quit_on_close_ = false;
+  bool is_tray_icon_created_ = false;
+  std::wstring window_title_;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

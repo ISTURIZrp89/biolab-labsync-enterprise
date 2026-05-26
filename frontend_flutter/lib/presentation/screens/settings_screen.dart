@@ -61,10 +61,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    try {
-      final discovery = context.read<LanDiscoveryService>();
-      discovery.removeListener(_onDiscoveryChanged);
-    } catch (_) {}
     super.dispose();
   }
 
@@ -202,7 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   static const _permModules = [
-    'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora',
+    'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre',
   ];
   static const _permModuleLabels = {
     'incubadoras': 'Incubadoras',
@@ -211,6 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'equipos': 'Equipos',
     'procesamiento': 'Procesamiento',
     'bitacora': 'Bitacora General',
+    'solucion_cobre': 'Solucion de Cobre',
   };
 
   Future<void> _loadUsers() async {
@@ -798,7 +795,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         permisos = p.split(',').toSet();
       }
     } else {
-      permisos = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'bitacora'};
+      permisos = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre'};
     }
 
     final result = await showDialog<Map<String, String>>(
@@ -1128,7 +1125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _showExportDbDialog,
               ),
               ListTile(
-                leading: const Icon(Icons.download_file, color: OmniTheme.orange400),
+                leading: const Icon(Icons.file_download, color: OmniTheme.orange400),
                 title: const Text('Importar Base de Datos', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: const Text('Restaurar desde USB', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
                 trailing: const Icon(Icons.download, color: OmniTheme.textMuted),
@@ -1265,27 +1262,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildAccordion(String title, IconData icon, bool initiallyExpanded, List<Widget> children) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
+      shadowColor: OmniTheme.accentBlue.withOpacity(0.1),
       child: ExpansionTile(
         initiallyExpanded: initiallyExpanded,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         childrenPadding: const EdgeInsets.only(bottom: 8),
-        leading: Icon(icon, color: OmniTheme.accentBlue, size: 20),
-        title: Text(title, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: OmniTheme.accentBlue.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: OmniTheme.accentBlue, size: 22),
+        ),
+        title: Text(title, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.3)),
         collapsedBackgroundColor: OmniTheme.bg900,
-        backgroundColor: OmniTheme.bg900,
-        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        children: children,
+        backgroundColor: OmniTheme.bg800.withOpacity(0.5),
+        collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: children.map((child) {
+          if (child is ListTile) {
+            return ListTile(
+              key: child.key,
+              leading: child.leading,
+              title: child.title,
+              subtitle: child.subtitle,
+              trailing: child.trailing,
+              onTap: child.onTap,
+              dense: child.dense,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              hoverColor: OmniTheme.accentBlue.withOpacity(0.08),
+              splashColor: OmniTheme.accentBlue.withOpacity(0.15),
+              enabled: child.onTap != null,
+              style: ListTileStyle.list,
+              visualDensity: VisualDensity.standard,
+            );
+          }
+          return child;
+        }).toList(),
       ),
     );
   }
 
   Widget _buildInfoRow(String label, String value, IconData icon) {
     return ListTile(
-      leading: Icon(icon, color: OmniTheme.accentBlue, size: 20),
-      title: Text(label, style: const TextStyle(color: OmniTheme.textPrimary)),
-      subtitle: Text(value, style: const TextStyle(color: OmniTheme.textMuted)),
+      leading: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: OmniTheme.accentBlue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: OmniTheme.accentBlue, size: 20),
+      ),
+      title: Text(label, style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w500)),
+      subtitle: Text(value, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 13)),
+      dense: false,
     );
   }
 
