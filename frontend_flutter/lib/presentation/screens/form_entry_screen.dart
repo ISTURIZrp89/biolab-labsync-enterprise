@@ -276,6 +276,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   List<Map<String, dynamic>> _resources = [];
   List<Map<String, dynamic>> _cajas = [];
   final Map<String, List<String>> _historyCache = {};
+  Map<String, List<String>> _customOptions = {};
   final Map<String, List<String>> _equipmentOptionsByCategory = {};
   final ScrollController _fieldsScroll = ScrollController();
   final ScrollController _activitiesScrollH = ScrollController();
@@ -294,6 +295,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     _initForm();
     _loadDraft();
     _loadEquipmentOptions();
+    _loadCustomOptions();
     try {
       _lockService = context.read<EditLockService>();
       if (widget.existingEntry != null) {
@@ -1174,14 +1176,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
 
             Widget cell;
             if (type == 'select' && options != null && options.isNotEmpty) {
-              cell = DropdownButtonFormField<String>(
-                value: options.contains(cellValue) ? cellValue : null,
-                items: options.map((o) => DropdownMenuItem(value: o.toString(), child: Text(o.toString(), style: const TextStyle(fontSize: 11, color: Colors.white)))).toList(),
-                onChanged: (v) { setState(() { rows[rowIdx][key] = v ?? ''; _markDirty(); }); },
-                dropdownColor: OmniTheme.bg800,
-                style: const TextStyle(fontSize: 11, color: Colors.white),
-                decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 4)),
-              );
+              cell = _buildEditableDropdown(rows, columns, rowIdx, col, key, options, cellValue);
             } else {
               final isLastCol = columns.indexOf(col) == columns.length - 1;
               cell = TextFormField(
@@ -1227,6 +1222,70 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     );
   }
 
+  Future<void> _loadCustomOptions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final allKeys = prefs.getKeys().where((k) => k.startsWith('custom_opts_'));
+      final map = <String, List<String>>{};
+      for (final k in allKeys) {
+        final raw = prefs.getStringList(k);
+        if (raw != null) map[k.replaceFirst('custom_opts_', '')] = raw;
+      }
+      _customOptions = map;
+    } catch (_) {}
+  }
+
+  Future<void> _saveCustomOption(String key, String value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storageKey = 'custom_opts_$key';
+      final existing = prefs.getStringList(storageKey) ?? [];
+      if (!existing.contains(value)) {
+        existing.add(value);
+        await prefs.setStringList(storageKey, existing);
+        _customOptions[key] = existing;
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildEditableDropdown(List<Map<String, dynamic>> rows, List<Map<String, dynamic>> columns, int rowIdx, Map<String, dynamic> col, String key, List<dynamic> baseOptions, String cellValue) {
+    final allOptions = <String>[
+      ...baseOptions.map((o) => o.toString()),
+      if (_customOptions.containsKey(key)) ..._customOptions[key]!.where((o) => !baseOptions.any((b) => b.toString() == o)),
+    ];
+    final effectiveOptions = allOptions.toSet().toList();
+
+    return TextFormField(
+      key: ValueKey('${rowIdx}_$key'),
+      initialValue: cellValue,
+      style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary),
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        suffixIcon: effectiveOptions.isNotEmpty
+            ? PopupMenuButton<String>(
+                icon: const Icon(Icons.arrow_drop_down, size: 16, color: OmniTheme.textMuted),
+                color: OmniTheme.bg800,
+                onSelected: (v) { setState(() { rows[rowIdx][key] = v; _markDirty(); }); },
+                itemBuilder: (_) => effectiveOptions.map((o) => PopupMenuItem(value: o, child: Text(o, style: const TextStyle(fontSize: 10, color: OmniTheme.textPrimary)))).toList(),
+              )
+            : null,
+      ),
+      onChanged: (v) {
+        rows[rowIdx][key] = v;
+        if (v.isNotEmpty && !effectiveOptions.contains(v)) {
+          _saveCustomOption(key, v);
+        }
+        _markDirty();
+      },
+      onFieldSubmitted: (v) {
+        if (v.isNotEmpty && !effectiveOptions.contains(v)) {
+          _saveCustomOption(key, v);
+        }
+      },
+    );
+  }
 
   Widget _buildExtraField(int index) {
     final f = _extraFields[index];
