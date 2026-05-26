@@ -16,6 +16,7 @@ import '../../security/auth_service.dart';
 import '../../security/edit_lock_service.dart';
 import '../../ai/ai_service.dart';
 import '../../services/user_service.dart';
+import '../../services/audit_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
 
@@ -526,6 +527,22 @@ class _DailyLogFormState extends State<_DailyLogForm> {
               };
               await file.writeAsString(const JsonEncoder.withIndent('  ').convert(backup));
             }
+          }
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        try {
+          final user = auth.currentUser;
+          if (user != null) {
+            context.read<AuditService>().log(
+              action: widget.existingEntry != null ? 'Entrada actualizada' : 'Entrada creada',
+              type: widget.existingEntry != null ? 'update' : 'create',
+              userId: user.id,
+              userName: user.nombre,
+              details: '${widget.moduleLabel} - ${widget.section['label'] ?? ""}',
+              deviceId: deviceId,
+            );
           }
         } catch (_) {}
       }

@@ -44,6 +44,69 @@ class _ActivationScreenState extends State<ActivationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final license = context.watch<LicenseService>();
+
+    if (license.decommissioned) {
+      return Scaffold(
+        backgroundColor: OmniTheme.bg950,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 72, height: 72,
+                decoration: BoxDecoration(color: OmniTheme.red400.withOpacity(0.15), borderRadius: BorderRadius.circular(16)),
+                child: const Icon(Icons.gpp_bad, color: OmniTheme.red400, size: 36),
+              ),
+              const SizedBox(height: 24),
+              const Text('Equipo Dado de Baja', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
+              const SizedBox(height: 8),
+              Text(
+                'Este equipo ha sido desactivado por el administrador.\n'
+                'Los datos locales han sido respaldados y eliminados.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: OmniTheme.textMuted),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity, height: 44,
+                child: OutlinedButton(
+                  onPressed: () {},
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: OmniTheme.textMuted,
+                    side: BorderSide(color: OmniTheme.textMuted.withOpacity(0.3)),
+                  ),
+                  child: const Text('Contacta al administrador', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    if (license.activated) {
+      return Scaffold(
+        backgroundColor: OmniTheme.bg950,
+        body: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [OmniTheme.green400, OmniTheme.accentBlue]),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.check, color: Colors.white, size: 36),
+            ),
+            const SizedBox(height: 24),
+            Text('Licencia Activa - ${license.branch?.toUpperCase() ?? ""}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
+            const SizedBox(height: 8),
+            const Text('Redirigiendo...', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+          ]),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: OmniTheme.bg950,
       body: Center(
@@ -65,13 +128,13 @@ class _ActivationScreenState extends State<ActivationScreen> {
                 const SizedBox(height: 24),
                 const Text('Activacion de Licencia', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
                 const SizedBox(height: 8),
-                Text('Ingresa la clave de activacion proporcionada por el administrador', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                Text('Ingresa la clave de activacion proporcionada por el administrador\nFormato: LABSYNC-SUCURSAL-XXXX-XXXX', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
                 const SizedBox(height: 32),
                 TextField(
                   controller: _keyController,
                   style: const TextStyle(color: OmniTheme.textPrimary, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: 'Clave de activacion',
+                    hintText: 'LABSYNC-SUCURSAL-XXXX-XXXX',
                     hintStyle: TextStyle(color: OmniTheme.textMuted.withOpacity(0.5), fontSize: 14),
                     filled: true, fillColor: OmniTheme.bg900,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -108,7 +171,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('La app verifica la licencia contra GitHub periodicamente', style: TextStyle(fontSize: 9, color: OmniTheme.textMuted.withOpacity(0.6))),
+                Text('La app verifica la licencia contra GitHub cada 10 min', style: TextStyle(fontSize: 9, color: OmniTheme.textMuted.withOpacity(0.6))),
               ],
             ),
           ),

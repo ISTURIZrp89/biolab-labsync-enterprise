@@ -23,6 +23,7 @@ import 'ai/node_network_screen.dart';
 import 'ai/shared_memory_screen.dart';
 import 'bitacora_bulk_import_screen.dart';
 import 'pending_import_approval_screen.dart';
+import 'remote_access_screen.dart';
 
 String _getPlatformName() {
   if (kIsWeb) return 'Web (navegador)';
@@ -58,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _lanPort = '8765';
   int _lanServerPort = 8766;
   String _dbSize = 'Calculando...';
+  String _driveBackupPath = '';
 
   @override
   void initState() {
@@ -66,6 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
     _loadEquipment();
     _loadUsers();
+    _loadDriveBackupPath();
   }
 
   @override
@@ -1302,14 +1305,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
             if (auth.isAdmin || auth.isOwner) ...[
-              _buildAccordion('Administracion de IA', Icons.admin_panel_settings, false, [
-                ListTile(
-                  leading: const Icon(Icons.dashboard, color: OmniTheme.accentBlue),
-                  title: const Text('Dashboard IA', style: TextStyle(color: OmniTheme.textPrimary)),
-                  subtitle: const Text('Hardware, rendimiento y estado general', style: TextStyle(color: OmniTheme.textMuted)),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiDashboardScreen())),
-                ),
+            _buildAccordion('Administracion de IA', Icons.admin_panel_settings, false, [
+              ListTile(
+                leading: const Icon(Icons.dashboard, color: OmniTheme.accentBlue),
+                title: const Text('Dashboard IA', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Hardware, rendimiento y estado', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiDashboardScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.model_training, color: Color(0xFFB197FC)),
+                title: const Text('Gestor de Modelos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Descargar, gestionar y activar modelos', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ModelManagerScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.hub, color: OmniTheme.green400),
+                title: const Text('Red de Nodos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Gestionar nodos en la red distribuida', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NodeNetworkScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.memory, color: OmniTheme.orange400),
+                title: const Text('Memoria Compartida', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Datos sincronizados entre nodos', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SharedMemoryScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_upload_outlined, color: OmniTheme.accentBlue),
+                title: const Text('Importar Bitacoras Anteriores', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Cargar CSV de meses anteriores con IA', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BitacoraBulkImportScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.checklist, color: OmniTheme.green400),
+                title: const Text('Aprobar Importaciones Pendientes', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Revisar y aceptar datos importados por la IA', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PendingImportApprovalScreen())),
+              ),
+            ],
+            ),
+            _buildAccordion('Red y Acceso Remoto', Icons.public, false, [
+              ListTile(
+                leading: const Icon(Icons.devices, color: OmniTheme.accentBlue),
+                title: const Text('Dispositivos en Red', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Ver equipos conectados en la LAN', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteAccessScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_upload, color: OmniTheme.green400),
+                title: const Text('Conexion VPS', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Conectar dispositivos remotos via VPS', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteAccessScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.history, color: OmniTheme.orange400),
+                title: const Text('Auditoria de Actividades', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Registro de accesos, cambios y conexiones', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteAccessScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_copy, color: OmniTheme.accentBlue),
+                title: const Text('Carpeta de Backup en Drive', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_driveBackupPath.isEmpty ? 'Configurar ruta de respaldo' : _driveBackupPath, style: TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: _pickDriveFolder,
+              ),
+            ],
+            ),
                 ListTile(
                   leading: const Icon(Icons.model_training, color: OmniTheme.accentBlue),
                   title: const Text('Gestor de Modelos', style: TextStyle(color: OmniTheme.textPrimary)),
@@ -1609,6 +1680,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirm == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cache limpiado')));
+    }
+  }
+
+  Future<void> _loadDriveBackupPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _driveBackupPath = prefs.getString('drive_backup_path') ?? '');
+  }
+
+  Future<void> _pickDriveFolder() async {
+    try {
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('drive_backup_path', result);
+        setState(() => _driveBackupPath = result);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Ruta de backup guardada: $result'),
+          backgroundColor: OmniTheme.green400,
+        ));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: OmniTheme.red400,
+      ));
     }
   }
 }

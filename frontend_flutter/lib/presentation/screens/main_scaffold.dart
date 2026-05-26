@@ -437,6 +437,17 @@ class _MainScaffoldState extends State<MainScaffold> {
           IconButton(
             icon: const Icon(Icons.logout, size: 20),
             onPressed: () {
+              try {
+                final user = auth.currentUser;
+                if (user != null) {
+                  context.read<AuditService>().log(
+                    action: 'Cierre de sesion',
+                    type: 'logout',
+                    userId: user.id,
+                    userName: user.nombre,
+                  );
+                }
+              } catch (_) {}
               try { sync.stopPeriodicSync(); } catch (_) {}
               auth.logout();
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));

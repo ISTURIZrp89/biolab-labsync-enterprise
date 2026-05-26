@@ -1,34 +1,39 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../data/db.dart';
 
 class LicenseService extends ChangeNotifier {
   static const String _licenseUrl = 'https://raw.githubusercontent.com/ISTURIZrp89/biolab-labsync/master/license.json';
 
   String? _storedKey;
   String? _deviceId;
+  String? _branch;
   bool _activated = false;
   bool _offlineMode = false;
   bool _checking = false;
   String? _lastError;
-  List<String> _networkDevices = [];
+  bool _decommissioned = false;
   Timer? _periodicTimer;
 
   String? get storedKey => _storedKey;
+  String? get branch => _branch;
   bool get activated => _activated;
   bool get offlineMode => _offlineMode;
   bool get checking => _checking;
   String? get lastError => _lastError;
-  List<String> get networkDevices => List.unmodifiable(_networkDevices);
+  bool get decommissioned => _decommissioned;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _deviceId = prefs.getString('device_id');
     _storedKey = prefs.getString('license_key');
+    _branch = prefs.getString('license_branch');
     _activated = _storedKey != null && _storedKey!.isNotEmpty;
     if (_activated) {
       await _validateWithGitHub();
@@ -45,22 +50,44 @@ class LicenseService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final valid = await _checkKeyAgainstGitHub(key);
-      if (valid) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('license_key', key);
-        _storedKey = key;
-        _activated = true;
-        _offlineMode = false;
-        _checking = false;
-        notifyListeners();
-        return true;
-      } else {
-        _lastError = 'La clave de activacion no es valida o ha sido revocada';
+      final licenseData = await _fetchLicenseJson();
+      if (licenseData == null) {
+        _lastError = 'No se pudo conectar con el servidor de licencias. Verifica tu conexion a internet.';
         _checking = false;
         notifyListeners();
         return false;
       }
+
+      final branch = _extractBranch(key);
+      final branches = licenseData['branches'] as Map<String, dynamic>? ?? {};
+      final validHash = branches[branch] as String?;
+
+      if (validHash == null) {
+        _lastError = 'Sucursal no reconocida. Verifica que la clave corresponda a una sucursal valida.';
+        _checking = false;
+        notifyListeners();
+        return false;
+      }
+
+      final computedHash = sha256.convert(utf8.encode(key)).toString();
+      if (computedHash != validHash) {
+        _lastError = 'La clave de activacion no es valida para esta sucursal.';
+        _checking = false;
+        notifyListeners();
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('license_key', key);
+      await prefs.setString('license_branch', branch);
+      _storedKey = key;
+      _branch = branch;
+      _activated = true;
+      _offlineMode = false;
+      _decommissioned = false;
+      _checking = false;
+      notifyListeners();
+      return true;
     } catch (e) {
       _lastError = 'Error al verificar licencia: $e';
       _checking = false;
@@ -69,7 +96,13 @@ class LicenseService extends ChangeNotifier {
     }
   }
 
+  String _extractBranch(String key) {
+    final parts = key.split('-');
+    return parts.length >= 2 ? parts[1].toLowerCase() : 'matriz';
+  }
+
   Future<void> _validateWithGitHub() async {
+    if (_storedKey == null || _storedKey!.isEmpty) return;
     try {
       final licenseData = await _fetchLicenseJson();
       if (licenseData == null) {
@@ -78,35 +111,53 @@ class LicenseService extends ChangeNotifier {
         return;
       }
 
-      final storedHash = licenseData['current_key_hash'] as String? ?? '';
-      final revoked = (licenseData['revoked_device_ids'] as List?)?.cast<String>() ?? [];
+      final branches = licenseData['branches'] as Map<String, dynamic>? ?? {};
+      final commands = licenseData['device_commands'] as Map<String, dynamic>? ?? {};
 
-      if (_storedKey == null || _storedKey!.isEmpty) {
+      if (_branch == null || !branches.containsKey(_branch)) {
         _activated = false;
-        _offlineMode = false;
+        _storedKey = null;
+        _lastError = 'La sucursal ya no esta registrada. Contacta al administrador.';
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('license_key');
+        await prefs.remove('license_branch');
         notifyListeners();
         return;
       }
 
+      final validHash = branches[_branch] as String;
       final computedHash = sha256.convert(utf8.encode(_storedKey!)).toString();
-      if (computedHash != storedHash) {
+      if (computedHash != validHash) {
         _activated = false;
         _storedKey = null;
+        _branch = null;
         _lastError = 'La clave de licencia ha cambiado. Contacta al administrador.';
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('license_key');
+        await prefs.remove('license_branch');
         notifyListeners();
         return;
       }
 
-      if (_deviceId != null && revoked.contains(_deviceId)) {
-        _activated = false;
-        _storedKey = null;
-        _lastError = 'Este equipo ha sido desactivado. Contacta al administrador.';
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('license_key');
-        notifyListeners();
-        return;
+      if (_deviceId != null && commands.containsKey(_deviceId)) {
+        final cmd = commands[_deviceId] as Map<String, dynamic>? ?? {};
+        final action = cmd['action'] as String? ?? '';
+        if (action == 'decommission' || action == 'wipe') {
+          _decommissioned = true;
+          notifyListeners();
+          _executeWipe();
+          return;
+        }
+        if (action == 'revoke') {
+          _activated = false;
+          _storedKey = null;
+          _lastError = 'Este equipo ha sido desactivado por el administrador.';
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('license_key');
+          await prefs.remove('license_branch');
+          notifyListeners();
+          return;
+        }
       }
 
       _offlineMode = false;
@@ -117,17 +168,51 @@ class LicenseService extends ChangeNotifier {
     }
   }
 
-  Future<bool> _checkKeyAgainstGitHub(String key) async {
+  Future<void> _executeWipe() async {
     try {
-      final licenseData = await _fetchLicenseJson();
-      if (licenseData == null) return false;
+      final prefs = await SharedPreferences.getInstance();
+      final drivePath = prefs.getString('drive_backup_path') ?? '';
 
-      final storedHash = licenseData['current_key_hash'] as String? ?? '';
-      final computedHash = sha256.convert(utf8.encode(key)).toString();
+      if (drivePath.isNotEmpty) {
+        try {
+          final db = await LocalDatabase.instance.database;
+          final dbPath = db.path;
+          final backupDir = Directory(p.join(drivePath, 'backups', _branch ?? 'unknown', _deviceId ?? 'unknown'));
+          if (!await backupDir.exists()) await backupDir.create(recursive: true);
+          final backupFile = p.join(backupDir.path, 'backup_${DateTime.now().millisecondsSinceEpoch}.db');
+          await db.close();
+          await File(dbPath).copy(backupFile);
+          debugPrint('Database backed up to: $backupFile');
+        } catch (e) {
+          debugPrint('Backup failed: $e');
+        }
+      }
 
-      return computedHash == storedHash;
-    } catch (_) {
-      return false;
+      try {
+        final dbPath = LocalDatabase.instance.currentDbPath;
+        await LocalDatabase.instance.close();
+        if (dbPath != null) {
+          final dbFile = File(dbPath);
+          if (await dbFile.exists()) await dbFile.delete();
+          final walFile = File('${dbPath}-wal');
+          if (await walFile.exists()) await walFile.delete();
+          final shmFile = File('${dbPath}-shm');
+          if (await shmFile.exists()) await shmFile.delete();
+        }
+      } catch (e) {
+        debugPrint('DB reset failed: $e');
+      }
+
+      await prefs.clear();
+      await prefs.setString('device_id', _deviceId ?? '');
+
+      _activated = false;
+      _storedKey = null;
+      _branch = null;
+      _decommissioned = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Wipe error: $e');
     }
   }
 
@@ -144,6 +229,7 @@ class LicenseService extends ChangeNotifier {
     return null;
   }
 
+  @override
   void dispose() {
     _periodicTimer?.cancel();
     super.dispose();

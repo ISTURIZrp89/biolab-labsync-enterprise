@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../security/auth_service.dart';
 import '../../services/user_service.dart';
+import '../../services/audit_service.dart';
 import '../../theme/omni_theme.dart';
 import 'main_scaffold.dart';
 
@@ -87,6 +88,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     if (success && mounted) {
       context.read<UserService>().loadFromAuth(authService);
+      try {
+        final user = authService.currentUser;
+        if (user != null) {
+          context.read<AuditService>().log(
+            action: 'Inicio de sesion',
+            type: 'login',
+            userId: user.id,
+            userName: user.nombre,
+            details: 'Login exitoso desde ${_selectedUserId}',
+            deviceId: _selectedUserId,
+          );
+        }
+      } catch (_) {}
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(

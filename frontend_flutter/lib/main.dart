@@ -24,6 +24,8 @@ import 'services/dashboard_service.dart';
 import 'services/user_service.dart';
 import 'services/closure_service.dart';
 import 'services/license_service.dart';
+import 'services/audit_service.dart';
+import 'services/vps_service.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/activation_screen.dart';
 import 'theme/omni_theme.dart';
@@ -69,6 +71,10 @@ void main() async {
     final lanSyncServer = LanSyncServer();
     final licenseService = LicenseService();
     await licenseService.init();
+    final auditService = AuditService();
+    await auditService.init();
+    final vpsService = VpsService();
+    await vpsService.init();
 
     final lanDiscoveryPort = int.tryParse(prefs.getString('lan_port') ?? '8765') ?? 8765;
     lanDiscovery.start(port: lanDiscoveryPort);
@@ -98,6 +104,8 @@ void main() async {
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
           ChangeNotifierProvider<LicenseService>.value(value: licenseService),
+          ChangeNotifierProvider<AuditService>.value(value: auditService),
+          ChangeNotifierProvider<VpsService>.value(value: vpsService),
           Provider<FormRepositoryImpl>.value(value: formRepo),
         ],
         child: const BioLabApp(),
