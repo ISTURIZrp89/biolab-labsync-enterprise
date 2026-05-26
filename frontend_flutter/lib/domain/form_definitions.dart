@@ -442,24 +442,8 @@ FormModuleDef _procesamientoModule() => {
         {'key': 'cargo_operativo', 'label': 'Cargo', 'type': 'autofill'},
       ],
       'activities_table': {
-        'label': 'Procesamiento',
-        'key': 'procesamiento',
-        'columns': [
-          {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'width': 70},
-          {'key': 'presentacion', 'label': 'Presentación', 'type': 'select', 'options': ['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO'], 'width': 110},
-          {'key': 'volumen', 'label': 'Volumen', 'type': 'select', 'options': ['5CC', '3CC', '2CC', '1CC', '10CC'], 'width': 80},
-          {'key': 'uso', 'label': 'Uso Terapéutico', 'type': 'select', 'options': ['SISTÉMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'INTRAVENOSO', 'TÓPICO'], 'width': 140},
-          {'key': 'tejido', 'label': 'Tipo de Tejido', 'type': 'select', 'options': ['PLACENTA', 'TEJIDO ADIPOSO', 'AUTÓLOGAS', 'ALOGÉNICAS', 'ENDOMETRIO', 'CORDÓN UMBILICAL'], 'width': 130},
-          {'key': 'paciente', 'label': 'Paciente', 'type': 'text', 'width': 140},
-          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'select', 'options': ['INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLÍNICA PRIVADA', 'OTRO'], 'width': 120},
-          {'key': 'pedido_por', 'label': 'Solicitado por', 'type': 'select', 'options': ['DR. JAVIER ARENAS', 'DRA. MARÍA RIVERA', 'DR. CARLOS MENDOZA', 'OTRO'], 'width': 130},
-          {'key': 'fecha_proceso', 'label': 'Fecha Proceso', 'type': 'date', 'width': 100},
-          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
-        ],
-      },
-      'cajas_table': {
-        'label': 'Control CA - Cajas Procesadas',
-        'key': 'cajas_procesadas',
+        'label': 'Procesamiento / Control CA',
+        'key': 'procesamiento_ca',
         'columns': [
           {'key': 'pedido', 'label': 'Pedido', 'type': 'number', 'width': 70},
           {'key': 'presentacion', 'label': 'Presentacion (millones)', 'type': 'select', 'options': ['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO'], 'width': 130},
@@ -471,6 +455,7 @@ FormModuleDef _procesamientoModule() => {
           {'key': 'pedido_por', 'label': 'Solicitado por', 'type': 'select', 'options': ['DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK', 'OTRO'], 'width': 140},
           {'key': 'fecha_proceso', 'label': 'Fecha Proceso', 'type': 'date', 'width': 110},
           {'key': 'notas', 'label': 'Notas / Observaciones', 'type': 'text', 'width': 200},
+          {'key': 'continuacion', 'label': 'Continuacion', 'type': 'text', 'width': 200},
         ],
       },
       'fields': [

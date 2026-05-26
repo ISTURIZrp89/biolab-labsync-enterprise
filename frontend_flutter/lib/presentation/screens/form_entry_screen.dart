@@ -935,10 +935,6 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ),
                       ],
                       if (_cajasTable != null) ...[
-                        if (widget.module == 'procesamiento') ...[
-                          const SizedBox(height: 20),
-                          _buildCopyFromBitacoraButton(),
-                        ],
                         const SizedBox(height: 20),
                         _buildTableSection(
                           _cajasTable!['label'] as String? ?? 'Cajas Procesadas',
@@ -1227,108 +1223,6 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     );
   }
 
-  Widget _buildCopyFromBitacoraButton() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.import_export, size: 14),
-        label: const Text('Importar cajas desde Bitácora', style: TextStyle(fontSize: 11)),
-        style: OutlinedButton.styleFrom(foregroundColor: OmniTheme.accentBlue, side: BorderSide(color: OmniTheme.accentBlue.withOpacity(0.4))),
-        onPressed: () async {
-          try {
-            final repo = context.read<FormRepositoryImpl>();
-            final bitacoraEntries = await repo.getEntriesByModule('bitacora');
-            final cajasDisponibles = <Map<String, dynamic>>[];
-            for (final entry in bitacoraEntries) {
-              final cajasList = entry.data['_cajas'] as List? ?? [];
-              for (final c in cajasList) {
-                final cMap = Map<String, dynamic>.from(c as Map);
-                cajasDisponibles.add({
-                  'fecha': entry.data['fecha'] ?? entry.date,
-                  'cajas': cMap['cajas'] ?? '',
-                  'tipo_tejido': cMap['tipo_tejido'] ?? '',
-                  'viales': cMap['viales'] ?? '',
-                });
-              }
-            }
-            if (cajasDisponibles.isEmpty) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay cajas registradas en Bitácora'), backgroundColor: OmniTheme.orange400));
-              return;
-            }
-            if (!mounted) return;
-            final selected = await showDialog<List<int>>(
-              context: context,
-              builder: (ctx) {
-                final selectedIndices = <int>{};
-                return StatefulBuilder(
-                  builder: (ctx, setDialogState) => AlertDialog(
-                    backgroundColor: OmniTheme.bg900,
-                    title: const Text('Importar cajas de Bitácora', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    content: SizedBox(
-                      width: 400,
-                      child: cajasDisponibles.isEmpty
-                          ? const Text('Sin cajas disponibles', style: TextStyle(color: OmniTheme.textMuted))
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: cajasDisponibles.length,
-                              itemBuilder: (_, i) {
-                                final c = cajasDisponibles[i];
-                                final checked = selectedIndices.contains(i);
-                                return CheckboxListTile(
-                                  dense: true,
-                                  value: checked,
-                                  activeColor: OmniTheme.accentBlue,
-                                  title: Text('${c['cajas']} - ${c['tipo_tejido']}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                                  subtitle: Text('${c['fecha']} | Viales: ${c['viales']}', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
-                                  onChanged: (v) {
-                                    setDialogState(() {
-                                      if (v == true) { selectedIndices.add(i); } else { selectedIndices.remove(i); }
-                                    });
-                                  },
-                                );
-                              },
-                            ),
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
-                      ElevatedButton(
-                        onPressed: selectedIndices.isEmpty ? null : () => Navigator.pop(ctx, selectedIndices.toList()),
-                        style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
-                        child: Text('Importar (${selectedIndices.length})', style: const TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-            if (selected != null && selected.isNotEmpty) {
-              setState(() {
-                for (final i in selected) {
-                  final c = cajasDisponibles[i];
-                  _cajas.add({
-                    'pedido': '',
-                    'presentacion': '',
-                    'volumen': '',
-                    'uso': '',
-                    'tejido': c['tipo_tejido'] ?? '',
-                    'paciente': '',
-                    'enviado_a': '',
-                    'pedido_por': '',
-                    'fecha_proceso': '',
-                    'notas': 'Importado de Bitácora (${c['fecha']})',
-                  });
-                }
-                _markDirty();
-              });
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${selected.length} caja(s) importada(s)'), backgroundColor: OmniTheme.green400));
-            }
-          } catch (e) {
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
-          }
-        },
-      ),
-    );
-  }
 
   Widget _buildExtraField(int index) {
     final f = _extraFields[index];
