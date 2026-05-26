@@ -9,16 +9,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/db.dart';
 
 class LicenseService extends ChangeNotifier {
-  static const String _rawBase = 'https://raw.githubusercontent.com/ISTURIZrp89/biolab-labsync-license/master/';
-  static const String _licenseUrl = '${_rawBase}license.json';
+  static const String _apiBase = 'https://api.github.com/repos/ISTURIZrp89/biolab-labsync-license/contents/';
+  static const String _licenseUrl = '${_apiBase}license.json';
+  static String get _token => String.fromEnvironment('LICENSE_GITHUB_TOKEN');
 
   static Future<Map<String, dynamic>?> fetchPrivateFile(String path) async {
+    final token = _token;
+    if (token.isEmpty) {
+      debugPrint('ERROR: LICENSE_GITHUB_TOKEN no configurado. Usa build.ps1 o build.sh para compilar.');
+      return null;
+    }
     try {
       final response = await http.get(
-        Uri.parse('$_rawBase$path'),
-        headers: {'Cache-Control': 'no-cache'},
+        Uri.parse('$_apiBase$path'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/vnd.github.v3+json',
+          'Cache-Control': 'no-cache',
+        },
       ).timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['encoding'] == 'base64' && body['content'] != null) {
+          final decoded = utf8.decode(base64Decode(body['content']));
+          return jsonDecode(decoded) as Map<String, dynamic>;
+        }
+        return body;
+      }
     } catch (_) {}
     return null;
   }
