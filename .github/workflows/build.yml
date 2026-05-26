@@ -1,0 +1,47 @@
+name: Build LABSYNC Windows
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.16'
+          cache: true
+
+      - run: flutter pub get
+        working-directory: frontend_flutter
+
+      - name: Check token
+        env:
+          TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+        run: |
+          if ("$env:TOKEN".Length -gt 0) {
+            Write-Host "TOKEN CONFIGURADO ($($env:TOKEN.Length) caracteres)" -ForegroundColor Green
+          } else {
+            Write-Host "ADVERTENCIA: Token LICENSE_GITHUB_TOKEN vacio. Usando modo demo." -ForegroundColor Yellow
+          }
+
+      - name: Build Windows
+        env:
+          TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+        run: |
+          $define = if ("$env:TOKEN".Length -gt 0) { "--dart-define=LICENSE_GITHUB_TOKEN=$env:TOKEN" } else { "" }
+          flutter build windows --release $define
+        working-directory: frontend_flutter
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: labsync-windows
+          path: frontend_flutter/build/windows/x64/runner/Release/
