@@ -9,6 +9,8 @@ import '../../services/notification_service.dart';
 import '../../services/closure_service.dart';
 import '../../services/user_service.dart';
 import '../../services/update_service.dart';
+import '../../services/license_service.dart';
+import '../../sync/lan_discovery_service.dart';
 import '../../security/permission_service.dart';
 import '../../security/edit_lock_service.dart';
 import '../../ai/ai_service.dart';
@@ -328,6 +330,85 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
+  Widget _buildLicenseBadge() {
+    final license = context.watch<LicenseService>();
+    if (!license.offlineMode) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Modo offline - La licencia no pudo verificarse',
+      child: Container(
+        width: 32, height: 20,
+        decoration: BoxDecoration(
+          color: OmniTheme.orange400.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Center(child: Icon(Icons.wifi_off, size: 12, color: OmniTheme.orange400)),
+      ),
+    );
+  }
+
+  Widget _buildNetworkDevicesBtn() {
+    return Tooltip(
+      message: 'Dispositivos en red',
+      child: IconButton(
+        icon: const Icon(Icons.devices, size: 18),
+        onPressed: () => _showNetworkDevices(),
+        color: OmniTheme.textMuted,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      ),
+    );
+  }
+
+  void _showNetworkDevices() {
+    final discovery = context.read<LanDiscoveryService>();
+    final peers = discovery.peers;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: Row(children: [
+          const Icon(Icons.devices, size: 18, color: OmniTheme.accentBlue),
+          const SizedBox(width: 8),
+          Text('Dispositivos en Red (${peers.length + 1})', style: const TextStyle(fontSize: 14, color: OmniTheme.textPrimary, fontWeight: FontWeight.bold)),
+        ]),
+        content: SizedBox(
+          width: 360,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(color: OmniTheme.green400.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+              child: Row(children: [
+                Container(width: 6, height: 6, decoration: const BoxDecoration(color: OmniTheme.green400, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                const Text('Este equipo', style: TextStyle(fontSize: 11, color: OmniTheme.textPrimary)),
+              ]),
+            ),
+            if (peers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Text('No se detectaron otros dispositivos', style: TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+              )
+            else
+              ...peers.map((p) => Container(
+                padding: const EdgeInsets.all(8),
+                margin: const EdgeInsets.only(bottom: 4),
+                decoration: BoxDecoration(color: OmniTheme.bg800, borderRadius: BorderRadius.circular(6)),
+                child: Row(children: [
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: OmniTheme.accentBlue, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(p.toString(), style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary))),
+                ]),
+              )),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(fontSize: 11))),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTrailing(SyncEngine sync, AuthService auth, double railWidth) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -337,6 +418,10 @@ class _MainScaffoldState extends State<MainScaffold> {
           const Divider(height: 1, color: OmniTheme.bg800),
           const SizedBox(height: 6),
           _buildSyncDot(sync),
+          const SizedBox(height: 4),
+          _buildLicenseBadge(),
+          const SizedBox(height: 4),
+          _buildNetworkDevicesBtn(),
           const SizedBox(height: 4),
           _buildNotificationBell(),
           const SizedBox(height: 4),
