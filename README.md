@@ -2,6 +2,17 @@
 
 Sistema de gestion de bitacoras para laboratorio clinico. Multiplataforma (Windows, macOS, Linux) con licencia por activacion, auto-update, y modulo de IA distribuida.
 
+## 🔑 Clave de activacion para desarrollo
+
+Usa esta clave para probar la app:
+
+```
+LABSYNC-DEMO-Y1ZZ-TGJ3
+```
+
+Sucursal: **`demo`**. Cualquier app compilada funciona con esta clave.
+El administrador puede generar claves personalizadas por empresa/sucursal en el repositorio privado de licencias.
+
 ## Requisitos
 
 - Flutter 3.16+
