@@ -16,9 +16,10 @@ class LicenseService extends ChangeNotifier {
   static Future<Map<String, dynamic>?> fetchPrivateFile(String path) async {
     final token = _token;
     if (token.isEmpty) {
-      debugPrint('ERROR: LICENSE_GITHUB_TOKEN no configurado. Usa build.ps1 o build.sh para compilar.');
+      debugPrint('ERROR: LICENSE_GITHUB_TOKEN no configurado.');
       return null;
     }
+    debugPrint('Fetching: $_apiBase$path');
     try {
       final response = await http.get(
         Uri.parse('$_apiBase$path'),
@@ -28,15 +29,33 @@ class LicenseService extends ChangeNotifier {
           'Cache-Control': 'no-cache',
         },
       ).timeout(const Duration(seconds: 15));
+      debugPrint('GitHub API status: ${response.statusCode}');
       if (response.statusCode == 200) {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        if (body['encoding'] == 'base64' && body['content'] != null) {
-          final decoded = utf8.decode(base64Decode(body['content']));
-          return jsonDecode(decoded) as Map<String, dynamic>;
+        try {
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          if (body['encoding'] == 'base64' && body['content'] != null) {
+            final decoded = utf8.decode(base64Decode(body['content']));
+            return jsonDecode(decoded) as Map<String, dynamic>;
+          }
+          debugPrint('Respuesta inesperada: encoding=${body['encoding']}');
+          return body;
+        } catch (e) {
+          debugPrint('Error parseando respuesta: $e');
+          return null;
         }
-        return body;
+      } else {
+        debugPrint('GitHub API error: ${response.statusCode} ${response.reasonPhrase}');
+        debugPrint('Cuerpo: ${response.body}');
       }
-    } catch (_) {}
+    } on SocketException catch (e) {
+      debugPrint('Error de red: $e');
+    } on HttpException catch (e) {
+      debugPrint('Error HTTP: $e');
+    } on TimeoutException {
+      debugPrint('Timeout: el servidor no respondio en 15s');
+    } catch (e) {
+      debugPrint('Error desconocido: $e');
+    }
     return null;
   }
 
