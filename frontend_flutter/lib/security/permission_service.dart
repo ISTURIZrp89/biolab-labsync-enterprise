@@ -10,11 +10,11 @@ class PermissionService extends ChangeNotifier {
   bool _permLoaded = false;
 
   static const Map<String, Set<String>> defaultRolModules = {
-    'ADMIN': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'config', 'users', 'closures', 'reports'},
+    'ADMIN': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'config', 'users', 'closures', 'reports', 'muestras'},
     'JEFE': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'closures', 'reports'},
     'LABORATORIO': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora'},
     'AUDITOR': {'reports'},
-    'DUEÑO': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'config', 'reports'},
+    'DUEÑO': {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'config', 'reports', 'muestras'},
   };
 
   static const Map<String, String> defaultRolModulePerms = {

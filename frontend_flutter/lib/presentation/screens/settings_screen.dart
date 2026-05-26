@@ -6,7 +6,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../data/db.dart';
+import '../../data/csv_mappings.dart';
 import '../../security/auth_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../ai/ai_service.dart';
@@ -15,6 +17,12 @@ import '../../sync/lan_sync_server.dart';
 import '../../services/update_service.dart';
 import '../../theme/omni_theme.dart';
 import '../screens/csv_import_screen.dart';
+import 'ai/ai_dashboard_screen.dart';
+import 'ai/model_manager_screen.dart';
+import 'ai/node_network_screen.dart';
+import 'ai/shared_memory_screen.dart';
+import 'bitacora_bulk_import_screen.dart';
+import 'pending_import_approval_screen.dart';
 
 String _getPlatformName() {
   if (kIsWeb) return 'Web (navegador)';
@@ -1234,10 +1242,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ]),
             _buildAccordion('Productos Registrados', Icons.inventory_2, false, [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.upload_file, size: 16),
+                  label: const Text('Importar productos desde CSV', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(foregroundColor: OmniTheme.accentBlue),
+                  onPressed: () => _importProductsCsv(),
+                ),
+              ),
               _buildProductCategory('Presentaciones', 'presentacion', ['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO']),
               _buildProductCategory('Volumenes', 'volumen', ['5CC', '3CC', '2CC', '1CC', '10CC']),
               _buildProductCategory('Usos Terapeuticos', 'uso', ['SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'ARTICULAR TOBILLO', 'ARTICULAR LUMBAR', 'INTRAVENOSO', 'TOPICO']),
               _buildProductCategory('Tipos de Tejido', 'tejido', ['PLACENTA', 'TEJIDO ADIPOSO', 'PULPA', 'ENDOMETRIO', 'MEMBRANA', 'GW', 'AUTOLOGAS', 'ALOGENICAS', 'EXOSOMAS', 'CORDON UMBILICAL']),
+              _buildProductCategory('Tipo de Envio', 'tipo_envio', ['CELULAS', 'EXOSOMAS', 'MEDIO CONDICIONADO', 'FACTORES DE CRECIMIENTO', 'NA']),
               _buildProductCategory('Enviado a', 'enviado_a', ['INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLINICA PRIVADA', 'OTRO']),
               _buildProductCategory('Solicitado por', 'pedido_por', ['DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK', 'OTRO']),
             ]),
@@ -1283,11 +1301,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ]),
+            if (auth.isAdmin || auth.isOwner) ...[
+              _buildAccordion('Administracion de IA', Icons.admin_panel_settings, false, [
+                ListTile(
+                  leading: const Icon(Icons.dashboard, color: OmniTheme.accentBlue),
+                  title: const Text('Dashboard IA', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Hardware, rendimiento y estado general', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiDashboardScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.model_training, color: OmniTheme.accentBlue),
+                  title: const Text('Gestor de Modelos', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Descargar, instalar y activar modelos IA', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ModelManagerScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.hub, color: OmniTheme.accentBlue),
+                  title: const Text('Red de Nodos', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Gestionar red distribuida de equipos', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NodeNetworkScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.memory, color: OmniTheme.accentBlue),
+                  title: const Text('Memoria Compartida', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Entradas, embedding y sincronizacion entre nodos', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SharedMemoryScreen())),
+                ),
+              ]),
+              if (auth.isAdmin || auth.isOwner) ...[
+                const Divider(color: OmniTheme.bg800),
+                ListTile(
+                  leading: const Icon(Icons.history, color: OmniTheme.orange400),
+                  title: const Text('Importar Bitacoras Anteriores', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Subir CSV de meses previos, IA extrae datos, tu apruebas', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BitacoraBulkImportScreen())),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.checklist, color: OmniTheme.green400),
+                  title: const Text('Aprobar Importaciones Pendientes', style: TextStyle(color: OmniTheme.textPrimary)),
+                  subtitle: const Text('Revisar y aceptar datos importados por la IA', style: TextStyle(color: OmniTheme.textMuted)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PendingImportApprovalScreen())),
+                ),
+              ],
+            ],
             _buildAccordion('Importar / Exportar', Icons.file_copy, false, [
               ListTile(
                 leading: const Icon(Icons.file_upload, color: OmniTheme.accentBlue),
-                title: const Text('Importar CSV', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: const Text('Cargar reportes de meses anteriores', style: TextStyle(color: OmniTheme.textMuted)),
+                title: const Text('Importar CSV (Equipos)', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Cargar reportes de equipos', style: TextStyle(color: OmniTheme.textMuted)),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CsvImportScreen())),
               ),
@@ -1458,11 +1525,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (result != null && result.isNotEmpty) {
       final p = await SharedPreferences.getInstance();
       final existing = p.getStringList('custom_opts_$key') ?? [];
-      if (!existing.contains(result) && !['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO', '5CC', '3CC', '2CC', '1CC', '10CC', 'SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'ARTICULAR TOBILLO', 'ARTICULAR LUMBAR', 'INTRAVENOSO', 'TOPICO', 'PLACENTA', 'TEJIDO ADIPOSO', 'PULPA', 'ENDOMETRIO', 'MEMBRANA', 'GW', 'AUTOLOGAS', 'ALOGENICAS', 'EXOSOMAS', 'CORDON UMBILICAL', 'INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLINICA PRIVADA', 'OTRO', 'DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK'].contains(result)) {
+      if (!existing.contains(result) && !['100M', '50M', '30M', 'EXOSOMAS', '100M+EXO', '5CC', '3CC', '2CC', '1CC', '10CC', 'SISTEMICO', 'ARTICULAR RODILLA', 'ARTICULAR CADERA', 'ARTICULAR TOBILLO', 'ARTICULAR LUMBAR', 'INTRAVENOSO', 'TOPICO', 'PLACENTA', 'TEJIDO ADIPOSO', 'PULPA', 'ENDOMETRIO', 'MEMBRANA', 'GW', 'AUTOLOGAS', 'ALOGENICAS', 'EXOSOMAS', 'CORDON UMBILICAL', 'CELULAS', 'MEDIO CONDICIONADO', 'FACTORES DE CRECIMIENTO', 'NA', 'INMUNOTERAPIA', 'QUANTUM', 'HOSPITAL', 'CLINICA PRIVADA', 'OTRO', 'DR. JAVIER ARENAS', 'DRA. MARIA RIVERA', 'DR. CARLOS MENDOZA', 'ERICK'].contains(result)) {
         existing.add(result);
         await p.setStringList('custom_opts_$key', existing);
         setState(() {});
       }
+    }
+  }
+
+  Future<void> _importProductsCsv() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv', 'txt']);
+      if (result == null || result.files.isEmpty) return;
+      final file = File(result.files.single.path!);
+      final lines = await file.readAsLines();
+      if (lines.length < 2) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV debe tener encabezados y al menos una fila'), backgroundColor: OmniTheme.orange400));
+        return;
+      }
+      final headers = parseCsvLine(lines[0]);
+      final categoryMap = {
+        'presentacion': 'Presentacion',
+        'volumen': 'Volumen',
+        'uso': 'Uso Terapeutico',
+        'tejido': 'Tipo Tejido',
+        'tipo_envio': 'Tipo Envio',
+        'enviado_a': 'Enviado a',
+        'pedido_por': 'Solicitado por',
+      };
+      int added = 0;
+      for (int i = 1; i < lines.length; i++) {
+        final values = parseCsvLine(lines[i]);
+        if (values.length != headers.length) continue;
+        for (int c = 0; c < headers.length; c++) {
+          final header = headers[c].trim().toLowerCase();
+          final value = values[c].trim();
+          if (value.isEmpty) continue;
+          String? matchedKey;
+          for (final entry in categoryMap.entries) {
+            if (header.contains(entry.key)) { matchedKey = entry.key; break; }
+          }
+          if (matchedKey == null) continue;
+          final prefs = await SharedPreferences.getInstance();
+          final storageKey = 'custom_opts_$matchedKey';
+          final existing = prefs.getStringList(storageKey) ?? [];
+          if (!existing.contains(value)) {
+            existing.add(value);
+            await prefs.setStringList(storageKey, existing);
+            added++;
+          }
+        }
+      }
+      setState(() {});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$added producto(s) importados'), backgroundColor: OmniTheme.green400));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al importar CSV: $e'), backgroundColor: OmniTheme.red400));
     }
   }
 

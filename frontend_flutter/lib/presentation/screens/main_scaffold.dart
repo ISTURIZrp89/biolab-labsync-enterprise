@@ -47,9 +47,10 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem('Equipos', Icons.precision_manufacturing_outlined, Icons.precision_manufacturing),
     _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
     _NavItem('Cobre', Icons.science_outlined, Icons.science),
+    _NavItem('Muestras (DEV)', Icons.biotech_outlined, Icons.biotech),
   ];
 
-  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre'];
+  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre', 'muestras'];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
@@ -60,6 +61,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     OmniTheme.green400,
     OmniTheme.orange400,
     Color(0xFF00BCD4),
+    Color(0xFFFF6B35),
   ];
 
   @override
@@ -115,7 +117,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       await permService.loadPermissions(auth);
       _allowedModules = permService.allowedModules;
     } catch (_) {
-      _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre'};
+      _allowedModules = {'incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre', 'muestras'};
     }
     if (mounted) setState(() => _permLoaded = true);
   }
@@ -225,8 +227,10 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   List<int> _getFilteredIndices() {
-    return [0, 1, 2, 3, 4, 5, 6, 7, 8]
-      .where((i) => i < 2 || _allowedModules.contains(_moduleKeys[i]))
+    final auth = context.read<AuthService>();
+    final isDev = auth.isAdmin || auth.isOwner;
+    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      .where((i) => i < 2 || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
       .toList();
   }
 
@@ -235,93 +239,130 @@ class _MainScaffoldState extends State<MainScaffold> {
     final sync = context.watch<SyncEngine>();
     final filteredIndices = _getFilteredIndices();
     final filteredItems = filteredIndices.map((i) => _navItems[i]).toList();
+    final railWidth = isCompact ? 56.0 : (extended ? 100.0 : 80.0);
 
-    return NavigationRail(
-      selectedIndex: filteredIndices.indexOf(_selectedIndex).clamp(0, filteredIndices.length - 1),
-      onDestinationSelected: (pos) {
-        final i = filteredIndices[pos];
-        if (i == 0) {
-          setState(() => _selectedIndex = i);
-          _loadStats();
-        } else if (i == 1) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
-        } else {
-          _openModule(_moduleKeys[i], _navItems[i].label);
-        }
-      },
-      labelType: isCompact ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-      backgroundColor: OmniTheme.bg900,
-      minWidth: isCompact ? 56 : (extended ? 88 : 72),
-      groupAlignment: -1,
-      leading: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+    return Container(
+      width: railWidth,
+      color: OmniTheme.bg900,
+      child: SafeArea(
         child: Column(
           children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
-                borderRadius: BorderRadius.circular(12),
+            _buildLeading(auth, railWidth),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: filteredItems.length,
+                itemBuilder: (ctx, pos) {
+                  final i = filteredIndices[pos];
+                  final item = filteredItems[pos];
+                  final isSelected = _selectedIndex == i;
+                  final color = _moduleColors[i] ?? OmniTheme.accentBlue;
+                  return _buildNavItem(item, isSelected, color, i, railWidth);
+                },
               ),
-              child: const Icon(Icons.biotech, color: Colors.white, size: 24),
             ),
-            const SizedBox(height: 6),
-            Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis, maxLines: 1),
-            Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 8, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis, maxLines: 1),
+            _buildTrailing(sync, auth, railWidth),
           ],
         ),
       ),
-      trailing: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildSyncDot(sync),
-            const SizedBox(height: 6),
-            _buildNotificationBell(),
-            const SizedBox(height: 6),
-            IconButton(
-              icon: const Icon(Icons.settings_outlined, size: 22),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-              color: OmniTheme.textMuted,
-              tooltip: 'Configuracion',
-            ),
-            const SizedBox(height: 6),
-            IconButton(
-              icon: const Icon(Icons.logout, size: 22),
-              onPressed: () {
-                try { sync.stopPeriodicSync(); } catch (_) {}
-                auth.logout();
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-              },
-              color: OmniTheme.red400,
-              tooltip: 'Cerrar sesion',
-            ),
-          ],
-        ),
-      ),
-      destinations: filteredItems.asMap().entries.map((entry) {
-        final pos = entry.key;
-        final item = entry.value;
-        final origIdx = filteredIndices[pos];
-        final isSelected = _selectedIndex == origIdx;
-        final color = _moduleColors[origIdx] ?? OmniTheme.accentBlue;
-        return NavigationRailDestination(
-          icon: Icon(item.icon, size: 20, color: OmniTheme.textMuted),
-          selectedIcon: Container(
-            width: 32, height: 32,
+    );
+  }
+
+  Widget _buildLeading(AuthService auth, double railWidth) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        children: [
+          Container(
+            width: 40, height: 40,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
+              gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(item.selectedIcon, size: 20, color: color),
+            child: const Icon(Icons.biotech, color: Colors.white, size: 22),
           ),
-          label: Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(item.label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? color : OmniTheme.textMuted)),
+          const SizedBox(height: 4),
+          Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis, maxLines: 1),
+          Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis, maxLines: 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(_NavItem item, bool isSelected, Color color, int origIdx, double railWidth) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          if (origIdx == 0) {
+            setState(() => _selectedIndex = origIdx);
+            _loadStats();
+          } else if (origIdx == 1) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
+          } else {
+            _openModule(_moduleKeys[origIdx], _navItems[origIdx].label);
+          }
+        },
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: isSelected ? Border.all(color: color.withOpacity(0.2), width: 0.5) : null,
           ),
-        );
-      }).toList(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(isSelected ? item.selectedIcon : item.icon, size: 18, color: isSelected ? color : OmniTheme.textMuted),
+              const SizedBox(height: 2),
+              Text(item.label, style: TextStyle(
+                fontSize: 9,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? color : OmniTheme.textMuted,
+              ), overflow: TextOverflow.ellipsis, maxLines: 1),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrailing(SyncEngine sync, AuthService auth, double railWidth) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Divider(height: 1, color: OmniTheme.bg800),
+          const SizedBox(height: 6),
+          _buildSyncDot(sync),
+          const SizedBox(height: 4),
+          _buildNotificationBell(),
+          const SizedBox(height: 4),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, size: 20),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            color: OmniTheme.textMuted,
+            tooltip: 'Configuracion',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+          const SizedBox(height: 4),
+          IconButton(
+            icon: const Icon(Icons.logout, size: 20),
+            onPressed: () {
+              try { sync.stopPeriodicSync(); } catch (_) {}
+              auth.logout();
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+            },
+            color: OmniTheme.red400,
+            tooltip: 'Cerrar sesion',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+        ],
+      ),
     );
   }
 

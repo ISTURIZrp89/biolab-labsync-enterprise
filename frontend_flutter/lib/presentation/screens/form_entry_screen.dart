@@ -294,6 +294,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     super.initState();
     _initForm();
     _loadDraft();
+    _autoPrefillFromPrevious();
     _loadEquipmentOptions();
     _loadCustomOptions();
     try {
@@ -367,13 +368,14 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       _cajas = [{}];
     }
     if (_resources.isEmpty && _resourcesTable != null) {
-      if (widget.module == 'bitacora' && widget.existingEntry == null) {
+      final String module = widget.module;
+      if (module == 'bitacora') {
         _resources = [
-          {'reactivo': 'Medio de Cultivo DMEM', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
-          {'reactivo': 'Suero Fetal Bovino (SFB)', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
-          {'reactivo': 'Tripsina-EDTA', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
-          {'reactivo': 'PBS 1X', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
-          {'reactivo': 'Agua Grado Reactivo', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'DMEM', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'SFB', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'Tripsina', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'PBS', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
+          {'reactivo': 'Agua', 'lote': '', 'caducidad': '', 'cantidad': '', 'observaciones': ''},
         ];
       } else {
         _resources = [{}];
@@ -594,6 +596,43 @@ class _DailyLogFormState extends State<_DailyLogForm> {
       }
       if (mounted) setState(() {});
       prefs.remove('draft_${widget.module}');
+    } catch (_) {}
+  }
+
+  Future<void> _autoPrefillFromPrevious() async {
+    if (widget.existingEntry != null) return;
+    if (widget.module != 'bitacora') return;
+    try {
+      final repo = context.read<FormRepositoryImpl>();
+      final allEntries = await repo.getEntriesByModule('bitacora');
+      if (allEntries.isEmpty) return;
+      final lastEntry = allEntries.last;
+      final sourceData = lastEntry.data;
+      bool changed = false;
+
+      if (sourceData['_recursos'] is List && (sourceData['_recursos'] as List).isNotEmpty) {
+        _resources = (sourceData['_recursos'] as List)
+            .map((r) => Map<String, dynamic>.from(r as Map)).toList();
+        changed = true;
+      }
+      if (sourceData['_cajas'] is List && (sourceData['_cajas'] as List).isNotEmpty) {
+        _cajas = (sourceData['_cajas'] as List)
+            .map((c) => Map<String, dynamic>.from(c as Map)).toList();
+        changed = true;
+      }
+      for (final f in _generalFields) {
+        final key = f['key'] as String;
+        final type = f['type'] as String;
+        if (type == 'date' || type == 'time') continue;
+        if (sourceData.containsKey(key) && sourceData[key].toString().isNotEmpty) {
+          _formData[key] = sourceData[key];
+          if (_controllers.containsKey(key)) {
+            _controllers[key]!.text = sourceData[key].toString();
+          }
+          changed = true;
+        }
+      }
+      if (changed && mounted) setState(() {});
     } catch (_) {}
   }
 
@@ -911,13 +950,13 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           child: Column(
             children: [
               Expanded(
-                child: SingleChildScrollView(
+                  child: SingleChildScrollView(
                   controller: _fieldsScroll,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(10),
                   child: Center(
                     child: LayoutBuilder(
                     builder: (context, constraints) => Container(
-                      constraints: BoxConstraints(maxWidth: constraints.maxWidth > 800 ? 800 : constraints.maxWidth),
+                      constraints: BoxConstraints(maxWidth: constraints.maxWidth > 1400 ? 1400 : constraints.maxWidth),
                       child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -927,11 +966,11 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ...List.generate(_generalFields.length, (i) => _buildAutofillField(i)),
                       ],
                       if (_activitiesTable != null && widget.module == 'procesamiento') ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         _buildImportFromBitacoraButton(),
                       ],
                       if (_activitiesTable != null) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         _buildTableSection(
                           _activitiesTable!['label'] as String? ?? 'Actividades',
                           ((_activitiesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
@@ -941,7 +980,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ),
                       ],
                       if (_cajasTable != null) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         _buildTableSection(
                           _cajasTable!['label'] as String? ?? 'Cajas Procesadas',
                           ((_cajasTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
@@ -951,7 +990,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ),
                       ],
                       if (_resourcesTable != null) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         _buildTableSection(
                           _resourcesTable!['label'] as String? ?? 'Recursos',
                           ((_resourcesTable!['columns'] as List?) ?? []).cast<Map<String, dynamic>>(),
@@ -961,7 +1000,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                         ),
                       ],
                       if (_extraFields.isNotEmpty) ...[
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         _buildSectionHeader('Observaciones e Incidencias'),
                         const SizedBox(height: 8),
                         ...List.generate(_extraFields.length, (i) => _buildExtraField(i)),
@@ -999,11 +1038,11 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     final controller = _controllers[key]!;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          SizedBox(width: 140, child: Text('$label${required ? ' *' : ''}', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
-          const SizedBox(width: 8),
+          SizedBox(width: 120, child: Text('$label${required ? ' *' : ''}', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted))),
+          const SizedBox(width: 6),
           Expanded(
             child: type == 'date'
                 ? InkWell(
@@ -1091,7 +1130,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
   Widget _buildTableSection(String label, List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows, ScrollController scrollH, {VoidCallback? onPaste}) {
     if (columns.isEmpty) return const SizedBox.shrink();
 
-    double totalWidth = 70;
+    double totalWidth = 54;
     for (final col in columns) { totalWidth += (col['width'] as num?)?.toDouble() ?? 120; }
 
     return Column(
@@ -1105,7 +1144,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
           _tableAction(Icons.add, () => _addRow(rows, columns)),
           if (onPaste != null) ...[const SizedBox(width: 4), _tableAction(Icons.content_paste, onPaste)],
         ]),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Container(
           decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg800), borderRadius: BorderRadius.circular(8)),
           child: ClipRRect(
@@ -1143,15 +1182,15 @@ class _DailyLogFormState extends State<_DailyLogForm> {
 
   Widget _buildTableHeader(List<Map<String, dynamic>> columns) {
     return Container(
-      height: 32,
+      height: 28,
       color: OmniTheme.bg800,
       child: Row(
         children: [
           ...columns.map((col) => SizedBox(
             width: (col['width'] as num?)?.toDouble() ?? 120,
-            child: Center(child: Text((col['label'] as String? ?? '').toUpperCase(), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: OmniTheme.textMuted))),
+            child: Center(child: Text((col['label'] as String? ?? '').toUpperCase(), style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: OmniTheme.textMuted))),
           )),
-          const SizedBox(width: 60, child: Center(child: Text('ACCIÓN', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)))),
+          SizedBox(width: 44, child: Center(child: Text('ACCIÓN', style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: OmniTheme.textMuted)))),
         ],
       ),
     );
@@ -1159,7 +1198,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
 
   Widget _buildTableRow(List<Map<String, dynamic>> rows, List<Map<String, dynamic>> columns, int rowIdx) {
     return Container(
-      height: 36,
+      height: 30,
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800, width: 0.5))),
       child: Row(
         children: [
@@ -1180,6 +1219,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
             } else {
               final isLastCol = columns.indexOf(col) == columns.length - 1;
               cell = TextFormField(
+                key: ValueKey('txt_${rowIdx}_$key\_$cellValue'),
                 initialValue: cellValue,
                 style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary),
                 textInputAction: isLastCol && rowIdx < rows.length - 1 ? TextInputAction.next : TextInputAction.done,
@@ -1199,8 +1239,6 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                 onChanged: (v) { rows[rowIdx][key] = v; _markDirty(); },
                 onFieldSubmitted: isLastCol && rowIdx < rows.length - 1
                     ? (_) {
-                        final nextColKey = columns.isNotEmpty ? columns[0]['key'] as String : '';
-                        // Focus next row by using a post-frame callback
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           FocusScope.of(context).nextFocus();
                         });
@@ -1211,10 +1249,10 @@ class _DailyLogFormState extends State<_DailyLogForm> {
             return SizedBox(width: width, child: cell);
           }),
           SizedBox(
-            width: 60,
+            width: 44,
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              InkWell(onTap: () => _duplicateRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.copy, size: 12, color: OmniTheme.accentBlue))),
-              InkWell(onTap: () => _removeRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.close, size: 12, color: OmniTheme.red400))),
+              InkWell(onTap: () => _duplicateRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(2), child: Icon(Icons.copy, size: 10, color: OmniTheme.accentBlue))),
+              InkWell(onTap: () => _removeRow(rows, rowIdx), child: const Padding(padding: EdgeInsets.all(2), child: Icon(Icons.close, size: 10, color: OmniTheme.red400))),
             ]),
           ),
         ],
@@ -1256,7 +1294,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     final effectiveOptions = allOptions.toSet().toList();
 
     return TextFormField(
-      key: ValueKey('${rowIdx}_$key'),
+      key: ValueKey('ed_${rowIdx}_$key\_$cellValue'),
       initialValue: cellValue,
       style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary),
       decoration: InputDecoration(
@@ -1296,12 +1334,12 @@ class _DailyLogFormState extends State<_DailyLogForm> {
     if (!_controllers.containsKey(key)) _controllers[key] = controller;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           TextFormField(
             controller: controller,
             maxLines: multiline ? 3 : 1,
@@ -1368,23 +1406,18 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                   final cajasList = entry.data['_cajas'] as List? ?? [];
                   for (final c in cajasList) {
                     final cMap = Map<String, dynamic>.from(c as Map);
-                    final cajasTexto = cMap['cajas']?.toString() ?? '';
-                    final vialesTexto = cMap['viales']?.toString() ?? '';
                     final obsTexto = cMap['observaciones']?.toString() ?? '';
-                    final notasBuf = <String>[];
-                    if (cajasTexto.isNotEmpty) notasBuf.add('Caja: $cajasTexto');
-                    if (vialesTexto.isNotEmpty) notasBuf.add('Viales: $vialesTexto');
-                    if (obsTexto.isNotEmpty) notasBuf.add(obsTexto);
                     _activities.add({
-                      'presentacion': '',
-                      'volumen': '',
+                      'presentacion': cMap['cajas']?.toString() ?? '',
+                      'volumen': cMap['viales']?.toString() ?? '',
                       'uso': '',
                       'tejido': cMap['tipo_tejido']?.toString() ?? '',
                       'paciente': '',
+                      'tipo_envio': '',
                       'enviado_a': '',
                       'pedido_por': '',
                       'fecha_proceso': fecha,
-                      'notas': notasBuf.isNotEmpty ? notasBuf.join(' | ') : 'Importado de Bitácora',
+                      'notas': obsTexto.isNotEmpty ? obsTexto : 'Importado de Bitácora',
                       'continuacion': '',
                     });
                     imported++;
