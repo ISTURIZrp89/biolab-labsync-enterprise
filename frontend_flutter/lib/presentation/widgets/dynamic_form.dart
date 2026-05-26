@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import '../../theme/omni_theme.dart';
 
 class DynamicFormWidget extends StatefulWidget {
   final Map<String, dynamic> template;
@@ -72,7 +73,7 @@ class _DynamicFormWidgetState extends State<DynamicFormWidget> {
             labelText: label,
             labelStyle: const TextStyle(color: Colors.white70),
           ),
-          dropdownColor: const Color(0xFF002244),
+          dropdownColor: const OmniTheme.bg800,
           style: const TextStyle(color: Colors.white),
           items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
           onChanged: (v) => setState(() => _formData[key] = v ?? ''),
@@ -151,7 +152,7 @@ class _DynamicFormWidgetState extends State<DynamicFormWidget> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
-                backgroundColor: const Color(0xFF004A99),
+                backgroundColor: const OmniTheme.primary,
               ),
               child: const Text('Guardar Bitacora', style: TextStyle(color: Colors.white)),
             ),

@@ -1,34 +1,53 @@
 import 'package:flutter/material.dart';
 
 class OmniTheme {
-  static const bg950 = Color(0xFF020617);
-  static const bg900 = Color(0xFF0F172A);
-  static const bg800 = Color(0xFF1E293B);
-  static const bg700 = Color(0xFF334155);
-  static const accentBlue = Color(0xFF3B82F6);
-  static const accentIndigo = Color(0xFF6366F1);
-  static const textPrimary = Color(0xFFF8FAFC);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted = Color(0xFF64748B);
-  static const green400 = Color(0xFF4ADE80);
-  static const red400 = Color(0xFFF87171);
-  static const yellow400 = Color(0xFFFACC15);
+  static const primary = Color(0xFF8B5CF6);
+  static const primaryLight = Color(0xFFA78BFA);
+  static const primaryDark = Color(0xFF6D28D9);
+  static const secondary = Color(0xFF06B6D4);
+  static const tertiary = Color(0xFFEC4899);
+  static const accent = Color(0xFFF43F5E);
+
+  static const bg950 = Color(0xFF0A0A1A);
+  static const bg900 = Color(0xFF12122A);
+  static const bg800 = Color(0xFF1E1E3A);
+  static const bg700 = Color(0xFF2D2D4A);
+  static const textPrimary = Color(0xFFF1F0FB);
+  static const textSecondary = Color(0xFFA5A3C9);
+  static const textMuted = Color(0xFF6B6999);
+  static const success = Color(0xFF34D399);
+  static const error = Color(0xFFFB7185);
+  static const warning = Color(0xFFFBBF24);
+  static const info = Color(0xFF38BDF8);
+
+  static const accentBlue = primary;
+  static const accentIndigo = primaryDark;
+  static const green400 = success;
+  static const red400 = error;
+  static const yellow400 = warning;
   static const orange400 = Color(0xFFFB923C);
+
+  static List<Color> get primaryGradient => [primary, primaryLight];
+  static List<Color> get accentGradient => [primary, secondary];
+  static List<Color> get sunsetGradient => [primary, tertiary];
+  static List<Color> get bgGradient => [bg950, const Color(0xFF140A26)];
 
   static ThemeData get theme => ThemeData(
     brightness: Brightness.dark,
     scaffoldBackgroundColor: bg950,
-    primaryColor: accentBlue,
+    primaryColor: primary,
     colorScheme: const ColorScheme.dark(
-      primary: accentBlue,
-      secondary: accentIndigo,
+      primary: primary,
+      secondary: secondary,
+      tertiary: tertiary,
       surface: bg900,
       onPrimary: textPrimary,
       onSecondary: textPrimary,
+      onTertiary: textPrimary,
       onSurface: textPrimary,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: bg950,
+      backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
@@ -45,34 +64,34 @@ class OmniTheme {
       color: bg900,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: bg800, width: 1),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: bg800.withOpacity(0.5), width: 1),
       ),
       margin: EdgeInsets.zero,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: bg950,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      fillColor: bg800.withOpacity(0.3),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: bg800),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: bg800.withOpacity(0.5)),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: bg800),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: bg800.withOpacity(0.5)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: accentBlue, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: red400),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: error),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: red400, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: error, width: 1.5),
       ),
       labelStyle: const TextStyle(
         fontSize: 10,
@@ -81,16 +100,16 @@ class OmniTheme {
         letterSpacing: 1.5,
         height: 1.2,
       ),
-      hintStyle: const TextStyle(color: bg700, fontSize: 14),
+      hintStyle: TextStyle(color: textMuted.withOpacity(0.5), fontSize: 14),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: accentBlue,
+        backgroundColor: primary,
         foregroundColor: textPrimary,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         textStyle: const TextStyle(
           fontWeight: FontWeight.bold,
@@ -121,35 +140,35 @@ class OmniTheme {
       labelMedium: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 14),
       labelSmall: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textMuted, letterSpacing: 1.5),
     ),
-    dividerTheme: const DividerThemeData(
-      color: bg800,
+    dividerTheme: DividerThemeData(
+      color: bg800.withOpacity(0.5),
       thickness: 1,
       space: 1,
     ),
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: bg900,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
     dialogTheme: DialogTheme(
       backgroundColor: bg900,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: bg800),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: bg800.withOpacity(0.5)),
       ),
     ),
     tabBarTheme: const TabBarTheme(
-      labelColor: accentBlue,
+      labelColor: primary,
       unselectedLabelColor: textMuted,
-      indicatorColor: accentBlue,
+      indicatorColor: primary,
       indicatorSize: TabBarIndicatorSize.tab,
       labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       unselectedLabelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: bg800,
-      selectedColor: accentBlue.withOpacity(0.2),
+      selectedColor: primary.withOpacity(0.2),
       labelStyle: const TextStyle(color: textPrimary, fontSize: 14),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/update_service.dart';
+import '../../theme/omni_theme.dart';
 
 class UpdateDialog extends StatelessWidget {
   const UpdateDialog({super.key});
@@ -10,7 +11,7 @@ class UpdateDialog extends StatelessWidget {
     final updateService = context.watch<UpdateService>();
 
     return Dialog(
-      backgroundColor: const Color(0xFF001830),
+      backgroundColor: const OmniTheme.bg950,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -20,13 +21,13 @@ class UpdateDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF004A99).withOpacity(0.2),
+                color: const OmniTheme.primary.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.system_update,
                 size: 48,
-                color: Color(0xFF004A99),
+                color: OmniTheme.primary,
               ),
             ),
             const SizedBox(height: 16),
@@ -91,7 +92,7 @@ class UpdateDialog extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () => updateService.installNow(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF004A99),
+                      backgroundColor: const OmniTheme.primary,
                       minimumSize: const Size.fromHeight(48),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

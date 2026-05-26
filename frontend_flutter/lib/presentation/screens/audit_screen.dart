@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/db.dart';
+import '../../theme/omni_theme.dart';
 
 class AuditScreen extends StatefulWidget {
   const AuditScreen({super.key});
@@ -95,7 +96,7 @@ class _AuditScreenState extends State<AuditScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      color: const Color(0xFF001830),
+      color: const OmniTheme.bg950,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: _getActionColor(action).withOpacity(0.2),
@@ -136,7 +137,7 @@ class _AuditScreenState extends State<AuditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Auditoria'),
-        backgroundColor: const Color(0xFF004A99),
+        backgroundColor: const OmniTheme.primary,
         foregroundColor: Colors.white,
         actions: [
           IconButton(

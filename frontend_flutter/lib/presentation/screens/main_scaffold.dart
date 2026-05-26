@@ -21,6 +21,7 @@ import 'form_entry_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'login_screen.dart';
+import '../widgets/update_dialog.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -84,28 +85,80 @@ class _MainScaffoldState extends State<MainScaffold> {
         if (mounted) {
           showDialog(
             context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: OmniTheme.bg900,
-              title: const Row(children: [
-                Icon(Icons.system_update, color: OmniTheme.accentBlue, size: 20),
-                SizedBox(width: 8),
-                Text('Actualizacion disponible', style: TextStyle(color: Colors.white, fontSize: 15)),
-              ]),
-              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Version ${updateService.latestVersion} disponible', style: const TextStyle(color: OmniTheme.textPrimary)),
-                if (updateService.releaseNotes.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(updateService.releaseNotes, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
-                ],
-              ]),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Despues', style: TextStyle(color: Colors.white54))),
-                ElevatedButton(
-                  onPressed: () { Navigator.pop(ctx); updateService.installNow(); },
-                  style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
-                  child: const Text('Actualizar', style: TextStyle(color: Colors.white)),
-                ),
-              ],
+            builder: (ctx) => StatefulBuilder(
+              builder: (ctx, setDialogState) {
+                updateService.addListener(() {
+                  if (ctx.mounted) setDialogState(() {});
+                });
+                return AlertDialog(
+                  backgroundColor: OmniTheme.bg900,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  title: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: OmniTheme.primary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.system_update, color: OmniTheme.primary, size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Actualizacion disponible', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                  ]),
+                  content: SizedBox(
+                    width: 360,
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('v${updateService.currentVersion}  →  v${updateService.latestVersion}', style: const TextStyle(color: OmniTheme.textSecondary, fontSize: 13)),
+                      if (updateService.releaseNotes.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: OmniTheme.bg800.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(updateService.releaseNotes, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11), maxLines: 6, overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                      if (updateService.isDownloading) ...[
+                        const SizedBox(height: 16),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: updateService.downloadProgress > 0 ? updateService.downloadProgress : null,
+                            backgroundColor: OmniTheme.bg800,
+                            valueColor: const AlwaysStoppedAnimation<Color>(OmniTheme.primary),
+                            minHeight: 6,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(updateService.statusMessage, style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+                      ],
+                    ]),
+                  ),
+                  actions: [
+                    if (!updateService.isDownloading) ...[
+                      if (!updateService.isMandatory)
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Despues', style: TextStyle(color: OmniTheme.textMuted)),
+                        ),
+                      ElevatedButton(
+                        onPressed: () {
+                          if (!updateService.isDownloading) {
+                            updateService.installNow();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OmniTheme.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: Text(updateService.isDownloading ? 'Descargando...' : 'Actualizar', style: const TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
           );
         }
@@ -225,8 +278,19 @@ class _MainScaffoldState extends State<MainScaffold> {
     } catch (_) {}
     final auth = context.read<AuthService>();
     auth.recordActivity();
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: label)));
+    await Navigator.push(context, _smoothRoute(FormEntryScreen(module: module, moduleLabel: label)));
     if (mounted) _loadStats();
+  }
+
+  Route _smoothRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (_, a, __, child) => FadeTransition(
+        opacity: Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+      transitionDuration: const Duration(milliseconds: 350),
+    );
   }
 
   List<int> _getFilteredIndices() {
@@ -246,7 +310,13 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     return Container(
       width: railWidth,
-      color: OmniTheme.bg900,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [OmniTheme.bg900, OmniTheme.bg950],
+        ),
+      ),
       child: SafeArea(
         child: Column(
           children: [
@@ -259,7 +329,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                   final i = filteredIndices[pos];
                   final item = filteredItems[pos];
                   final isSelected = _selectedIndex == i;
-                  final color = _moduleColors[i] ?? OmniTheme.accentBlue;
+                  final color = _moduleColors[i] ?? OmniTheme.primary;
                   return _buildNavItem(item, isSelected, color, i, railWidth);
                 },
               ),
@@ -279,14 +349,17 @@ class _MainScaffoldState extends State<MainScaffold> {
           Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
-              borderRadius: BorderRadius.circular(10),
+              gradient: const LinearGradient(colors: [OmniTheme.primary, OmniTheme.secondary]),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: OmniTheme.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2)),
+              ],
             ),
             child: const Icon(Icons.biotech, color: Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
           Text(auth.currentUser?.nombre ?? '', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600, color: OmniTheme.textPrimary), overflow: TextOverflow.ellipsis, maxLines: 1),
-          Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 7, color: OmniTheme.accentBlue), overflow: TextOverflow.ellipsis, maxLines: 1),
+          Text(auth.currentUser?.cargoOperativo.isNotEmpty == true ? auth.currentUser!.cargoOperativo : (auth.currentUser?.rol ?? ''), style: const TextStyle(fontSize: 7, color: OmniTheme.primaryLight), overflow: TextOverflow.ellipsis, maxLines: 1),
         ],
       ),
     );
@@ -302,7 +375,7 @@ class _MainScaffoldState extends State<MainScaffold> {
             setState(() => _selectedIndex = origIdx);
             _loadStats();
           } else if (origIdx == 1) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()));
+            Navigator.push(context, _smoothRoute(const ReportsScreen()));
           } else {
             _openModule(_moduleKeys[origIdx], _navItems[origIdx].label);
           }
@@ -428,7 +501,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           const SizedBox(height: 4),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 20),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            onPressed: () => Navigator.push(context, _smoothRoute(const SettingsScreen())),
             color: OmniTheme.textMuted,
             tooltip: 'Configuracion',
             padding: EdgeInsets.zero,
@@ -451,7 +524,7 @@ class _MainScaffoldState extends State<MainScaffold> {
               } catch (_) {}
               try { sync.stopPeriodicSync(); } catch (_) {}
               auth.logout();
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+              Navigator.pushReplacement(context, _smoothRoute(const LoginScreen()));
             },
             color: OmniTheme.red400,
             tooltip: 'Cerrar sesion',

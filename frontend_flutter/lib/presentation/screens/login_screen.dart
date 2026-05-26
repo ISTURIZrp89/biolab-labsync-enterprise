@@ -145,12 +145,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             width: 48, height: 48,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo],
+                                colors: [OmniTheme.primary, OmniTheme.secondary],
                               ),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: OmniTheme.accentBlue.withOpacity(0.2),
+                                  color: OmniTheme.primary.withOpacity(0.3),
                                   blurRadius: 20,
                                   offset: const Offset(0, 4),
                                 ),
@@ -161,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           const SizedBox(height: 16),
                           ShaderMask(
                             shaderCallback: (bounds) => const LinearGradient(
-                              colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo],
+                              colors: [OmniTheme.primary, OmniTheme.primaryLight],
                             ).createShader(bounds),
                             child: const Text(
                               'BIOLAB',
@@ -300,12 +300,31 @@ class _RadialGradientPainter extends CustomPainter {
       center: Alignment.topCenter,
       radius: 0.8,
       colors: [
-        OmniTheme.accentBlue.withOpacity(0.05),
+        OmniTheme.primary.withOpacity(0.08),
+        OmniTheme.secondary.withOpacity(0.03),
+        Colors.transparent,
         Colors.transparent,
       ],
+      stops: const [0, 0.3, 0.6, 1],
     );
     final paint = Paint()..shader = gradient.createShader(rect);
     canvas.drawRect(rect, paint);
+
+    final rect2 = Rect.fromCenter(
+      center: Offset(size.width * 0.2, size.height * 0.5),
+      width: size.width * 0.6,
+      height: size.height * 0.6,
+    );
+    final gradient2 = RadialGradient(
+      center: Alignment.center,
+      radius: 0.5,
+      colors: [
+        OmniTheme.tertiary.withOpacity(0.04),
+        Colors.transparent,
+      ],
+    );
+    final paint2 = Paint()..shader = gradient2.createShader(rect2);
+    canvas.drawRect(rect2, paint2);
   }
 
   @override
