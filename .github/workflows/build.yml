@@ -7,6 +7,9 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
@@ -26,7 +29,17 @@ jobs:
       - name: Check token
         env:
           TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
         run: |
+          if ($env:EVENT_NAME -eq "pull_request") {
+            if ($env:PR_HEAD_REPO -ne $env:BASE_REPO) {
+              Write-Host "PR desde fork detectado: GitHub NO expone secretos en pull_request de forks." -ForegroundColor Yellow
+            } else {
+              Write-Host "PR interno detectado: secretos disponibles si estan configurados." -ForegroundColor Cyan
+            }
+          }
           if ("$env:TOKEN".Length -gt 0) {
             Write-Host "TOKEN CONFIGURADO ($($env:TOKEN.Length) caracteres)" -ForegroundColor Green
           } else {
@@ -37,8 +50,11 @@ jobs:
         env:
           TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
         run: |
-          $define = if ("$env:TOKEN".Length -gt 0) { "--dart-define=LICENSE_GITHUB_TOKEN=$env:TOKEN" } else { "" }
-          flutter build windows --release $define
+          if ("$env:TOKEN".Length -gt 0) {
+            flutter build windows --release --dart-define="LICENSE_GITHUB_TOKEN=$env:TOKEN"
+          } else {
+            flutter build windows --release
+          }
         working-directory: frontend_flutter
 
       - uses: actions/upload-artifact@v4
