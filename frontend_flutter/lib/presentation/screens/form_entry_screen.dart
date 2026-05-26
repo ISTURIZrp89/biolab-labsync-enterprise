@@ -1303,30 +1303,36 @@ class _DailyLogFormState extends State<_DailyLogForm> {
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No hay registros en Bitácora para la fecha $fecha'), backgroundColor: OmniTheme.orange400));
               return;
             }
-            int imported = 0;
-            setState(() {
-              for (final entry in dayEntries) {
-                final cajasList = entry.data['_cajas'] as List? ?? [];
-                for (final c in cajasList) {
-                  final cMap = Map<String, dynamic>.from(c as Map);
-                  _activities.add({
-                    'pedido': '',
-                    'presentacion': '',
-                    'volumen': '',
-                    'uso': '',
-                    'tejido': cMap['tipo_tejido'] ?? '',
-                    'paciente': '',
-                    'enviado_a': '',
-                    'pedido_por': '',
-                    'fecha_proceso': fecha,
-                    'notas': cMap['observaciones'] ?? 'Importado de Bitácora',
-                    'continuacion': '',
-                  });
-                  imported++;
+              int imported = 0;
+              setState(() {
+                for (final entry in dayEntries) {
+                  final cajasList = entry.data['_cajas'] as List? ?? [];
+                  for (final c in cajasList) {
+                    final cMap = Map<String, dynamic>.from(c as Map);
+                    final cajasTexto = cMap['cajas']?.toString() ?? '';
+                    final vialesTexto = cMap['viales']?.toString() ?? '';
+                    final obsTexto = cMap['observaciones']?.toString() ?? '';
+                    final notasBuf = <String>[];
+                    if (cajasTexto.isNotEmpty) notasBuf.add('Caja: $cajasTexto');
+                    if (vialesTexto.isNotEmpty) notasBuf.add('Viales: $vialesTexto');
+                    if (obsTexto.isNotEmpty) notasBuf.add(obsTexto);
+                    _activities.add({
+                      'presentacion': '',
+                      'volumen': '',
+                      'uso': '',
+                      'tejido': cMap['tipo_tejido']?.toString() ?? '',
+                      'paciente': '',
+                      'enviado_a': '',
+                      'pedido_por': '',
+                      'fecha_proceso': fecha,
+                      'notas': notasBuf.isNotEmpty ? notasBuf.join(' | ') : 'Importado de Bitácora',
+                      'continuacion': '',
+                    });
+                    imported++;
+                  }
                 }
-              }
-              _markDirty();
-            });
+                _markDirty();
+              });
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$imported caja(s) importada(s) desde Bitácora'), backgroundColor: OmniTheme.green400));
           } catch (e) {
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: OmniTheme.red400));
