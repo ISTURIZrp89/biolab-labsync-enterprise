@@ -23,6 +23,30 @@ class _BitacoraBulkImportScreenState extends State<BitacoraBulkImportScreen> {
   bool _loading = false;
   bool _imported = false;
 
+  String _normalize(String input) {
+    return input
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ñ', 'n');
+  }
+
+  Map<String, String> _extractMisidAndMillones(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return {};
+    final normalized = _normalize(value);
+    final misidMatch = RegExp(r'(misid(?:\s+advance)?)', caseSensitive: false).firstMatch(value);
+    final millonesMatch = RegExp(r'(\d+(?:[.,]\d+)?)\s*(?:mill|mm|m)?', caseSensitive: false).firstMatch(normalized);
+
+    final result = <String, String>{};
+    if (misidMatch != null) result['misid'] = misidMatch.group(1)!.trim();
+    if (millonesMatch != null) result['millones'] = millonesMatch.group(1)!.replaceAll(',', '.').trim();
+    return result;
+  }
+
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv', 'txt']);
     if (result == null || result.files.isEmpty) return;
@@ -62,8 +86,9 @@ class _BitacoraBulkImportScreenState extends State<BitacoraBulkImportScreen> {
         else if (h.contains('tejido')) _columnMapping[header.trim()] = 'tipo_tejido';
         else if (h.contains('vial')) _columnMapping[header.trim()] = 'viales';
         else if (h.contains('observ')) _columnMapping[header.trim()] = 'observaciones';
+        else if ((h.contains('misid') && h.contains('cel')) || h.contains('misid/cel')) _columnMapping[header.trim()] = 'misid_millones';
         else if (h.contains('misid')) _columnMapping[header.trim()] = 'misid';
-        else if (h.contains('mill')) _columnMapping[header.trim()] = 'millones';
+        else if (h.contains('mill') || h.contains('celul') || h.contains('cel')) _columnMapping[header.trim()] = 'millones';
         else if (h.contains('responsable') || h.contains('nombre')) _columnMapping[header.trim()] = 'responsable';
         else if (h.contains('descrip')) _columnMapping[header.trim()] = 'descripcion';
         else _columnMapping[header.trim()] = '';
@@ -84,7 +109,17 @@ class _BitacoraBulkImportScreenState extends State<BitacoraBulkImportScreen> {
         for (int c = 0; c < _headers.length; c++) {
           final fieldKey = _columnMapping[_headers[c]] ?? '';
           if (fieldKey.isNotEmpty) {
-            entry[fieldKey] = row[c].trim();
+            final rawValue = row[c].trim();
+            if (fieldKey == 'misid_millones') {
+              final values = _extractMisidAndMillones(rawValue);
+              if (values['misid']?.isNotEmpty == true) entry['misid'] = values['misid'];
+              if (values['millones']?.isNotEmpty == true) entry['millones'] = values['millones'];
+              if ((values['misid']?.isEmpty ?? true) && (values['millones']?.isEmpty ?? true)) {
+                entry['observaciones'] = '${entry['observaciones'] ?? ''} ${rawValue}'.trim();
+              }
+            } else {
+              entry[fieldKey] = rawValue;
+            }
           }
         }
         entry['_import_id'] = '${dateStr}_$i';
