@@ -979,7 +979,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(user?.nombre ?? 'Offline', style: const TextStyle(fontSize: 10, color: OmniTheme.accentBlue)),
           ),
         ]),
-        backgroundColor: const OmniTheme.primary,
+        backgroundColor: OmniTheme.primary,
         foregroundColor: Colors.white,
       ),
       body: Container(

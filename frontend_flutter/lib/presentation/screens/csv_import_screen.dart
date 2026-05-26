@@ -185,7 +185,7 @@ class _CsvImportScreenState extends State<CsvImportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Importar CSV'),
-        backgroundColor: const OmniTheme.primary,
+        backgroundColor: OmniTheme.primary,
         foregroundColor: Colors.white,
       ),
       body: Container(

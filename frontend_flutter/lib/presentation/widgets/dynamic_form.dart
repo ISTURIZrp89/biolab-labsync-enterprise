@@ -73,7 +73,7 @@ class _DynamicFormWidgetState extends State<DynamicFormWidget> {
             labelText: label,
             labelStyle: const TextStyle(color: Colors.white70),
           ),
-          dropdownColor: const OmniTheme.bg800,
+          dropdownColor: OmniTheme.bg800,
           style: const TextStyle(color: Colors.white),
           items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
           onChanged: (v) => setState(() => _formData[key] = v ?? ''),
@@ -152,7 +152,7 @@ class _DynamicFormWidgetState extends State<DynamicFormWidget> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
-                backgroundColor: const OmniTheme.primary,
+                backgroundColor: OmniTheme.primary,
               ),
               child: const Text('Guardar Bitacora', style: TextStyle(color: Colors.white)),
             ),

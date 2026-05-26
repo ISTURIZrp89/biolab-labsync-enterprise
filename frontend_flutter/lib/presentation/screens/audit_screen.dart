@@ -96,7 +96,7 @@ class _AuditScreenState extends State<AuditScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      color: const OmniTheme.bg950,
+      color: OmniTheme.bg950,
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: _getActionColor(action).withOpacity(0.2),
@@ -137,7 +137,7 @@ class _AuditScreenState extends State<AuditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Auditoria'),
-        backgroundColor: const OmniTheme.primary,
+        backgroundColor: OmniTheme.primary,
         foregroundColor: Colors.white,
         actions: [
           IconButton(

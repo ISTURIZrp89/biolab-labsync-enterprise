@@ -11,7 +11,7 @@ class UpdateDialog extends StatelessWidget {
     final updateService = context.watch<UpdateService>();
 
     return Dialog(
-      backgroundColor: const OmniTheme.bg950,
+      backgroundColor: OmniTheme.bg950,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -21,7 +21,7 @@ class UpdateDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const OmniTheme.primary.withOpacity(0.2),
+                color: OmniTheme.primary.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -92,7 +92,7 @@ class UpdateDialog extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () => updateService.installNow(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const OmniTheme.primary,
+                      backgroundColor: OmniTheme.primary,
                       minimumSize: const Size.fromHeight(48),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

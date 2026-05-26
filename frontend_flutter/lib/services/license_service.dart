@@ -67,7 +67,7 @@ class LicenseService extends ChangeNotifier {
     if (_activated) {
       await _validateWithGitHub();
     }
-    _periodicTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
+    _periodicTimer = Timer.periodic(const Duration(hours: 24), (_) async {
       if (_activated) await _validateWithGitHub();
     });
     notifyListeners();

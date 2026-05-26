@@ -117,7 +117,7 @@ class _FormListScreenState extends State<FormListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.moduleLabel),
-        backgroundColor: const OmniTheme.primary,
+        backgroundColor: OmniTheme.primary,
         foregroundColor: Colors.white,
         actions: [
           Consumer<SyncEngine>(
@@ -182,7 +182,7 @@ class _FormListScreenState extends State<FormListScreen> {
                         icon: const Icon(Icons.add),
                         label: const Text('Nuevo Registro'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const OmniTheme.primary,
+                          backgroundColor: OmniTheme.primary,
                           foregroundColor: Colors.white,
                           minimumSize: const Size.fromHeight(48),
                         ),
@@ -217,7 +217,7 @@ class _FormListScreenState extends State<FormListScreen> {
 
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                              color: const OmniTheme.bg950,
+                              color: OmniTheme.bg950,
                               child: ListTile(
                                 leading: CircleAvatar(
                                   backgroundColor: _getStatusColor(entry.status),
@@ -344,7 +344,7 @@ class _FormScreenState extends State<_FormScreen> {
                 const Text('Bitacora guardada exitosamente'),
               ],
             ),
-            backgroundColor: const OmniTheme.bg950,
+            backgroundColor: OmniTheme.bg950,
           ),
         );
       }
@@ -364,7 +364,7 @@ class _FormScreenState extends State<_FormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.template['name'] as String? ?? 'Formulario'),
-        backgroundColor: const OmniTheme.primary,
+        backgroundColor: OmniTheme.primary,
         foregroundColor: Colors.white,
       ),
       body: Container(
