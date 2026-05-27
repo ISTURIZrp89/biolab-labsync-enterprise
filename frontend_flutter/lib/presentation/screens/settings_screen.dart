@@ -16,6 +16,7 @@ import '../../sync/lan_discovery_service.dart';
 import '../../sync/lan_sync_server.dart';
 import '../../services/update_service.dart';
 import '../../services/license_service.dart';
+import '../../data/repositories/user_repository.dart';
 import 'backup_screen.dart';
 import '../../theme/omni_theme.dart';
 import '../screens/csv_import_screen.dart';
@@ -66,12 +67,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _systemPrompt = '';
   String _companyName = '';
   String _logoBase64 = '';
+  late final UserRepository _userRepo;
   List<String> _personnel = [];
 
   @override
   void initState() {
     super.initState();
     _platform = _getPlatformName();
+    _userRepo = UserRepository();
     _loadSettings();
     _loadCompanyInfo();
     _loadEquipment();
@@ -288,6 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveUsers() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('users_list', jsonEncode(_users));
+    await _userRepo.saveAllUsers(_users);
   }
 
   Future<void> _saveSetting(String key, String value) async {

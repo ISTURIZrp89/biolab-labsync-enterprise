@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../data/db.dart';
 import '../domain/entities/user.dart';
 import '../domain/repositories/auth_repository.dart';
 
@@ -142,6 +143,36 @@ class AuthService extends ChangeNotifier {
         }
       } catch (_) {}
     }
+
+    try {
+      final db = await LocalDatabase.instance.database;
+      final rows = await db.query('users',
+        where: 'id = ? AND pin = ?',
+        whereArgs: [userId, pin],
+      );
+      if (rows.isNotEmpty) {
+        final u = rows.first;
+        await prefs.setString('jwt_token', 'local-offline-session');
+        _currentUser = User(
+          id: u['id']?.toString() ?? userId,
+          nombre: u['nombre'] as String? ?? 'Usuario',
+          rol: _mapRol(u['rol'] as String? ?? 'Laboratorio'),
+          cargo: u['cargo'] as String? ?? '',
+          cargoOperativo: u['cargo_operativo'] as String? ?? u['rol'] as String? ?? '',
+          area: u['area'] as String? ?? '',
+          supervisor: u['supervisor'] as String? ?? '',
+          firma: u['firma'] as String? ?? u['nombre'] as String? ?? '',
+        );
+        _isAuthenticated = true;
+        _isLoading = false;
+        _sessionStart = DateTime.now();
+        _startSessionTimer();
+        _resetInactivityTimer();
+        notifyListeners();
+        await _persistUserSession(_currentUser!);
+        return true;
+      }
+    } catch (_) {}
 
     const offlinePins = {
       'usr-admin': {'pin': '1234', 'nombre': 'Admin (Offline)', 'rol': 'ADMIN', 'cargo': 'ADMINISTRADOR'},

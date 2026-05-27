@@ -43,7 +43,7 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 8,
+    version: 9,
     onConfigure: (db) async {
       await db.execute('PRAGMA journal_mode=WAL');
       await db.execute('PRAGMA synchronous=NORMAL');
@@ -165,6 +165,25 @@ Future<Database> openLocalDatabase(String filePath) async {
           UNIQUE(year, month)
         )
       ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          nombre TEXT NOT NULL,
+          cargo TEXT NOT NULL DEFAULT '',
+          cargo_operativo TEXT NOT NULL DEFAULT '',
+          rol TEXT NOT NULL,
+          area TEXT NOT NULL DEFAULT '',
+          supervisor TEXT NOT NULL DEFAULT '',
+          firma TEXT NOT NULL DEFAULT '',
+          pin TEXT NOT NULL DEFAULT '',
+          permisos TEXT NOT NULL DEFAULT 'todos',
+          activo INTEGER NOT NULL DEFAULT 1,
+          pin_change_required INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      ''');
     },
     onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
@@ -267,6 +286,61 @@ Future<Database> openLocalDatabase(String filePath) async {
       }
       if (oldVersion < 8) {
         try { await db.execute('ALTER TABLE form_entries ADD COLUMN checksum TEXT NOT NULL DEFAULT \'\''); } catch (_) {}
+      }
+      if (oldVersion < 9) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            cargo TEXT NOT NULL DEFAULT '',
+            cargo_operativo TEXT NOT NULL DEFAULT '',
+            rol TEXT NOT NULL,
+            area TEXT NOT NULL DEFAULT '',
+            supervisor TEXT NOT NULL DEFAULT '',
+            firma TEXT NOT NULL DEFAULT '',
+            pin TEXT NOT NULL DEFAULT '',
+            permisos TEXT NOT NULL DEFAULT 'todos',
+            activo INTEGER NOT NULL DEFAULT 1,
+            pin_change_required INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('users_list');
+          if (raw != null && raw.isNotEmpty) {
+            final List existing = jsonDecode(raw);
+            final now = DateTime.now().toUtc().toIso8601String();
+            for (final u in existing) {
+              final id = u['id']?.toString() ?? '';
+              if (id.isEmpty) continue;
+              final count = Sqflite.firstIntValue(await db.rawQuery(
+                'SELECT COUNT(*) FROM users WHERE id = ?', [id],
+              )) ?? 0;
+              if (count == 0) {
+                await db.insert('users', {
+                  'id': id,
+                  'nombre': u['nombre'] ?? '',
+                  'cargo': u['cargo'] ?? '',
+                  'cargo_operativo': u['cargo_operativo'] ?? u['rol'] ?? '',
+                  'rol': u['rol'] ?? 'Laboratorio',
+                  'area': u['area'] ?? '',
+                  'supervisor': u['supervisor'] ?? '',
+                  'firma': u['firma'] ?? '',
+                  'pin': u['pin'] ?? '',
+                  'permisos': u['permisos'] ?? 'todos',
+                  'activo': 1,
+                  'pin_change_required': 0,
+                  'created_at': now,
+                  'updated_at': now,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('db_native: migration v9 users copy error: $e');
+        }
       }
     },
   );

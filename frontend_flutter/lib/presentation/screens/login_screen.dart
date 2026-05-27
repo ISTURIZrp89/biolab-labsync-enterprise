@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../data/repositories/user_repository.dart';
 import '../../security/auth_service.dart';
 import '../../services/user_service.dart';
 import '../../services/audit_service.dart';
@@ -101,19 +102,102 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           );
         }
       } catch (_) {}
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const MainScaffold(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          transitionDuration: const Duration(milliseconds: 400),
-        ),
-      );
+
+      final repo = UserRepository();
+      final needPinChange = await repo.isPinChangeRequired(_selectedUserId!);
+      if (needPinChange && mounted) {
+        final newPin = await _showPinChangeDialog();
+        if (newPin != null && mounted) {
+          await repo.setPin(_selectedUserId!, newPin);
+        }
+      }
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const MainScaffold(),
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
+        );
+      }
     } else {
       setState(() => _errorMessage = 'PIN incorrecto');
     }
+  }
+
+  Future<String?> _showPinChangeDialog() async {
+    final controller = TextEditingController();
+    final confirmController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cambio de PIN requerido'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Es tu primer ingreso. Establece un nuevo PIN de 4 digitos.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, letterSpacing: 12),
+              decoration: const InputDecoration(
+                labelText: 'Nuevo PIN',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confirmController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, letterSpacing: 12),
+              decoration: const InputDecoration(
+                labelText: 'Confirmar PIN',
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar sesion'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.length != 4) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('El PIN debe tener 4 digitos'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              if (controller.text != confirmController.text) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Los PIN no coinciden'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              Navigator.pop(ctx, controller.text);
+            },
+            child: const Text('Establecer PIN'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    confirmController.dispose();
+    return result;
   }
 
   @override
