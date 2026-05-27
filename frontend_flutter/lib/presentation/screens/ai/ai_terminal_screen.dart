@@ -63,6 +63,30 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
     setState(() {
       _lines.add(_TerminalLine(text: text, color: color ?? _terminalGreen, bold: bold, italic: italic));
     });
+    _scrollDown();
+  }
+
+  void _addThinking() {
+    _addLine('  ◇ pensando...', color: _terminalDim, italic: true);
+  }
+
+  void _removeLast() {
+    setState(() {
+      if (_lines.isNotEmpty) _lines.removeLast();
+    });
+  }
+
+  void _addDialog(String prefix, String text, Color color) {
+    _addLine('', color: _terminalDim);
+    _addLine('  $prefix', color: color);
+    final lines = text.split('\n');
+    for (final line in lines) {
+      _addLine('  │ $line', color: color.withValues(alpha: 0.85));
+    }
+    _addLine('  └', color: color.withValues(alpha: 0.5));
+  }
+
+  void _scrollDown() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
         _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent, duration: const Duration(milliseconds: 100), curve: Curves.easeOut);
@@ -87,16 +111,22 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
 
   Future<void> _processInput(String input) async {
     if (input.trim().isEmpty) return;
-    _addLine('${_currentDir}> ${input.trim()}', color: _terminalAmber);
     _history.insert(0, input.trim());
     _historyIndex = -1;
     _processing = true;
     setState(() {});
 
+    final isCommand = input.trim().startsWith('/');
+    if (!isCommand) {
+      _addDialog('Tú', input.trim(), _terminalAmber);
+      _addThinking();
+    }
+
     try {
       await _executeCommand(input.trim());
     } catch (e) {
-      _addLine('Error: $e', color: _terminalRed);
+      _removeLast();
+      _addLine('  ⚠ Error: $e', color: _terminalRed);
     }
 
     _processing = false;
@@ -183,12 +213,9 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
 
   Future<void> _handleAsk(String question) async {
     final chat = context.read<ChatService>();
-    _addLine('Pensando...', color: _terminalDim, italic: true);
     final response = await chat.generate(question);
-    setState(() => _lines.removeLast());
-    for (final line in response.split('\n')) {
-      _addLine(line);
-    }
+    _removeLast();
+    _addDialog('IA', response, _terminalGreen);
   }
 
   Future<void> _handleClose(List<String> args) async {
