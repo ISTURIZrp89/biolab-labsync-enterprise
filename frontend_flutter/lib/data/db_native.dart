@@ -43,7 +43,7 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 5,
+    version: 6,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -179,6 +179,11 @@ Future<Database> openLocalDatabase(String filePath) async {
           )
         ''');
         try { await db.execute('ALTER TABLE day_module_status ADD COLUMN entry_count INTEGER DEFAULT 0'); } catch (_) {}
+      }
+      if (oldVersion < 6) {
+        // Granular field-level audit trail
+        try { await db.execute('ALTER TABLE audit_log ADD COLUMN entity_id TEXT'); } catch (_) {}
+        try { await db.execute('ALTER TABLE audit_log ADD COLUMN changed_fields_json TEXT'); } catch (_) {}
       }
     },
   );

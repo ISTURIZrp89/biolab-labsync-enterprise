@@ -142,7 +142,22 @@ final List<CsvModuleDetector> csvModuleDetectors = [
       CsvFieldMapping(module: 'procesamiento', section: 'cajas_exosomas', fieldKey: 'paciente', columnPattern: r'(?i)paciente'),
       CsvFieldMapping(module: 'procesamiento', section: 'cajas_exosomas', fieldKey: 'enviado_a', columnPattern: r'(?i)enviado|enaviado'),
       CsvFieldMapping(module: 'procesamiento', section: 'cajas_exosomas', fieldKey: 'pedido_por', columnPattern: r'(?i)pedido por'),
-      CsvFieldMapping(module: 'procesamiento', section: 'cajas_exosomas', fieldKey: 'notas', columnPattern: r'(?i)notas'),
+      CsvFieldMapping(module: 'procesamiento', section: 'cajas_exosomas', fieldKey: 'notes', columnPattern: r'(?i)notas'),
+    ],
+  ),
+  CsvModuleDetector(
+    moduleKey: 'misid',
+    moduleName: 'Procesamiento MISID',
+    sectionKey: 'misids',
+    minScore: 0.3,
+    mappings: [
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'fecha', columnPattern: r'(?i)fecha|date'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'responsable', columnPattern: r'(?i)responsable|nombre'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'tipo', columnPattern: r'(?i)tipo|modelo'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'volumen_ml', columnPattern: r'(?i)volumen|vol'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'paciente', columnPattern: r'(?i)paciente|cliente'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'enviado_a', columnPattern: r'(?i)enviado|destino'),
+      CsvFieldMapping(module: 'misid', section: 'misids', fieldKey: 'notas', columnPattern: r'(?i)notas|observaciones'),
     ],
   ),
 ];

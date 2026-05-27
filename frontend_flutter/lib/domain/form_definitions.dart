@@ -1,4 +1,4 @@
-﻿typedef FormFieldDef = Map<String, dynamic>;
+typedef FormFieldDef = Map<String, dynamic>;
 typedef FormSectionDef = Map<String, dynamic>;
 typedef FormModuleDef = Map<String, dynamic>;
 
@@ -26,6 +26,7 @@ final List<FormModuleDef> formModules = [
   _ultracongeladoresModule(),
   _equiposModule(),
   _procesamientoModule(),
+  _misidModule(),
   _solucionCobreModule(),
   _muestrasModule(),
 ];
@@ -615,6 +616,36 @@ FormModuleDef _muestrasModule() => {
           {'key': 'volumen_final', 'label': 'Vol. Final', 'type': 'number', 'width': 80},
           {'key': 'ubicacion', 'label': 'Ubicacion', 'type': 'text', 'width': 120},
           {'key': 'observaciones', 'label': 'Observaciones', 'type': 'text', 'width': 200},
+        ],
+      },
+      'fields': [],
+    },
+  ],
+};
+
+FormModuleDef _misidModule() => {
+  'module': 'misid',
+  'label': 'Procesamiento MISID',
+  'icon': 'science',
+  'color': '0xFF4CAF50',
+  'sections': [
+    {
+      'key': 'misids',
+      'label': 'MISID',
+      'type': 'daily_log',
+      'general_fields': [
+        {'key': 'fecha', 'label': 'Fecha', 'type': 'date', 'required': true},
+        {'key': 'responsable', 'label': 'Responsable', 'type': 'autofill', 'required': true},
+      ],
+      'activities_table': {
+        'label': 'Procesamiento MISID',
+        'key': 'procesamiento',
+        'columns': [
+          {'key': 'tipo', 'label': 'Tipo', 'type': 'select', 'options': ['MISID', 'MISID ADVANCE'], 'width': 130},
+          {'key': 'volumen_ml', 'label': 'Volumen (ml)', 'type': 'number', 'width': 90},
+          {'key': 'paciente', 'label': 'Paciente', 'type': 'text', 'width': 130},
+          {'key': 'enviado_a', 'label': 'Enviado a', 'type': 'text', 'width': 110},
+          {'key': 'notas', 'label': 'Notas', 'type': 'text', 'width': 150},
         ],
       },
       'fields': [],

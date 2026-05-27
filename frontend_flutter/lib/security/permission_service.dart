@@ -46,7 +46,7 @@ class PermissionService extends ChangeNotifier {
       for (final u in list) {
         if (u['pin'] == user.id || u['id'] == user.id) {
           final p = (u as Map)['permisos'] as String? ?? '';
-          final permLevel = (u as Map)['permiso_nivel'] as String? ?? '';
+          final permLevel = (u)['permiso_nivel'] as String? ?? '';
           if (p == 'todos' || p.isEmpty) {
             _allowedModules = Set.from(defaultRolModules[user.rol] ?? defaultRolModules['LABORATORIO']!);
           } else {

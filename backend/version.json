@@ -1,25 +1,25 @@
 {
-  "version": "7.1.0",
+  "version": "1.0.0.0",
   "build": 1,
-  "release_date": "2026-05-20",
+  "release_date": "2026-05-26",
   "mandatory": false,
-  "release_notes": "LABSYNC Enterprise v7.1.0\n\n- Soporte multiplataforma (Windows, macOS, Linux, iOS, Android)\n- Offline-first completo\n- JWT authentication\n- Dashboard con estadisticas\n- Calendario operativo offline\n- Auditoria local\n- Gestion de usuarios\n- Templates PDF\n- Auto-update silencioso",
+  "release_notes": "LABSYNC Enterprise v1.0.0.0\n\n- Version inicial estable\n- Soporte multiplataforma (Windows, macOS, Linux, iOS, Android)\n- Offline-first completo\n- JWT authentication\n- Dashboard con estadisticas\n- Calendario operativo offline\n- Auditoria local\n- Gestion de usuarios\n- Templates PDF\n- Auto-update silencioso",
   "downloads": {
     "windows": {
-      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-7.1.0-windows.exe",
-      "filename": "BioLab-LABSYNC-7.1.0-windows.exe",
+      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-1.0.0.0-windows.exe",
+      "filename": "BioLab-LABSYNC-1.0.0.0-windows.exe",
       "size_mb": 45,
       "checksum": ""
     },
     "macos": {
-      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-7.1.0-macos.dmg",
-      "filename": "BioLab-LABSYNC-7.1.0-macos.dmg",
+      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-1.0.0.0-macos.dmg",
+      "filename": "BioLab-LABSYNC-1.0.0.0-macos.dmg",
       "size_mb": 52,
       "checksum": ""
     },
     "linux": {
-      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-7.1.0-linux.AppImage",
-      "filename": "BioLab-LABSYNC-7.1.0-linux.AppImage",
+      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-1.0.0.0-linux.AppImage",
+      "filename": "BioLab-LABSYNC-1.0.0.0-linux.AppImage",
       "size_mb": 48,
       "checksum": ""
     },
@@ -28,8 +28,8 @@
       "type": "app_store"
     },
     "android": {
-      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-7.1.0-android.apk",
-      "filename": "BioLab-LABSYNC-7.1.0-android.apk",
+      "url": "http://localhost:8000/api/updates/file/BioLab-LABSYNC-1.0.0.0-android.apk",
+      "filename": "BioLab-LABSYNC-1.0.0.0-android.apk",
       "size_mb": 35,
       "checksum": ""
     }

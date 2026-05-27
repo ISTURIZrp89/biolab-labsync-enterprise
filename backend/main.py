@@ -12,7 +12,31 @@ from ai.router import router as ai_router
 
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="LABSYNC Enterprise API", version="7.0")
+# ---------------------------------------------------------------------------
+# Safe hot-migrations (ADD COLUMN IF NOT EXISTS pattern)
+# Runs on every startup; silently skips columns that already exist.
+# ---------------------------------------------------------------------------
+def _run_migrations():
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        _safe_add = [
+            # audit_logs new columns (v7.1)
+            ("audit_logs", "entity_id",           "VARCHAR"),
+            ("audit_logs", "changed_fields_json",  "TEXT"),
+            # month_closures (idempotent; create_all handles fresh installs)
+        ]
+        for table, column, col_type in _safe_add:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                conn.commit()
+                print(f"Migration: added {table}.{column}")
+            except Exception:
+                pass  # Column already exists — safe to ignore
+
+_run_migrations()
+
+
+app = FastAPI(title="LABSYNC Enterprise API", version="1.0.0.0")
 
 origins = [o.strip() for o in CORS_ORIGINS.split(",")] if CORS_ORIGINS != "*" else ["*"]
 app.add_middleware(
@@ -120,3 +144,9 @@ app.include_router(templates.router)
 app.include_router(calendar.router)
 app.include_router(users.router)
 app.include_router(ai_router)
+
+
+# Iniciar el detector de anomalías de IA en segundo plano
+from ai.ai_service import get_anomaly_detector
+get_anomaly_detector()
+

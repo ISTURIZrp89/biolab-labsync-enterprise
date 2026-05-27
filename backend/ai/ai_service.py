@@ -249,11 +249,313 @@ def predict_value(field_key: str, context: dict[str, Any]) -> Optional[str]:
     return None
 
 
-# Singleton
+# ---------------------------------------------------------------------------
+# Lightweight Local AI Engine - Silent System Monitoring
+# ---------------------------------------------------------------------------
+
+import threading
+import time
+
+class AnomalyDetector:
+    def __init__(self):
+        self._thread = None
+        self._running = False
+        self.anomalies = []
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+
+    def _run_loop(self):
+        # Allow system startup before first scan
+        time.sleep(5)
+        while self._running:
+            try:
+                self.scan_for_anomalies()
+            except Exception as e:
+                print(f"AnomalyDetector Error: {e}")
+            
+            # Scan every 60 seconds
+            for _ in range(60):
+                if not self._running:
+                    break
+                time.sleep(1)
+
+    def scan_for_anomalies(self):
+        from database import SessionLocal
+        import models
+        db = SessionLocal()
+        try:
+            detected = []
+            entries = db.query(models.FormEntry).all()
+            
+            batch_to_entry = {}
+            time_entries = {} # (user_id, date): list of (start_min, end_min, entry_id, module)
+            
+            for entry in entries:
+                try:
+                    data = json.loads(entry.data_json) if isinstance(entry.data_json, str) else entry.data_json
+                except Exception:
+                    continue
+                if not data:
+                    continue
+                
+                module = entry.module
+                entry_date = entry.date
+                user_id = entry.user_id
+                
+                # 1. Duplicate batch/lot detection
+                recursos = data.get("_recursos", [])
+                for r in recursos:
+                    if isinstance(r, dict):
+                        reactivo = r.get("reactivo", "")
+                        lote = r.get("lote", "")
+                        if reactivo and lote:
+                            key = (reactivo.lower().strip(), lote.lower().strip())
+                            if key in batch_to_entry:
+                                prev = batch_to_entry[key]
+                                if prev["entry_id"] != entry.id:
+                                    detected.append({
+                                        "id": f"anomaly-batch-{entry.id}-{prev['entry_id']}",
+                                        "type": "DUPLICATE_BATCH",
+                                        "severity": "WARNING",
+                                        "module": module,
+                                        "date": entry_date,
+                                        "message": f"El reactivo '{reactivo}' con lote '{lote}' se reporta en múltiples bitácoras (Módulos: {prev['module']} y {module})",
+                                        "details": {"reactivo": reactivo, "lote": lote, "entries": [prev["entry_id"], entry.id]}
+                                    })
+                            else:
+                                batch_to_entry[key] = {"entry_id": entry.id, "module": module}
+
+                # 2. Time inconsistencies
+                start = data.get("hora_inicio", "")
+                end = data.get("hora_fin", "")
+                if start and end:
+                    try:
+                        s_parts = list(map(int, start.split(":")))
+                        e_parts = list(map(int, end.split(":")))
+                        s_min = s_parts[0] * 60 + s_parts[1]
+                        e_min = e_parts[0] * 60 + e_parts[1]
+                        
+                        if e_min <= s_min:
+                            detected.append({
+                                "id": f"anomaly-time-{entry.id}",
+                                "type": "TIME_INCONSISTENCY",
+                                "severity": "ERROR",
+                                "module": module,
+                                "date": entry_date,
+                                "message": f"En el módulo {module}, la hora final ({end}) es menor o igual a la de inicio ({start})",
+                                "details": {"entry_id": entry.id, "start": start, "end": end}
+                            })
+                        elif e_min - s_min > 480:
+                            detected.append({
+                                "id": f"anomaly-duration-{entry.id}",
+                                "type": "TIME_INCONSISTENCY",
+                                "severity": "WARNING",
+                                "module": module,
+                                "date": entry_date,
+                                "message": f"Duración de la jornada reportada en {module} supera las 8 horas ({((e_min - s_min)/60.0):.1f} hrs)",
+                                "details": {"entry_id": entry.id, "duration_mins": e_min - s_min}
+                            })
+                            
+                        # Overlapping schedules for same user on same day
+                        key = (user_id, entry_date)
+                        if key not in time_entries:
+                            time_entries[key] = []
+                        for prev_s, prev_e, prev_id, prev_mod in time_entries[key]:
+                            if max(s_min, prev_s) < min(e_min, prev_e):
+                                detected.append({
+                                    "id": f"anomaly-overlap-{entry.id}-{prev_id}",
+                                    "type": "TIME_OVERLAP",
+                                    "severity": "ERROR",
+                                    "module": module,
+                                    "date": entry_date,
+                                    "message": f"Traslape de horario en la fecha {entry_date} ({start}-{end} en {module} vs {prev_s//60:02d}:{prev_s%60:02d}-{prev_e//60:02d}:{prev_e%60:02d} en {prev_mod})",
+                                    "details": {"user_id": user_id, "date": entry_date, "entries": [prev_id, entry.id]}
+                                })
+                        time_entries[key].append((s_min, e_min, entry.id, module))
+                    except Exception:
+                        pass
+
+                # 3. Out of bounds physical variables
+                if module == "incubadoras":
+                    lecturas = data.get("_lecturas", [])
+                    for idx, lec in enumerate(lecturas):
+                        if not isinstance(lec, dict):
+                            continue
+                        try:
+                            temp = float(lec.get("temperatura", 37.0))
+                            co2 = float(lec.get("co2", 5.0))
+                            equipo = lec.get("equipo", "Incubadora")
+                            if temp < 35.0 or temp > 39.0:
+                                detected.append({
+                                    "id": f"anomaly-temp-{entry.id}-{idx}",
+                                    "type": "OUT_OF_BOUNDS",
+                                    "severity": "ERROR",
+                                    "module": module,
+                                    "date": entry_date,
+                                    "message": f"Temperatura fuera de rango en {equipo}: {temp}°C (Rango: 35-39°C)",
+                                    "details": {"entry_id": entry.id, "equipo": equipo, "temp": temp}
+                                })
+                            if co2 < 4.0 or co2 > 6.0:
+                                detected.append({
+                                    "id": f"anomaly-co2-{entry.id}-{idx}",
+                                    "type": "OUT_OF_BOUNDS",
+                                    "severity": "ERROR",
+                                    "module": module,
+                                    "date": entry_date,
+                                    "message": f"CO2 fuera de rango en {equipo}: {co2}% (Rango: 4-6%)",
+                                    "details": {"entry_id": entry.id, "equipo": equipo, "co2": co2}
+                                })
+                        except (ValueError, TypeError):
+                            pass
+
+                elif module == "ultracongeladores":
+                    temperaturas = data.get("_temperaturas", [])
+                    for idx, temp_row in enumerate(temperaturas):
+                        if not isinstance(temp_row, dict):
+                            continue
+                        try:
+                            temp = float(temp_row.get("temperatura", -80.0))
+                            equipo = temp_row.get("equipo", "Ultracongelador")
+                            if temp < -95.0 or temp > -60.0:
+                                detected.append({
+                                    "id": f"anomaly-ultratemp-{entry.id}-{idx}",
+                                    "type": "OUT_OF_BOUNDS",
+                                    "severity": "ERROR",
+                                    "module": module,
+                                    "date": entry_date,
+                                    "message": f"Temperatura crítica en {equipo}: {temp}°C (Rango seguro: -95°C a -60°C)",
+                                    "details": {"entry_id": entry.id, "equipo": equipo, "temp": temp}
+                                })
+                        except (ValueError, TypeError):
+                            pass
+
+            self.anomalies = detected
+        finally:
+            db.close()
+
+
+# ---------------------------------------------------------------------------
+# Distributed AI Consensus Mechanism
+# ---------------------------------------------------------------------------
+
+class ConsensusManager:
+    def __init__(self):
+        self.peers = {}
+
+    def register_peer(self, device_id: str, ip: str, hostname: str, port: int):
+        self.peers[device_id] = {
+            "ip": ip,
+            "hostname": hostname,
+            "port": port,
+            "last_seen": datetime.utcnow()
+        }
+
+    def get_active_peers(self) -> list[dict]:
+        now = datetime.utcnow()
+        active = []
+        for dev_id, info in list(self.peers.items()):
+            if now - info["last_seen"] < timedelta(seconds=90):
+                active.append({**info, "device_id": dev_id})
+            else:
+                self.peers.pop(dev_id, None)
+        return active
+
+    async def propose_consensus(self, entity: str, entity_id: str, local_data: dict) -> dict:
+        import httpx
+        peers = self.get_active_peers()
+        if not peers:
+            return {"resolved": True, "winner": "local", "reason": "Sin otros nodos activos en la red local"}
+
+        versions = [{"source": "local", "data": local_data, "weight": self._calculate_weight(local_data)}]
+
+        async with httpx.AsyncClient() as client:
+            for peer in peers:
+                try:
+                    url = f"http://{peer['ip']}:{peer['port']}/api/ai/consensus/get-record"
+                    response = await client.get(url, params={"entity": entity, "entity_id": entity_id}, timeout=2.0)
+                    if response.statusCode == 200:
+                        peer_data = response.json().get("data")
+                        if peer_data:
+                            versions.append({
+                                "source": peer["device_id"],
+                                "peer_ip": peer["ip"],
+                                "peer_port": peer["port"],
+                                "data": peer_data,
+                                "weight": self._calculate_weight(peer_data)
+                            })
+                except Exception:
+                    pass
+
+        winner = max(versions, key=lambda x: x["weight"])
+        if winner["source"] != "local":
+            return {
+                "resolved": True,
+                "winner": winner["source"],
+                "data": winner["data"],
+                "reason": f"El nodo '{winner['source']}' posee un registro más completo y/o reciente"
+            }
+
+        return {
+            "resolved": True,
+            "winner": "local",
+            "data": local_data,
+            "reason": "El registro local es el más completo y actualizado consensuado"
+        }
+
+    def _calculate_weight(self, data: dict) -> float:
+        if not data:
+            return 0.0
+        score = 0.0
+        non_empty = sum(1 for v in data.values() if v and str(v).strip())
+        score += non_empty * 10
+        for sub in ["_actividades", "_recursos", "_cajas"]:
+            sub_list = data.get(sub, [])
+            if isinstance(sub_list, list):
+                for item in sub_list:
+                    if isinstance(item, dict):
+                        score += sum(5 for v in item.values() if v and str(v).strip())
+        updated_at = data.get("updated_at")
+        if updated_at:
+            try:
+                dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                score += dt.timestamp() / 1000000.0
+            except Exception:
+                pass
+        return score
+
+
+# ---------------------------------------------------------------------------
+# Singletons
+# ---------------------------------------------------------------------------
+
 _suggestion_engine: Optional[SuggestionEngine] = None
+_anomaly_detector: Optional[AnomalyDetector] = None
+_consensus_manager: Optional[ConsensusManager] = None
 
 def get_suggestion_engine() -> SuggestionEngine:
     global _suggestion_engine
     if _suggestion_engine is None:
         _suggestion_engine = SuggestionEngine()
     return _suggestion_engine
+
+def get_anomaly_detector() -> AnomalyDetector:
+    global _anomaly_detector
+    if _anomaly_detector is None:
+        _anomaly_detector = AnomalyDetector()
+        _anomaly_detector.start()
+    return _anomaly_detector
+
+def get_consensus_manager() -> ConsensusManager:
+    global _consensus_manager
+    if _consensus_manager is None:
+        _consensus_manager = ConsensusManager()
+    return _consensus_manager
+

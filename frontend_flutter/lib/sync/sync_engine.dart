@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../data/db.dart';
+import '../services/audit_service.dart';
 import 'lan_discovery_service.dart';
 
 class SyncEngine extends ChangeNotifier {
@@ -148,6 +149,27 @@ class SyncEngine extends ChangeNotifier {
             final serverVersion = conflict['server_version'] as int? ?? 0;
             final localVersion = conflict['local_version'] as int? ?? 0;
             final resolution = conflict['resolution'] as String? ?? 'server_wins';
+            final changedFields = conflict['changed_fields'] as List? ?? [];
+            final isRejected = conflict['rejected'] == true;
+
+            if (isRejected) {
+              // Month-closure rejection — log locally but don't apply data
+              final rejUuid = const Uuid().v4();
+              await db.insert('audit_log', {
+                'id': rejUuid,
+                'action': 'SYNC_REJECTED_MONTH_CLOSED',
+                'user_id': 'system',
+                'device_id': deviceId,
+                'timestamp': DateTime.now().toUtc().toIso8601String(),
+                'details_json': jsonEncode({
+                  'entity_id': entityId,
+                  'reason': conflict['reason'] ?? 'Mes cerrado',
+                }),
+                'entity_id': entityId,
+                'changed_fields_json': '[]',
+              });
+              continue;
+            }
 
             if (resolution == 'server_wins' && conflict['data'] != null) {
               final itemData = conflict['data'] as Map<String, dynamic>;
@@ -168,7 +190,8 @@ class SyncEngine extends ChangeNotifier {
               }
             }
 
-            final uuid = Uuid().v4();
+            // Persist field-level conflict audit
+            final uuid = const Uuid().v4();
             await db.insert('audit_log', {
               'id': uuid,
               'action': 'SYNC_CONFLICT',
@@ -182,13 +205,18 @@ class SyncEngine extends ChangeNotifier {
                 'resolution': resolution,
                 'entity': conflict['entity'],
               }),
+              'entity_id': entityId,
+              'changed_fields_json': jsonEncode(changedFields),
             });
           }
 
-          for (final rejection in rejected) {
+          // NOTE: rejections from closed months are now handled inside the
+          // conflict loop above (rejected == true). This legacy block handles
+          // any remaining explicit rejection items from older servers.
+          for (final rejection in (resData['rejected'] as List? ?? [])) {
             final entityId = rejection['entity_id'] as String?;
             final reason = rejection['reason'] as String? ?? 'unknown';
-            final rejUuid = Uuid().v4();
+            final rejUuid = const Uuid().v4();
             await db.insert('audit_log', {
               'id': rejUuid,
               'action': 'SYNC_REJECTED',
@@ -196,6 +224,8 @@ class SyncEngine extends ChangeNotifier {
               'device_id': deviceId,
               'timestamp': DateTime.now().toUtc().toIso8601String(),
               'details_json': jsonEncode({'entity_id': entityId, 'reason': reason}),
+              'entity_id': entityId,
+              'changed_fields_json': '[]',
             });
           }
 
@@ -235,8 +265,24 @@ class SyncEngine extends ChangeNotifier {
                 'closed_by': itemData['closed_by'],
                 'closed_at': itemData['closed_at'],
                 'notes': itemData['notes'],
-                'reopen_log_json': jsonEncode(itemData['reopen_log']),
+                'reopen_log_json': jsonEncode(itemData['reopen_log'] ?? []),
               }, conflictAlgorithm: ConflictAlgorithm.replace);
+              pulled++;
+            } else if (entity == 'month_closures') {
+              // Administrative month closure pulled from server
+              await db.insert('month_closures', {
+                'id': itemData['id'],
+                'year': itemData['year'],
+                'month': itemData['month'],
+                'status': itemData['status'],
+                'closed_by': itemData['closed_by'],
+                'closed_at': itemData['closed_at'],
+                'notes': itemData['notes'],
+                'days_total': itemData['days_total'] ?? 30,
+                'days_closed': itemData['days_closed'] ?? 0,
+                'reopen_log_json': jsonEncode(itemData['reopen_log'] ?? []),
+              }, conflictAlgorithm: ConflictAlgorithm.replace);
+              pulled++;
             }
           }
 

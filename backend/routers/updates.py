@@ -18,15 +18,15 @@ def _load_version_info():
         "build": 1,
         "release_date": "2026-05-20",
         "mandatory": False,
-        "release_notes": "BioLab LABSYNC Enterprise v7.1.0",
+        "release_notes": "BioLab LABSYNC Enterprise v1.0.0.0",
         "downloads": {}
     }
 
 
 @router.get("/api/updates/check")
-def check_updates(current_version: str = "7.0.0", platform: str = None):
+def check_updates(current_version: str = "1.0.0.0", platform: str = None):
     version_info = _load_version_info()
-    latest_version = version_info.get("version", "7.1.0")
+    latest_version = version_info.get("version", "1.0.0.0")
 
     has_update = latest_version != current_version
 

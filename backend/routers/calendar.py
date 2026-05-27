@@ -140,3 +140,105 @@ def reopen_day(payload: DayReopenRequest, db: Session = Depends(get_db)):
     db.add(audit)
     db.commit()
     return {"success": True, "date": payload.date, "status": "REABIERTO"}
+
+# ---------------------------------------------------------------------------
+# Month Closures
+# ---------------------------------------------------------------------------
+
+class MonthClosureRequest(BaseModel):
+    year: int
+    month: int
+    status: str
+    closed_by: str
+    notes: str
+
+class MonthReopenRequest(BaseModel):
+    year: int
+    month: int
+    reopened_by: str
+    reason: str
+
+@router.post("/api/calendar/close-month")
+def close_month(payload: MonthClosureRequest, db: Session = Depends(get_db)):
+    existing = db.query(models.MonthClosure).filter(
+        models.MonthClosure.year == payload.year,
+        models.MonthClosure.month == payload.month
+    ).first()
+    
+    if existing and existing.status == "CERRADO":
+        raise HTTPException(status_code=400, detail="El mes ya está cerrado.")
+        
+    mc_id = f"mc-{payload.year}-{payload.month:02d}"
+    if existing:
+        existing.status = payload.status
+        existing.closed_by = payload.closed_by
+        existing.notes = payload.notes
+        existing.closed_at = datetime.utcnow()
+    else:
+        closure = models.MonthClosure(
+            id=mc_id,
+            year=payload.year,
+            month=payload.month,
+            status=payload.status,
+            closed_by=payload.closed_by,
+            notes=payload.notes,
+            reopen_log_json="[]"
+        )
+        db.add(closure)
+
+    audit = models.AuditLog(
+        id=f"audit-{datetime.utcnow().timestamp()}",
+        action="CLOSE_MONTH",
+        user_id=payload.closed_by,
+        details_json=json.dumps({"year": payload.year, "month": payload.month, "status": payload.status, "notes": payload.notes})
+    )
+    db.add(audit)
+    db.commit()
+    return {"success": True, "year": payload.year, "month": payload.month, "status": payload.status}
+
+@router.post("/api/calendar/reopen-month")
+def reopen_month(payload: MonthReopenRequest, db: Session = Depends(get_db)):
+    closure = db.query(models.MonthClosure).filter(
+        models.MonthClosure.year == payload.year,
+        models.MonthClosure.month == payload.month
+    ).first()
+    if not closure:
+        raise HTTPException(status_code=404, detail="No hay cierre para esta fecha")
+
+    reopen_log = json.loads(closure.reopen_log_json) if closure.reopen_log_json else []
+    reopen_log.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "reopened_by": payload.reopened_by,
+        "reason": payload.reason
+    })
+
+    closure.status = "REABIERTO"
+    closure.reopen_log_json = json.dumps(reopen_log)
+    closure.notes = f"Reabierto: {payload.reason}"
+
+    audit = models.AuditLog(
+        id=f"audit-{datetime.utcnow().timestamp()}",
+        action="REOPEN_MONTH",
+        user_id=payload.reopened_by,
+        details_json=json.dumps({"year": payload.year, "month": payload.month, "reason": payload.reason})
+    )
+    db.add(audit)
+    db.commit()
+    return {"success": True, "year": payload.year, "month": payload.month, "status": "REABIERTO"}
+
+@router.get("/api/calendar/month-status/{year}/{month}")
+def get_month_closure_status(year: int, month: int, db: Session = Depends(get_db)):
+    closure = db.query(models.MonthClosure).filter(
+        models.MonthClosure.year == year,
+        models.MonthClosure.month == month
+    ).first()
+    return {
+        "year": year,
+        "month": month,
+        "status": closure.status if closure else "ABIERTO",
+        "closed_by": closure.closed_by if closure else None,
+        "closed_at": closure.closed_at.isoformat() if closure and closure.closed_at else None,
+        "notes": closure.notes if closure else None,
+        "reopen_log": json.loads(closure.reopen_log_json) if closure and closure.reopen_log_json else []
+    }
+

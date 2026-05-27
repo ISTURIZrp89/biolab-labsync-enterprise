@@ -58,14 +58,27 @@ class DayClosure(Base):
     notes = Column(Text)
     reopen_log_json = Column(Text, default="[]") # History log of reopens
 
+class MonthClosure(Base):
+    __tablename__ = "month_closures"
+    id = Column(String, primary_key=True, index=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    status = Column(String, nullable=False) # CERRADO, ABIERTO
+    closed_by = Column(String, ForeignKey("usuarios.id"))
+    closed_at = Column(DateTime, default=func.now())
+    notes = Column(Text)
+    reopen_log_json = Column(Text, default="[]")
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(String, primary_key=True, index=True)
-    action = Column(String, index=True) # LOGIN, LOGOUT, SAVE_ENTRY, CLOSE_DAY, etc.
+    action = Column(String, index=True) # LOGIN, LOGOUT, SAVE_ENTRY, CLOSE_DAY, CLOSE_MONTH, etc.
     user_id = Column(String, ForeignKey("usuarios.id"), nullable=True)
     device_id = Column(String, ForeignKey("devices.id"), nullable=True)
     timestamp = Column(DateTime, default=func.now())
-    details_json = Column(Text) # Additional JSON metadata
+    details_json = Column(Text)          # General metadata JSON
+    entity_id = Column(String, nullable=True, index=True)  # ID of the affected record
+    changed_fields_json = Column(Text, nullable=True)       # Field-level diff: [{field, old, new}]
 
 class SyncHistory(Base):
     __tablename__ = "sync_history"
