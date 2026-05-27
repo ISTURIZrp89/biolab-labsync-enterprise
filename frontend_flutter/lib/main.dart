@@ -37,7 +37,11 @@ void main() async {
     debugPrint('Flutter error: ${details.exception}');
   };
 
-  await BackendLauncher.start();
+  try {
+    await BackendLauncher.start();
+  } catch (e) {
+    debugPrint('Backend launcher error (no critico): $e');
+  }
 
   try {
     ensureSqfliteInit();

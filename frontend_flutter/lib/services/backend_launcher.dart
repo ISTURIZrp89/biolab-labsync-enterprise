@@ -14,39 +14,40 @@ class BackendLauncher {
   }
 
   static String get _backendDir {
-    final appDir = p.dirname(Platform.resolvedExecutable);
-    return p.join(appDir, 'backend');
+    try {
+      final appDir = p.dirname(Platform.resolvedExecutable);
+      return p.join(appDir, 'backend');
+    } catch (_) {
+      return '';
+    }
   }
 
-  static String get _backendPath => p.join(_backendDir, _executableName);
+  static String get _backendPath => _backendDir.isEmpty ? '' : p.join(_backendDir, _executableName);
 
-  static Future<void> start({Duration timeout = const Duration(seconds: 30)}) async {
+  static Future<void> start({Duration timeout = const Duration(seconds: 15)}) async {
     if (_isStarted) return;
-
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
-      print('[backend] Skip: no es desktop');
-      return;
-    }
-
-    if (!File(_backendPath).existsSync()) {
-      print('[backend] No encontrado en $_backendPath — modo external backend');
-      return;
-    }
+    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    if (_backendPath.isEmpty || !File(_backendPath).existsSync()) return;
 
     print('[backend] Iniciando desde $_backendPath');
-    _process = await Process.start(
-      _backendPath,
-      ['--port', '8000', '--host', '127.0.0.1'],
-      workingDirectory: _backendDir,
-      environment: {
-        'DATABASE_URL': 'sqlite:///${p.join(_backendDir, 'labsync.db')}',
-        'SYNC_SERVER_PORT': '8000',
-        'CORS_ORIGINS': '*',
-      },
-    );
+    try {
+      _process = await Process.start(
+        _backendPath,
+        ['--port', '8000', '--host', '127.0.0.1'],
+        workingDirectory: _backendDir,
+        environment: {
+          'DATABASE_URL': 'sqlite:///${p.join(_backendDir, 'labsync.db')}',
+          'SYNC_SERVER_PORT': '8000',
+          'CORS_ORIGINS': '*',
+        },
+      );
+    } catch (e) {
+      print('[backend] Error al iniciar proceso: $e');
+      return;
+    }
 
-    _process!.stdout.transform(utf8.decoder).listen((l) => print('[backend:out] $l'));
-    _process!.stderr.transform(utf8.decoder).listen((l) => print('[backend:err] $l'));
+    _process!.stdout.transform(utf8.decoder).listen((l) {});
+    _process!.stderr.transform(utf8.decoder).listen((l) {});
     _process!.exitCode.then((code) {
       print('[backend] Proceso termino codigo $code');
       _isStarted = false;
@@ -55,12 +56,13 @@ class BackendLauncher {
 
     await _waitForHealth(timeout: timeout);
     _isStarted = true;
-    print('[backend] Listo en http://localhost:8000');
+    print('[backend] Listo');
   }
 
-  static Future<void> _waitForHealth({Duration timeout = const Duration(seconds: 30)}) async {
+  static Future<void> _waitForHealth({Duration timeout = const Duration(seconds: 15)}) async {
     final start = DateTime.now();
     while (DateTime.now().difference(start) < timeout) {
+      if (_process == null) return;
       try {
         final resp = await http
             .get(Uri.parse('http://127.0.0.1:8000/api/health'))
@@ -69,7 +71,7 @@ class BackendLauncher {
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 500));
     }
-    throw TimeoutException('Backend no respondio en $timeout');
+    print('[backend] Timeout esperando health check');
   }
 
   static Future<void> stop() async {

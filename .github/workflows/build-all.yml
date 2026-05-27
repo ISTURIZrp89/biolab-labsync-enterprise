@@ -35,7 +35,7 @@ jobs:
       - name: Build backend EXE with PyInstaller
         run: |
           mkdir -p dist
-          pyinstaller --onefile --name labsync-backend --distpath dist main.py
+          pyinstaller --onefile --noconsole --name labsync-backend --distpath dist main.py
 
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
