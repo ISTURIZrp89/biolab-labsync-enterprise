@@ -147,7 +147,11 @@ jobs:
           cache: false
 
       - name: Ensure iOS platform files (required for macOS SPM)
-        run: flutter create --platforms=ios --project-name biolab_labsync .
+        run: |
+          if [ ! -d ios/Runner.xcodeproj ]; then
+            mkdir -p ios
+            flutter create --platforms=ios --project-name biolab_labsync . 2>/dev/null || true
+          fi
 
       - name: Install dependencies
         run: flutter pub get
@@ -165,10 +169,11 @@ jobs:
       - name: Build macOS
         env:
           TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+          FLUTTER_ENABLE_SWIFT_PACKAGE_MANAGER: false
         run: |
           DEFINE=""
           if [ -n "$TOKEN" ]; then DEFINE="--dart-define=LICENSE_GITHUB_TOKEN=$TOKEN"; fi
-          flutter build macos --release $DEFINE
+          flutter build macos --release $DEFINE 2>&1
 
       - name: Create DMG
         run: |
