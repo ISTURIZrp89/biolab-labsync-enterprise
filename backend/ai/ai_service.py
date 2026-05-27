@@ -6,12 +6,17 @@ Phase 2: Qwen2 0.5B / SmolLM / TinyLlama via ONNX/GGUF on the powerful PC.
 
 import json
 import re
+import sys
 from datetime import datetime, timedelta
 from typing import Any, Optional
 from pathlib import Path
 
-SUGGESTIONS_DIR = Path(__file__).parent / "data"
-SUGGESTIONS_DIR.mkdir(exist_ok=True)
+if getattr(sys, 'frozen', False):
+    _BASE = Path(sys.executable).parent
+else:
+    _BASE = Path(__file__).parent.parent
+SUGGESTIONS_DIR = _BASE / "ai_data"
+SUGGESTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # History-based suggestions
