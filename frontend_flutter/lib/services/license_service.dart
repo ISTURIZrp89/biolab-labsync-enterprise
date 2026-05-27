@@ -11,8 +11,35 @@ import '../data/db.dart';
 class LicenseService extends ChangeNotifier {
   static const String _apiBase = 'https://api.github.com/repos/ISTURIZrp89/biolab-labsync-license/contents/';
   static const String _licenseUrl = '${_apiBase}license.json';
-  static String get _token => String.fromEnvironment('LICENSE_GITHUB_TOKEN');
   static const String _demoKey = 'LABSYNC-DEMO-Y1ZZ-TGJ3';
+  static const String _prefsTokenKey = 'license_github_token';
+
+  static String? _runtimeToken;
+
+  static String get _token {
+    if (_runtimeToken != null && _runtimeToken!.isNotEmpty) return _runtimeToken!;
+    final env = String.fromEnvironment('LICENSE_GITHUB_TOKEN');
+    if (env.isNotEmpty) return env;
+    return '';
+  }
+
+  static Future<void> loadTokenFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_prefsTokenKey);
+    if (stored != null && stored.isNotEmpty) {
+      _runtimeToken = stored;
+    }
+  }
+
+  static Future<void> setToken(String token) async {
+    _runtimeToken = token.isNotEmpty ? token : null;
+    final prefs = await SharedPreferences.getInstance();
+    if (token.isNotEmpty) {
+      await prefs.setString(_prefsTokenKey, token);
+    } else {
+      await prefs.remove(_prefsTokenKey);
+    }
+  }
 
   static String? _lastFetchError;
 
@@ -78,6 +105,7 @@ class LicenseService extends ChangeNotifier {
   bool get decommissioned => _decommissioned;
 
   Future<void> init() async {
+    await loadTokenFromPrefs();
     final prefs = await SharedPreferences.getInstance();
     _deviceId = prefs.getString('device_id');
     _storedKey = prefs.getString('license_key');

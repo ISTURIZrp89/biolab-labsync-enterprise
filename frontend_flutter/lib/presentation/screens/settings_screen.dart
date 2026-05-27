@@ -1510,6 +1510,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 },
               ),
+              const Divider(color: OmniTheme.bg800, height: 1),
+              ListTile(
+                leading: const Icon(Icons.key, color: OmniTheme.accentBlue),
+                title: const Text('Token de GitHub', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Necesario para verificar licencia en este equipo', style: TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, size: 16, color: OmniTheme.textMuted),
+                onTap: () async {
+                  final license = context.read<LicenseService>();
+                  final controller = TextEditingController();
+                  final newToken = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: OmniTheme.bg900,
+                      title: const Text('Token de GitHub', style: TextStyle(color: Colors.white)),
+                      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('Ingrese el token de acceso personal de GitHub con acceso al repositorio privado de licencias.', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: controller,
+                          obscureText: true,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'GitHub Token',
+                            labelStyle: TextStyle(color: Colors.white54),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ]),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                          style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+                          child: const Text('Guardar Token', style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (newToken != null && newToken.isNotEmpty && mounted) {
+                    await LicenseService.setToken(newToken);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Token guardado. Intente reactivar la licencia.'),
+                      backgroundColor: OmniTheme.green400,
+                    ));
+                  }
+                },
+              ),
             ],
             ),
             _buildAccordion('Red y Acceso Remoto', Icons.public, false, [
