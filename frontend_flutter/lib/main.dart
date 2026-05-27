@@ -12,6 +12,7 @@ import 'security/auth_service.dart';
 import 'security/permission_service.dart';
 import 'security/edit_lock_service.dart';
 import 'ai/ai_service.dart';
+import 'ai/chat_service.dart';
 import 'ai/distributed/model_manager.dart';
 import 'ai/distributed/node_manager.dart';
 import 'ai/distributed/shared_memory.dart';
@@ -64,6 +65,7 @@ void main() async {
     final editLockService = EditLockService();
     final aiService = AiService(LocalDatabase.instance);
     final modelManager = ModelManager();
+    final chatService = ChatService(modelManager);
     final nodeManager = NodeManager();
     final sharedMemory = SharedMemory();
     await sharedMemory.load();
@@ -99,6 +101,7 @@ void main() async {
           ChangeNotifierProvider<EditLockService>.value(value: editLockService),
           ChangeNotifierProvider<AiService>.value(value: aiService),
           ChangeNotifierProvider<ModelManager>.value(value: modelManager),
+          ChangeNotifierProvider<ChatService>.value(value: chatService),
           ChangeNotifierProvider<NodeManager>.value(value: nodeManager),
           ChangeNotifierProvider<SharedMemory>.value(value: sharedMemory),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),

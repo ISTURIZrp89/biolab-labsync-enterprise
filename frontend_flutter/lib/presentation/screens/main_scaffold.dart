@@ -23,6 +23,7 @@ import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'login_screen.dart';
 import 'ai/model_manager_screen.dart';
+import 'ai/ai_terminal_screen.dart';
 import '../widgets/update_dialog.dart';
 
 class MainScaffold extends StatefulWidget {
@@ -57,9 +58,10 @@ class _MainScaffoldState extends State<MainScaffold> {
     _NavItem('Cobre', Icons.science_outlined, Icons.science),
     _NavItem('Muestras', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Modelos IA', Icons.auto_awesome_outlined, Icons.auto_awesome),
+    _NavItem('Terminal IA', Icons.terminal_outlined, Icons.terminal),
   ];
 
-  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre', 'muestras', ''];
+  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre', 'muestras', '', ''];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
@@ -72,6 +74,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     Color(0xFF00BCD4),
     Color(0xFFFF6B35),
     Color(0xFFA855F7),
+    Color(0xFF00FF41),
   ];
 
   @override
@@ -302,8 +305,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   List<int> _getFilteredIndices() {
     final auth = context.read<AuthService>();
     final isDev = auth.isAdmin || auth.isOwner;
-    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-      .where((i) => i < 2 || (i == 10 && isDev) || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
+    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+      .where((i) => i < 2 || (i == 10 && isDev) || (i == 11 && isDev && auth.canUseAI) || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
       .toList();
   }
 
@@ -384,6 +387,8 @@ class _MainScaffoldState extends State<MainScaffold> {
             Navigator.push(context, _smoothRoute(const ReportsScreen()));
           } else if (origIdx == 10) {
             Navigator.push(context, _smoothRoute(const ModelManagerScreen()));
+          } else if (origIdx == 11) {
+            Navigator.push(context, _smoothRoute(const AiTerminalScreen()));
           } else {
             _openModule(_moduleKeys[origIdx], _navItems[origIdx].label);
           }
@@ -977,10 +982,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                   }
 
                   return GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedDayDate = dateStr;
-                      _selectedDayEntries = _dayEntries[dateStr] ?? [];
-                    }),
+                    onTap: () => _showDayEntries(dateStr),
                     child: Container(
                       width: 36, height: 36,
                       decoration: BoxDecoration(
@@ -1198,13 +1200,230 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   void _showDayEntries(String dateStr) {
-    final entries = _dayEntries[dateStr] ?? [];
+    setState(() {
+      _selectedDayDate = dateStr;
+      _selectedDayEntries = _dayEntries[dateStr] ?? [];
+    });
+    final entries = _selectedDayEntries;
     final allModules = ['bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre'];
     final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
     final moduleLabels = ['Bitacora', 'Procesamiento', 'Incubadoras', 'Ultracongeladores', 'Equipos', 'Autoclaves', 'Cobre'];
     final auth = context.read<AuthService>();
+    final closureService = context.read<ClosureService>();
     final canCloseDay = auth.canClose;
+    final isClosed = closureService.isDayClosed(dateStr);
     final isDesktop = MediaQuery.of(context).size.width > 800;
+    final dayNum = dateStr.split('-').last;
+    final monthNum = dateStr.split('-')[1];
+    final yearNum = dateStr.split('-')[0];
+    final dateDisplay = '$dayNum/$monthNum/$yearNum';
+
+    Widget buildHeader() {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isClosed ? OmniTheme.green400.withOpacity(0.15) : OmniTheme.accentBlue.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(isClosed ? Icons.lock : Icons.calendar_today, size: 18, color: isClosed ? OmniTheme.green400 : OmniTheme.accentBlue),
+            ),
+            const SizedBox(width: 12),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(dateDisplay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
+              Text('${entries.length} registros', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+            ]),
+            if (isClosed) ...[
+              const SizedBox(width: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: OmniTheme.green400.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                child: const Text('CERRADO', style: TextStyle(fontSize: 10, color: OmniTheme.green400, fontWeight: FontWeight.bold)),
+              ),
+            ],
+            const Spacer(),
+            if (!isClosed)
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.add_circle_outline, size: 20, color: OmniTheme.accentBlue),
+                tooltip: 'Nuevo registro',
+                color: OmniTheme.bg800,
+                onSelected: (module) {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)]))).then((_) => _loadStats());
+                },
+                itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
+              ),
+            if (canCloseDay && !isClosed) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.lock, size: 18, color: OmniTheme.green400),
+                tooltip: 'Cerrar dia',
+                onPressed: () { Navigator.pop(context); _confirmCloseDay(dateStr, auth.currentUser!); },
+              ),
+            ],
+            if (canCloseDay && isClosed) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.lock_open, size: 18, color: OmniTheme.orange400),
+                tooltip: 'Reabrir dia',
+                onPressed: () { Navigator.pop(context); _showReopenDialog(dateStr, auth.currentUser!); },
+              ),
+            ],
+            if (isDesktop) IconButton(icon: const Icon(Icons.close, size: 20, color: OmniTheme.textMuted), onPressed: () => Navigator.pop(context)),
+          ],
+        ),
+      );
+    }
+
+    Widget buildEntryCard(Map<String, dynamic> entry) {
+      Map<String, dynamic> data = {};
+      try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+      final moduleKey = entry['module']?.toString() ?? '';
+      final modIdx = modules.indexOf(moduleKey);
+      final label = modIdx >= 0 ? moduleLabels[modIdx] : moduleKey.toUpperCase();
+      final modColors = [const Color(0xFFF472B6), const Color(0xFFB197FC), OmniTheme.red400, OmniTheme.accentBlue, OmniTheme.green400, OmniTheme.orange400, const Color(0xFF00BCD4)];
+      final modColor = modIdx >= 0 ? modColors[modIdx] : OmniTheme.textMuted;
+      final modIcons = [Icons.book_outlined, Icons.biotech_outlined, Icons.thermostat_outlined, Icons.ac_unit_outlined, Icons.precision_manufacturing_outlined, Icons.local_fire_department_outlined, Icons.science_outlined];
+      final modIcon = modIdx >= 0 ? modIcons[modIdx] : Icons.article_outlined;
+      final responsable = data['responsable'] as String? ?? data['usuario'] as String? ?? data['nombre'] as String? ?? '-';
+      final createdAt = entry['created_at'] as String? ?? '';
+      final timeStr = createdAt.length >= 16 ? createdAt.substring(11, 16) : '';
+
+      return Card(
+        margin: const EdgeInsets.only(bottom: 6),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => _showEntryDetail(entry, moduleKey, label, dateStr),
+          onLongPress: () => _confirmDeleteEntry(entry),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: modColor, width: 3)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(modIcon, size: 14, color: modColor),
+                    const SizedBox(width: 6),
+                    Text(label.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: modColor, letterSpacing: 1)),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: entry['status'] == 'synced' ? OmniTheme.green400.withOpacity(0.1) : OmniTheme.orange400.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(entry['status'] == 'synced' ? Icons.cloud_done : Icons.cloud_off, size: 10, color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400),
+                        const SizedBox(width: 3),
+                        Text(entry['status'] == 'synced' ? 'Synced' : 'Pend.', style: TextStyle(fontSize: 8, color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400)),
+                      ]),
+                    ),
+                    if (timeStr.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text(timeStr, style: const TextStyle(fontSize: 9, color: OmniTheme.textMuted)),
+                    ],
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Icon(Icons.person_outline, size: 12, color: OmniTheme.textMuted),
+                    const SizedBox(width: 4),
+                    Text(responsable, style: const TextStyle(fontSize: 11, color: OmniTheme.textSecondary)),
+                  ]),
+                  const SizedBox(height: 4),
+                  ...data.entries.take(3).map((e) {
+                    if (e.key == 'responsable' || e.key == 'usuario' || e.key == 'nombre') return const SizedBox.shrink();
+                    final val = e.value?.toString() ?? '';
+                    if (val.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(children: [
+                        Text('${e.key}: ', style: const TextStyle(fontSize: 11, color: OmniTheme.textMuted)),
+                        Expanded(child: Text(val, style: const TextStyle(fontSize: 11, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ]),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget buildContent() {
+      return entries.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox_outlined, size: 48, color: OmniTheme.bg700),
+                  const SizedBox(height: 12),
+                  const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  if (!isClosed) Text('Selecciona un modulo para crear un registro', style: TextStyle(color: OmniTheme.textMuted.withOpacity(0.7), fontSize: 11)),
+                  if (!isClosed) ...[
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: modules.asMap().entries.map((e) {
+                        final modColors = [const Color(0xFFF472B6), const Color(0xFFB197FC), OmniTheme.red400, OmniTheme.accentBlue, OmniTheme.green400, OmniTheme.orange400, const Color(0xFF00BCD4)];
+                        final modIcons = [Icons.book_outlined, Icons.biotech_outlined, Icons.thermostat_outlined, Icons.ac_unit_outlined, Icons.precision_manufacturing_outlined, Icons.local_fire_department_outlined, Icons.science_outlined];
+                        return ActionChip(
+                          avatar: Icon(modIcons[e.key % modIcons.length], size: 14, color: modColors[e.key % modColors.length]),
+                          label: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 11)),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: e.value, moduleLabel: moduleLabels[e.key]))).then((_) => _loadStats());
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: entries.length,
+                    itemBuilder: (ctx, index) => buildEntryCard(entries[index]),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: OmniTheme.bg800)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.assignment, size: 14, color: OmniTheme.accentBlue),
+                    const SizedBox(width: 6),
+                    Text('$entries.length registros', style: const TextStyle(fontSize: 11, color: OmniTheme.textSecondary)),
+                    const SizedBox(width: 16),
+                    Icon(Icons.category, size: 14, color: OmniTheme.green400),
+                    const SizedBox(width: 6),
+                    Text('${entries.map((e) => e['module']).toSet().length} modulos', style: const TextStyle(fontSize: 11, color: OmniTheme.textSecondary)),
+                    if (!isClosed) ...[
+                      const Spacer(),
+                      Text('Mantén presionado para eliminar', style: TextStyle(fontSize: 9, color: OmniTheme.textMuted.withOpacity(0.6))),
+                    ],
+                  ]),
+                ),
+              ],
+            );
+    }
 
     if (isDesktop) {
       showDialog(
@@ -1213,97 +1432,15 @@ class _MainScaffoldState extends State<MainScaffold> {
           backgroundColor: OmniTheme.bg900,
           contentPadding: EdgeInsets.zero,
           content: SizedBox(
-            width: 600,
+            width: 620,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
-                      const Spacer(),
-                      Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                      const SizedBox(width: 12),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
-                        tooltip: 'Nuevo registro',
-                        color: OmniTheme.bg800,
-                        onSelected: (module) {
-                          Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
-                        },
-                        itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
-                      ),
-                      if (canCloseDay) ...[
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.lock, size: 16, color: OmniTheme.green400),
-                          tooltip: 'Cerrar dia',
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _confirmCloseDay(dateStr, auth.currentUser!);
-                          },
-                        ),
-                      ],
-                      IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
-                    ],
-                  ),
+                buildHeader(),
+                SizedBox(
+                  height: 440,
+                  child: buildContent(),
                 ),
-                entries.isEmpty
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.inbox_outlined, size: 40, color: OmniTheme.bg700),
-                            const SizedBox(height: 8),
-                            const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
-                          ],
-                        ),
-                      )
-                    : SizedBox(
-                        height: 400,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: entries.length,
-                          itemBuilder: (ctx, index) {
-                            final entry = entries[index];
-                            Map<String, dynamic> data = {};
-                            try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [
-                                      Container(width: 4, height: 16, decoration: BoxDecoration(
-                                        color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
-                                        borderRadius: BorderRadius.circular(2),
-                                      )),
-                                      const SizedBox(width: 8),
-                                      Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
-                                    ]),
-                                    const SizedBox(height: 8),
-                                    ...data.entries.take(4).map((e) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(children: [
-                                        Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                                        Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                      ]),
-                                    )),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
               ],
             ),
           ),
@@ -1316,98 +1453,14 @@ class _MainScaffoldState extends State<MainScaffold> {
         backgroundColor: OmniTheme.bg900,
         builder: (_) => DraggableScrollableSheet(
           initialChildSize: 0.5,
-          maxChildSize: 0.8,
+          maxChildSize: 0.85,
           minChildSize: 0.3,
           expand: false,
           builder: (_, scrollController) {
             return Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: OmniTheme.bg800)),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary)),
-                      const Spacer(),
-                      Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                      const SizedBox(width: 12),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
-                        tooltip: 'Nuevo registro',
-                        color: OmniTheme.bg800,
-                        onSelected: (module) {
-                          Navigator.pop(context);
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)])));
-                        },
-                        itemBuilder: (_) => modules.asMap().entries.map((e) => PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))).toList(),
-                      ),
-                      if (canCloseDay) ...[
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.lock, size: 16, color: OmniTheme.green400),
-                          tooltip: 'Cerrar dia',
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _confirmCloseDay(dateStr, auth.currentUser!);
-                          },
-                        ),
-                      ],
-                      IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: entries.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.inbox_outlined, size: 40, color: OmniTheme.bg700),
-                              const SizedBox(height: 8),
-                              const Text('Sin registros este dia', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12)),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.all(16),
-                          itemCount: entries.length,
-                          itemBuilder: (ctx, index) {
-                            final entry = entries[index];
-                            Map<String, dynamic> data = {};
-                            try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [
-                                      Container(width: 4, height: 16, decoration: BoxDecoration(
-                                        color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
-                                        borderRadius: BorderRadius.circular(2),
-                                      )),
-                                      const SizedBox(width: 8),
-                                      Text(entry['module']?.toString().toUpperCase() ?? '', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
-                                    ]),
-                                    const SizedBox(height: 8),
-                                    ...data.entries.take(4).map((e) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(children: [
-                                        Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                                        Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                      ]),
-                                    )),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                buildHeader(),
+                Expanded(child: buildContent()),
               ],
             );
           },
@@ -1728,6 +1781,95 @@ class _MainScaffoldState extends State<MainScaffold> {
             _loadStats();
           } catch (_) {}
         },
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteEntry(Map<String, dynamic> entry) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Eliminar registro', style: TextStyle(color: Colors.white)),
+        content: Text('Eliminar registro de ${entry['module']} del dia ${entry['date']}?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        final db = await LocalDatabase.instance.database;
+        await db.delete('form_entries', where: 'id = ?', whereArgs: [entry['id']]);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Registro eliminado'),
+          backgroundColor: OmniTheme.green400,
+        ));
+        _loadStats();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: OmniTheme.red400,
+        ));
+      }
+    }
+  }
+
+  void _showEntryDetail(Map<String, dynamic> entry, String moduleKey, String moduleLabel, String dateStr) {
+    Map<String, dynamic> data = {};
+    try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        titlePadding: EdgeInsets.zero,
+        contentPadding: EdgeInsets.zero,
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: OmniTheme.bg800))),
+                child: Row(children: [
+                  Expanded(child: Text(moduleLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: OmniTheme.textPrimary))),
+                  IconButton(icon: const Icon(Icons.close, size: 20, color: OmniTheme.textMuted), onPressed: () => Navigator.pop(ctx)),
+                ]),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 400),
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: data.entries.map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 140, child: Text('${e.key}:', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted))),
+                        Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary))),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => FormEntryScreen(module: moduleKey, moduleLabel: moduleLabel))).then((_) => _loadStats());
+            },
+            child: const Text('Editar', style: TextStyle(color: OmniTheme.accentBlue)),
+          ),
+        ],
       ),
     );
   }

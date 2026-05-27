@@ -37,6 +37,9 @@ class AuthService extends ChangeNotifier {
   bool get canManageUsers => isAdmin || isOwner;
   bool get canManageClosures => isAdmin || isSupervisor;
   bool get canViewReports => isAdmin || isSupervisor || isAuditor || isOwner;
+  bool get canUseAI => isAuthenticated && !isAuditor;
+  bool get canExport => isAdmin || isOwner || isSupervisor;
+  bool get canManageModels => isAdmin || isOwner;
 
   static String _mapRol(String rol) {
     final upper = rol.toUpperCase();
