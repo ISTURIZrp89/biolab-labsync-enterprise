@@ -27,7 +27,8 @@ dependencies:
   connectivity_plus: ^5.0.0 # Deteccion de red multiplataforma
   flutter_localizations:
     sdk: flutter
-  sqflite_common_ffi_web: ^0.4.5+4
+  # Keep this below 0.4.3 because CI Flutter 3.16 ships Dart 3.2.x.
+  sqflite_common_ffi_web: ^0.4.2+1
   file_picker: ^8.1.0
   pdf: ^3.10.0
   printing: ^5.12.0

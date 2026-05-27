@@ -1,4 +1,4 @@
-name: Build LABSYNC Windows
+name: Build LABSYNC Multi-Platform
 
 on:
   push:
@@ -7,9 +7,28 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+            artifact_name: labsync-windows
+            artifact_path: frontend_flutter/build/windows/x64/runner/Release/
+          - os: macos-latest
+            target: macos
+            artifact_name: labsync-macos
+            artifact_path: frontend_flutter/build/macos/Build/Products/Release/
+          - os: ubuntu-latest
+            target: linux
+            artifact_name: labsync-linux
+            artifact_path: frontend_flutter/build/linux/x64/release/bundle/
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -26,22 +45,38 @@ jobs:
       - name: Check token
         env:
           TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
         run: |
-          if ("$env:TOKEN".Length -gt 0) {
-            Write-Host "TOKEN CONFIGURADO ($($env:TOKEN.Length) caracteres)" -ForegroundColor Green
-          } else {
-            Write-Host "ADVERTENCIA: Token LICENSE_GITHUB_TOKEN vacio. Usando modo demo." -ForegroundColor Yellow
-          }
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$PR_HEAD_REPO" != "$BASE_REPO" ]; then
+              echo "PR desde fork detectado: GitHub NO expone secretos en pull_request de forks."
+            else
+              echo "PR interno detectado: secretos disponibles si estan configurados."
+            fi
+          fi
+          if [ -n "$TOKEN" ]; then
+            echo "TOKEN CONFIGURADO (${#TOKEN} caracteres)"
+          else
+            echo "ADVERTENCIA: Token LICENSE_GITHUB_TOKEN vacio. Usando modo demo."
+          fi
+        shell: bash
 
-      - name: Build Windows
+      - name: Build ${{ matrix.target }}
         env:
           TOKEN: ${{ secrets.LICENSE_GITHUB_TOKEN }}
+          TARGET: ${{ matrix.target }}
         run: |
-          $define = if ("$env:TOKEN".Length -gt 0) { "--dart-define=LICENSE_GITHUB_TOKEN=$env:TOKEN" } else { "" }
-          flutter build windows --release $define
+          if [ -n "$TOKEN" ]; then
+            flutter build "$TARGET" --release --dart-define="LICENSE_GITHUB_TOKEN=$TOKEN"
+          else
+            flutter build "$TARGET" --release
+          fi
+        shell: bash
         working-directory: frontend_flutter
 
       - uses: actions/upload-artifact@v4
         with:
-          name: labsync-windows
-          path: frontend_flutter/build/windows/x64/runner/Release/
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
