@@ -95,38 +95,25 @@ class LlamacppEngine {
         throw Exception('Archivo demasiado pequeno (${response.bodyBytes.length} bytes)');
       }
       final archive = ZipDecoder().decodeBytes(response.bodyBytes);
-      String? cliPath;
+      final dir = Directory(_engineDir);
+      if (!await dir.exists()) await dir.create(recursive: true);
       for (final file in archive) {
-        if (file.isFile) {
-          final name = file.name.split('/').last;
-          if (name == _binaryName || name == 'llama-server' || name == 'llama-server.exe') {
-            final outPath = binaryPath;
-            final outFile = File(outPath);
-            await outFile.create(recursive: true);
-            await outFile.writeAsBytes(file.content);
-            if (!Platform.isWindows) {
-              await Process.run('chmod', ['+x', outPath]);
-            }
-            print('[llamacpp] Extraido server: $outPath (${file.content.length} bytes)');
-          }
-          if (name == 'llama-cli' || name == 'llama-cli.exe') {
-            final cliOut = '$_engineDir${Platform.isWindows ? '\\' : '/'}$name';
-            final cliFile = File(cliOut);
-            await cliFile.create(recursive: true);
-            await cliFile.writeAsBytes(file.content);
-            if (!Platform.isWindows) {
-              await Process.run('chmod', ['+x', cliOut]);
-            }
-            cliPath = cliOut;
-            print('[llamacpp] Extraido cli: $cliOut (${file.content.length} bytes)');
+        if (!file.isFile) continue;
+        final relativePath = file.name.replaceAll('/', Platform.isWindows ? '\\' : '/');
+        final outPath = '$_engineDir${Platform.isWindows ? '\\' : '/'}$relativePath';
+        final outFile = File(outPath);
+        await outFile.create(recursive: true);
+        await outFile.writeAsBytes(file.content);
+      }
+      if (!Platform.isWindows) {
+        for (final entry in await dir.list().toList()) {
+          if (entry is File && (entry.path.endsWith('llama-server') || entry.path.endsWith('llama-cli'))) {
+            await Process.run('chmod', ['+x', entry.path]);
           }
         }
       }
       if (await File(binaryPath).exists()) return;
-      if (cliPath != null) {
-        throw Exception('Se extrajo llama-cli pero no $_binaryName');
-      }
-      throw Exception('No se encontro $_binaryName ni llama-cli en el ZIP');
+      throw Exception('No se encontro $_binaryName en el ZIP');
     } finally {
       client.close();
     }
