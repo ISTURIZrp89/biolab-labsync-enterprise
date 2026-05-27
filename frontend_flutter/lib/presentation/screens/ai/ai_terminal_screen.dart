@@ -48,6 +48,16 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
     _addLine('BioLab LABSYNC AI Terminal v1.0.0', color: _terminalGreen, bold: true);
     _addLine('Type /help for available commands', color: _terminalAmber);
     _addLine('─' * 50, color: _terminalDim);
+    _initAiEngine();
+  }
+
+  Future<void> _initAiEngine() async {
+    final chat = context.read<ChatService>();
+    try {
+      await chat.initialize();
+    } catch (_) {
+      _addLine('IA no disponible (ve a Ajustes > Modelos IA)', color: _terminalRed);
+    }
   }
 
   @override

@@ -365,8 +365,9 @@ class ModelManager extends ChangeNotifier {
       return m.id == 'phi-3-mini';
     }).firstOrNull;
     if (fallback != null) {
-      await downloadModel(fallback);
-      return _activeModel;
+      final success = await downloadModel(fallback);
+      if (success) return _activeModel;
+      return null;
     }
     return null;
   }

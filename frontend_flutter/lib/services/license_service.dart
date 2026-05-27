@@ -169,6 +169,7 @@ class LicenseService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('license_key', key);
       await prefs.setString('license_branch', branch);
+      await prefs.setString('license_validated_hash', computedHash);
       _storedKey = key;
       _branch = branch;
       _activated = true;
@@ -200,6 +201,16 @@ class LicenseService extends ChangeNotifier {
     try {
       final licenseData = await _fetchLicenseJson();
       if (licenseData == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedHash = prefs.getString('license_validated_hash');
+        if (cachedHash != null) {
+          final computedHash = sha256.convert(utf8.encode(_storedKey!)).toString();
+          if (computedHash == cachedHash) {
+            _offlineMode = true;
+            notifyListeners();
+            return;
+          }
+        }
         _offlineMode = true;
         notifyListeners();
         return;

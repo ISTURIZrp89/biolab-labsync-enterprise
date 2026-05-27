@@ -82,6 +82,8 @@ class ChatService extends ChangeNotifier {
   List<ChatSession> _sessions = [];
   ChatSession? _currentSession;
   bool _isGenerating = false;
+  bool _ready = false;
+  bool _initializing = false;
   String _statusMessage = '';
   static const _sessionsKey = 'ai_chat_sessions';
   static const _systemPromptKey = 'ai_system_prompt';
@@ -206,30 +208,44 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
   }
 
   Future<void> _ensureReady() async {
-    final llamaCli = await _getLlamaCliPath();
-    if (llamaCli != null) return;
-
-    final ok = await _downloadLlamaCpp();
-    if (!ok) {
-      throw Exception('No se pudo descargar el motor de IA. Verifica tu conexión a internet.');
+    if (_ready) return;
+    if (_initializing) {
+      while (_initializing) await Future.delayed(const Duration(milliseconds: 100));
+      return;
     }
-
-    final model = _modelManager.activeModel;
-    if (model != null && model.isDownloaded) return;
-
-    final modelPath = await getModelPath();
-    if (modelPath.isEmpty || !await File(modelPath).exists()) {
-      _statusMessage = 'Seleccionando modelo para tu PC...';
-      notifyListeners();
-      final hw = await HardwareDetector.detect();
-      await _modelManager.autoSelect(hw);
-
-      final downloaded = await getModelPath();
-      if (downloaded.isEmpty || !await File(downloaded).exists()) {
-        throw Exception('No se pudo descargar el modelo. Ve a Ajustes > Modelos IA.');
+    _initializing = true;
+    try {
+      final llamaCli = await _getLlamaCliPath();
+      if (llamaCli == null) {
+        final ok = await _downloadLlamaCpp();
+        if (!ok) {
+          throw Exception('No se pudo descargar el motor de IA. Verifica tu conexion a internet.');
+        }
       }
+
+      final model = _modelManager.activeModel;
+      if (model == null || !model.isDownloaded) {
+        _statusMessage = 'Seleccionando modelo para tu PC...';
+        notifyListeners();
+        final hw = await HardwareDetector.detect();
+        final selected = await _modelManager.autoSelect(hw);
+        if (selected == null) {
+          throw Exception('No se pudo instalar un modelo. Ve a Ajustes > Modelos IA.');
+        }
+      }
+
+      final modelPath = await getModelPath();
+      if (modelPath.isEmpty || !await File(modelPath).exists()) {
+        throw Exception('No hay modelo descargado. Ve a Ajustes > Modelos IA.');
+      }
+
+      _ready = true;
+    } finally {
+      _initializing = false;
     }
   }
+
+  Future<void> initialize() => _ensureReady();
 
   Future<String?> _getLlamaCliPath() async {
     final basePath = _modelManager.basePath;
