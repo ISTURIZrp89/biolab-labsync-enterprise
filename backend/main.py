@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -150,13 +149,4 @@ app.include_router(ai_router)
 # Iniciar el detector de anomalías de IA en segundo plano
 from ai.ai_service import get_anomaly_detector
 get_anomaly_detector()
-
-# Servir frontend web compilado (static/) — debe ir DESPUES de todas las rutas API
-import os
-_static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-if os.path.isdir(_static_dir):
-    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
-    print(f"[static] Sirviendo frontend web desde {_static_dir}")
-else:
-    print(f"[static] Web build no encontrado en {_static_dir} — solo modo API")
 
