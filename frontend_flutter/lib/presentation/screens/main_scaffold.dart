@@ -9,7 +9,6 @@ import '../../services/notification_service.dart';
 import '../../services/closure_service.dart';
 import '../../services/user_service.dart';
 import '../../services/update_service.dart';
-import '../../services/license_service.dart';
 import '../../services/audit_service.dart';
 import '../../sync/lan_discovery_service.dart';
 import '../../security/permission_service.dart';
@@ -418,22 +417,6 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  Widget _buildLicenseBadge() {
-    final license = context.watch<LicenseService>();
-    if (!license.offlineMode) return const SizedBox.shrink();
-    return Tooltip(
-      message: 'Modo offline - La licencia no pudo verificarse',
-      child: Container(
-        width: 32, height: 20,
-        decoration: BoxDecoration(
-          color: OmniTheme.orange400.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Center(child: Icon(Icons.wifi_off, size: 12, color: OmniTheme.orange400)),
-      ),
-    );
-  }
-
   Widget _buildNetworkDevicesBtn() {
     return Tooltip(
       message: 'Dispositivos en red',
@@ -506,8 +489,6 @@ class _MainScaffoldState extends State<MainScaffold> {
           const Divider(height: 1, color: OmniTheme.bg800),
           const SizedBox(height: 6),
           _buildSyncDot(sync),
-          const SizedBox(height: 4),
-          _buildLicenseBadge(),
           const SizedBox(height: 4),
           _buildNetworkDevicesBtn(),
           const SizedBox(height: 4),

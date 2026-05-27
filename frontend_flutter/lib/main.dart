@@ -24,11 +24,9 @@ import 'services/notification_service.dart';
 import 'services/dashboard_service.dart';
 import 'services/user_service.dart';
 import 'services/closure_service.dart';
-import 'services/license_service.dart';
 import 'services/audit_service.dart';
 import 'services/vps_service.dart';
 import 'presentation/screens/login_screen.dart';
-import 'presentation/screens/activation_screen.dart';
 import 'theme/omni_theme.dart';
 
 void main() async {
@@ -71,8 +69,6 @@ void main() async {
     await sharedMemory.load();
     final lanDiscovery = LanDiscoveryService();
     final lanSyncServer = LanSyncServer();
-    final licenseService = LicenseService();
-    await licenseService.init();
     final auditService = AuditService();
     await auditService.init();
     final vpsService = VpsService();
@@ -106,7 +102,6 @@ void main() async {
           ChangeNotifierProvider<SharedMemory>.value(value: sharedMemory),
           ChangeNotifierProvider<LanDiscoveryService>.value(value: lanDiscovery),
           ChangeNotifierProvider<LanSyncServer>.value(value: lanSyncServer),
-          ChangeNotifierProvider<LicenseService>.value(value: licenseService),
           ChangeNotifierProvider<AuditService>.value(value: auditService),
           ChangeNotifierProvider<VpsService>.value(value: vpsService),
           Provider<FormRepositoryImpl>.value(value: formRepo),
@@ -245,33 +240,7 @@ class _BioLabAppState extends State<BioLabApp> {
       title: 'BioLab',
       debugShowCheckedModeBanner: false,
       theme: OmniTheme.theme,
-      home: Consumer<LicenseService>(
-        builder: (ctx, license, _) {
-          if (license.checking) {
-            return Scaffold(
-              backgroundColor: OmniTheme.bg950,
-              body: Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 48, height: 48,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [OmniTheme.accentBlue, OmniTheme.accentIndigo]),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Verificando licencia...', style: TextStyle(color: OmniTheme.textMuted, fontSize: 13)),
-                ]),
-              ),
-            );
-          }
-          if (!license.activated) {
-            return const ActivationScreen();
-          }
-          return const LoginScreen();
-        },
-      ),
+      home: const LoginScreen(),
     );
   }
 }

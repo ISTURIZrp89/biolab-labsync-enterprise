@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/vps_service.dart';
 import '../../services/audit_service.dart';
-import '../../services/license_service.dart';
 import '../../security/auth_service.dart';
 import '../../theme/omni_theme.dart';
 import '../../sync/lan_discovery_service.dart';
