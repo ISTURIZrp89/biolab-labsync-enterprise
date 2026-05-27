@@ -171,7 +171,7 @@ class _BackupScreenState extends State<BackupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Respaldos'),
-        backgroundColor: OmniTheme.bgDark,
+        backgroundColor: OmniTheme.bg900,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,7 +190,7 @@ class _BackupScreenState extends State<BackupScreen> {
           ),
         ],
       ),
-      backgroundColor: OmniTheme.bgDark,
+      backgroundColor: OmniTheme.bg900,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _backups.isEmpty
@@ -233,7 +233,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         itemBuilder: (ctx, i) {
                           final b = _backups[i];
                           return Card(
-                            color: OmniTheme.bgCard,
+                            color: OmniTheme.bg800,
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             child: ListTile(
                               leading: const Icon(Icons.storage, color: OmniTheme.green400),

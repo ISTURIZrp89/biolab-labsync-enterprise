@@ -109,7 +109,7 @@ class _AiImportScreenState extends State<AiImportScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Importar con IA'),
-        backgroundColor: OmniTheme.bgDark,
+        backgroundColor: OmniTheme.bg900,
         actions: [
           if (_parsedEntries.isNotEmpty)
             TextButton.icon(
@@ -119,7 +119,7 @@ class _AiImportScreenState extends State<AiImportScreen> {
             ),
         ],
       ),
-      backgroundColor: OmniTheme.bgDark,
+      backgroundColor: OmniTheme.bg900,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -153,7 +153,7 @@ class _AiImportScreenState extends State<AiImportScreen> {
               ]),
               const SizedBox(height: 8),
               ..._parsedEntries.map((e) => Card(
-                color: OmniTheme.bgCard,
+                color: OmniTheme.bg800,
                 margin: const EdgeInsets.only(bottom: 4),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
@@ -213,7 +213,7 @@ class _AiImportScreenState extends State<AiImportScreen> {
 
   Widget _buildFileSection() {
     return Card(
-      color: OmniTheme.bgCard,
+      color: OmniTheme.bg800,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

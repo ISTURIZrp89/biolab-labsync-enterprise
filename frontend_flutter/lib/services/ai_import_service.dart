@@ -36,9 +36,9 @@ class AiImportService {
     final bytes = file.readAsBytesSync();
     final excel = Excel.decodeBytes(bytes);
     final buffer = StringBuffer();
-    for (final sheet in excel.tables.values) {
-      buffer.writeln('--- Hoja: ${sheet.name} ---');
-      for (final row in sheet.rows) {
+    for (final entry in excel.tables.entries) {
+      buffer.writeln('--- Hoja: ${entry.key} ---');
+      for (final row in entry.value.rows) {
         final cells = row.map((c) => c?.value?.toString() ?? '').join('\t');
         buffer.writeln(cells);
       }
