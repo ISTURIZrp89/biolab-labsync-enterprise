@@ -74,17 +74,17 @@ class ModelManager extends ChangeNotifier {
   void _registerDefaultModels() {
     _availableModels = [
       ModelInfo(id: 'phi-3-mini', name: 'Phi-3 Mini (Microsoft)', format: 'gguf', source: 'huggingface',
-          url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf', sizeMB: 2400, backend: 'llama.cpp'),
+          url: 'https://huggingface.co/QuantFactory/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct.Q4_K_M.gguf', sizeMB: 2400, backend: 'llama.cpp'),
       ModelInfo(id: 'qwen2.5-1.5b', name: 'Qwen2.5 1.5B (Alibaba)', format: 'gguf', source: 'huggingface',
           url: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf', sizeMB: 980, backend: 'llama.cpp'),
       ModelInfo(id: 'tinyllama', name: 'TinyLlama 1.1B', format: 'gguf', source: 'huggingface',
-          url: 'https://huggingface.co/TheBloke/TinyLlama-1.1B-GGUF/resolve/main/tinyllama-1.1b-q4_k_m.gguf', sizeMB: 700, backend: 'llama.cpp'),
+          url: 'https://huggingface.co/MaziyarPanahi/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf', sizeMB: 700, backend: 'llama.cpp'),
       ModelInfo(id: 'gemma-2b', name: 'Gemma 2B (Google)', format: 'gguf', source: 'huggingface',
-          url: 'https://huggingface.co/google/gemma-2b-it-gguf/resolve/main/gemma-2b-it-q4_k_m.gguf', sizeMB: 1500, backend: 'llama.cpp'),
+          url: 'https://huggingface.co/QuantFactory/gemma-2b-it-GGUF/resolve/main/gemma-2b-it.Q4_K_M.gguf', sizeMB: 1500, backend: 'llama.cpp'),
       ModelInfo(id: 'llama-3.1-8b', name: 'Llama 3.1 8B (Meta)', format: 'gguf', source: 'huggingface',
-          url: 'https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf', sizeMB: 4900, backend: 'llama.cpp'),
+          url: 'https://huggingface.co/QuantFactory/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf', sizeMB: 4900, backend: 'llama.cpp'),
       ModelInfo(id: 'mistral-7b', name: 'Mistral 7B', format: 'gguf', source: 'huggingface',
-          url: 'https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2-q4_k_m.gguf', sizeMB: 4300, backend: 'llama.cpp'),
+          url: 'https://huggingface.co/MaziyarPanahi/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/Mistral-7B-Instruct-v0.2.Q4_K_M.gguf', sizeMB: 4300, backend: 'llama.cpp'),
     ];
   }
 
@@ -121,6 +121,29 @@ class ModelManager extends ChangeNotifier {
     }
   }
 
+  static String? get _hfToken => () {
+    final t = String.fromEnvironment('HF_TOKEN');
+    return t.isNotEmpty ? t : null;
+  }();
+
+  Future<String?> _resolveHfRedirect(String url) async {
+    final client = http.Client();
+    try {
+      final req = http.Request('HEAD', Uri.parse(url));
+      req.headers.addAll({'User-Agent': 'BioLab-LABSYNC/1.0', 'Accept': '*/*'});
+      if (_hfToken != null) req.headers['Authorization'] = 'Bearer $_hfToken';
+      final resp = await client.send(req).timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 302 || resp.statusCode == 301) {
+        final location = resp.headers['location'];
+        if (location != null) return location;
+      }
+      if (resp.statusCode == 200) return url;
+      throw HttpException('HTTP ${resp.statusCode}');
+    } finally {
+      client.close();
+    }
+  }
+
   Future<bool> downloadModel(ModelInfo model) async {
     if (_isDownloading) return false;
     _isDownloading = true;
@@ -138,14 +161,20 @@ class ModelManager extends ChangeNotifier {
         notifyListeners();
         await Future.delayed(const Duration(milliseconds: 500));
       } else {
+        final resolvedUrl = await _resolveHfRedirect(model.url);
+
         final client = http.Client();
         try {
-          final request = http.Request('GET', Uri.parse(model.url));
+          final request = http.Request('GET', Uri.parse(resolvedUrl));
           request.headers.addAll({
             'User-Agent': 'BioLab-LABSYNC/1.0',
             'Accept': '*/*',
           });
-          final streamedResponse = await client.send(request);
+          if (_hfToken != null) request.headers['Authorization'] = 'Bearer $_hfToken';
+
+          final streamedResponse = await client
+              .send(request)
+              .timeout(const Duration(seconds: 30));
 
           if (streamedResponse.statusCode != 200) {
             final body = await streamedResponse.stream.bytesToString();

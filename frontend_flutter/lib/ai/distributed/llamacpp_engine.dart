@@ -13,8 +13,9 @@ class LlamacppEngine {
   static String _lastModelPath = '';
 
   static final List<_VersionSource> _versions = [
-    _VersionSource('b4755', 'https://github.com/ggml-org/llama.cpp/releases/download/b4755/'),
-    _VersionSource('b4608', 'https://github.com/ggml-org/llama.cpp/releases/download/b4608/'),
+    _VersionSource('b9360', 'https://github.com/ggml-org/llama.cpp/releases/download/b9360/'),
+    _VersionSource('b9357', 'https://github.com/ggml-org/llama.cpp/releases/download/b9357/'),
+    _VersionSource('b9354', 'https://github.com/ggml-org/llama.cpp/releases/download/b9354/'),
   ];
 
   static String get _binaryName {
@@ -23,9 +24,11 @@ class LlamacppEngine {
   }
 
   static String get _platformDir {
-    if (Platform.isMacOS) return 'macos-arm64';
-    else if (Platform.isLinux) return 'ubuntu-x64';
-    else if (Platform.isWindows) return 'win-x64';
+    if (Platform.isMacOS) {
+      if (Platform.numberOfProcessors < 6) return 'macos-x64';
+      return 'macos-arm64';
+    } else if (Platform.isLinux) return 'ubuntu-x64';
+    else if (Platform.isWindows) return 'win-cpu-x64';
     return 'ubuntu-x64';
   }
 
@@ -79,10 +82,11 @@ class LlamacppEngine {
     print('[llamacpp] Descargando $url ...');
     final client = http.Client();
     try {
-      final response = await client.get(
-        Uri.parse(url),
-        headers: {'User-Agent': 'BioLab-LABSYNC/1.0', 'Accept': '*/*'},
-      );
+      final response = await client
+          .get(Uri.parse(url), headers: {
+            'User-Agent': 'BioLab-LABSYNC/1.0', 'Accept': '*/*',
+          })
+          .timeout(const Duration(seconds: 60));
       if (response.statusCode != 200) {
         throw HttpException('HTTP ${response.statusCode}');
       }
