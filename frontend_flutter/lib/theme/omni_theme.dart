@@ -60,7 +60,7 @@ class OmniTheme {
       ),
       iconTheme: IconThemeData(color: textSecondary),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: bg900,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -151,14 +151,14 @@ class OmniTheme {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: bg900,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: bg800.withOpacity(0.5)),
       ),
     ),
-    tabBarTheme: const TabBarTheme(
+    tabBarTheme: const TabBarThemeData(
       labelColor: primary,
       unselectedLabelColor: textMuted,
       indicatorColor: primary,
