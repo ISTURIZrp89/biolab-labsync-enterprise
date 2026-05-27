@@ -1,5 +1,7 @@
 import 'dart:async';
 
+enum AiToolRole { admin, jefe, laboratorio, auditor, dueno }
+
 class ToolParameter {
   final String name;
   final String type;
@@ -20,6 +22,7 @@ abstract class AiTool {
   String get name;
   String get description;
   List<ToolParameter> get parameters;
+  AiToolRole get requiredRole;
 
   Future<ToolResult> execute(Map<String, dynamic> args);
 

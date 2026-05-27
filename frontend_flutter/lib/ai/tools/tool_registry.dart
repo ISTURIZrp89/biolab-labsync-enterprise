@@ -6,6 +6,13 @@ import 'diagnostic_tools.dart';
 
 class ToolRegistry {
   final Map<String, AiTool> _tools = {};
+  final _roleLevel = {
+    AiToolRole.auditor: 0,
+    AiToolRole.laboratorio: 1,
+    AiToolRole.jefe: 2,
+    AiToolRole.admin: 3,
+    AiToolRole.dueno: 4,
+  };
 
   ToolRegistry() {
     _registerDefaults();
@@ -36,7 +43,11 @@ class ToolRegistry {
   }
 
   AiTool? get(String name) => _tools[name];
-  List<AiTool> get all => _tools.values.toList();
+
+  List<AiTool> getAllForRole(AiToolRole role) {
+    final level = _roleLevel[role] ?? 0;
+    return _tools.values.where((t) => (_roleLevel[t.requiredRole] ?? 0) <= level).toList();
+  }
 
   Future<ToolResult> execute(String name, Map<String, dynamic> args) async {
     final tool = _tools[name];
@@ -46,10 +57,11 @@ class ToolRegistry {
     return tool.execute(args);
   }
 
-  String get toolsDescription {
+  String getToolsDescription(AiToolRole role) {
+    final tools = getAllForRole(role);
     final buffer = StringBuffer();
     buffer.writeln('HERRAMIENTAS DISPONIBLES (nombre: descripcion):');
-    for (final tool in _tools.values) {
+    for (final tool in tools) {
       final params = tool.parameters.map((p) => p.required ? p.name : "${p.name}?").join(', ');
       buffer.writeln('- ${tool.name}: ${tool.description} [$params]');
     }
@@ -59,7 +71,7 @@ class ToolRegistry {
     return buffer.toString();
   }
 
-  List<Map<String, dynamic>> toJson() => _tools.values.map((t) => t.toJson()).toList();
+  List<Map<String, dynamic>> toJson(AiToolRole role) => getAllForRole(role).map((t) => t.toJson()).toList();
 }
 
 class ToolCallParser {

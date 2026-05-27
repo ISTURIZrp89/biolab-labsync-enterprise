@@ -9,14 +9,16 @@ class QueryDatabaseTool extends AiTool {
   @override
   String get description => 'Ejecuta consultas SELECT de solo lectura sobre la base de datos local';
   @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'sql', type: 'string', description: 'Consulta SQL (SOLO SELECT, LIMIT 50 automatico)'),
   ];
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
-    final sql = (args['sql'] as String?).trim();
-    if (sql == null || sql.isEmpty) {
+    final sql = (args['sql'] as String?)?.trim() ?? '';
+    if (sql.isEmpty) {
       return ToolResult(success: false, data: '', error: 'Consulta SQL requerida');
     }
     if (!sql.toUpperCase().trimLeft().startsWith('SELECT')) {
@@ -52,6 +54,8 @@ class GetTableSchemaTool extends AiTool {
   String get name => 'get_table_schema';
   @override
   String get description => 'Obtiene el esquema de todas las tablas de la base de datos';
+  @override
+  AiToolRole get requiredRole => AiToolRole.auditor;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'table', type: 'string', description: 'Nombre de tabla especifica (opcional)', required: false),
@@ -92,6 +96,8 @@ class GetAppStatsTool extends AiTool {
   String get name => 'get_app_stats';
   @override
   String get description => 'Obtiene estadisticas generales de la aplicacion';
+  @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
   @override
   List<ToolParameter> get parameters => [];
 

@@ -264,7 +264,6 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
       ),
     );
   }
-}
 
   Future<void> _confirmDeleteEntry(FormEntry entry) async {
     final confirm = await showDialog<bool>(

@@ -10,6 +10,8 @@ class ReadTextFileTool extends AiTool {
   @override
   String get description => 'Lee el contenido de un archivo de texto (TXT, CSV, JSON, LOG, MD, etc)';
   @override
+  AiToolRole get requiredRole => AiToolRole.laboratorio;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Ruta absoluta al archivo'),
     ToolParameter(name: 'max_lines', type: 'integer', description: 'Maximo de lineas a leer (opcional, default 200)', required: false),
@@ -48,6 +50,8 @@ class ReadExcelTool extends AiTool {
   String get name => 'read_excel';
   @override
   String get description => 'Lee y extrae datos de un archivo Excel (.xlsx, .xls)';
+  @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Ruta absoluta al archivo Excel'),
@@ -107,6 +111,8 @@ class ReadDocxTool extends AiTool {
   String get name => 'read_docx';
   @override
   String get description => 'Extrae el texto real de un archivo Word (.docx) usando el formato ZIP/XML interno';
+  @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Ruta absoluta al archivo .docx'),
@@ -171,6 +177,8 @@ class ListDirectoryTool extends AiTool {
   @override
   String get description => 'Lista el contenido de un directorio';
   @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Ruta absoluta al directorio'),
     ToolParameter(name: 'pattern', type: 'string', description: 'Filtro glob (ej: *.txt, *.docx) (opcional)', required: false),
@@ -228,6 +236,8 @@ class SearchInFilesTool extends AiTool {
   String get name => 'search_in_files';
   @override
   String get description => 'Busca texto dentro de archivos en un directorio';
+  @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Ruta del directorio donde buscar'),

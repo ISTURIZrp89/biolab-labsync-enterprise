@@ -8,6 +8,8 @@ class CheckDataIntegrityTool extends AiTool {
   @override
   String get description => 'Revisa la integridad de los datos: inconsistencias, duplicados, registros huerfanos';
   @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'date', type: 'string', description: 'Fecha especifica (YYYY-MM-DD, opcional)', required: false),
   ];
@@ -65,6 +67,8 @@ class GetErrorLogTool extends AiTool {
   @override
   String get description => 'Obtiene los errores y advertencias del registro de auditoria';
   @override
+  AiToolRole get requiredRole => AiToolRole.jefe;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'limit', type: 'integer', description: 'Maximo de entradas (opcional, default 30)', required: false),
     ToolParameter(name: 'action_filter', type: 'string', description: 'Filtrar por tipo de accion (opcional)', required: false),
@@ -106,6 +110,8 @@ class GetClosureStatusTool extends AiTool {
   String get name => 'get_closure_status';
   @override
   String get description => 'Obtiene el estado de cierre de dias y meses';
+  @override
+  AiToolRole get requiredRole => AiToolRole.auditor;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'date', type: 'string', description: 'Fecha especifica (YYYY-MM-DD, opcional). Si no se da, muestra resumen del mes actual.', required: false),
@@ -182,6 +188,8 @@ class GetSyncStatusTool extends AiTool {
   @override
   String get description => 'Obtiene el estado de la cola de sincronizacion';
   @override
+  AiToolRole get requiredRole => AiToolRole.auditor;
+  @override
   List<ToolParameter> get parameters => [];
 
   @override
@@ -212,6 +220,8 @@ class ValidateDayCompletionTool extends AiTool {
   String get name => 'validate_day';
   @override
   String get description => 'Valida que un dia este completo: revisa que todos los modulos necesarios tengan entradas';
+  @override
+  AiToolRole get requiredRole => AiToolRole.laboratorio;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'date', type: 'string', description: 'Fecha a validar (YYYY-MM-DD)'),
@@ -266,6 +276,8 @@ class RunSqlTool extends AiTool {
   @override
   String get description => 'REAL: Ejecuta SQL de mantenimiento (DELETE, UPDATE) - REQUIERE confirmacion del usuario. Solo para corregir problemas diagnosticados.';
   @override
+  AiToolRole get requiredRole => AiToolRole.admin;
+  @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'sql', type: 'string', description: 'Sentencia SQL de correccion'),
     ToolParameter(name: 'confirmacion', type: 'string', description: 'El usuario debe escribir \"confirmo\" para ejecutar'),
@@ -273,12 +285,12 @@ class RunSqlTool extends AiTool {
 
   @override
   Future<ToolResult> execute(Map<String, dynamic> args) async {
-    final sql = (args['sql'] as String?).trim();
-    final confirmacion = (args['confirmacion'] as String?).trim();
-    if (sql == null || sql.isEmpty) {
+    final sql = (args['sql'] as String?)?.trim() ?? '';
+    final confirmacion = (args['confirmacion'] as String?)?.trim() ?? '';
+    if (sql.isEmpty) {
       return ToolResult(success: false, data: '', error: 'SQL requerido');
     }
-    if (confirmacion?.toLowerCase() != 'confirmo') {
+    if (confirmacion.toLowerCase() != 'confirmo') {
       return ToolResult(success: false, data: '',
           error: 'Se requiere confirmacion explicita. El usuario debe escribir "confirmo" para ejecutar esta operacion.');
     }
@@ -301,6 +313,8 @@ class BackupDatabaseTool extends AiTool {
   String get name => 'backup_database';
   @override
   String get description => 'REAL: Crea una copia de seguridad de la base de datos actual';
+  @override
+  AiToolRole get requiredRole => AiToolRole.admin;
   @override
   List<ToolParameter> get parameters => [
     ToolParameter(name: 'path', type: 'string', description: 'Directorio donde guardar el backup (opcional, default junto a la DB)', required: false),
@@ -335,6 +349,8 @@ class RetrySyncTool extends AiTool {
   @override
   String get description => 'REAL: Reintenta todas las sincronizaciones fallidas';
   @override
+  AiToolRole get requiredRole => AiToolRole.admin;
+  @override
   List<ToolParameter> get parameters => [];
 
   @override
@@ -360,6 +376,8 @@ class SystemInfoTool extends AiTool {
   String get name => 'system_info';
   @override
   String get description => 'Obtiene informacion del sistema: SO, memoria, almacenamiento, version de la app';
+  @override
+  AiToolRole get requiredRole => AiToolRole.auditor;
   @override
   List<ToolParameter> get parameters => [];
 

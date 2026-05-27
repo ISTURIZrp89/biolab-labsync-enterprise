@@ -10,6 +10,17 @@ import '../../../theme/omni_theme.dart';
 
 final ToolRegistry _tools = ToolRegistry();
 
+AiToolRole _roleFromString(String role) {
+  switch (role.toUpperCase()) {
+    case 'ADMIN': return AiToolRole.admin;
+    case 'JEFE': return AiToolRole.jefe;
+    case 'LABORATORIO': return AiToolRole.laboratorio;
+    case 'AUDITOR': return AiToolRole.auditor;
+    case 'DUEÑO': case 'DUENO': return AiToolRole.dueno;
+    default: return AiToolRole.auditor;
+  }
+}
+
 const String kBaseSystemPrompt = '''
 Eres BioLab Supervisor AI, un supervisor tecnico REAL especializado EXCLUSIVAMENTE en laboratorios, bitacoras y control operativo de BioLab LabSync.
 
@@ -60,7 +71,8 @@ IMPORTANTE: Siempre que el usuario te pida leer un archivo, revisar datos o diag
 ''';
 
 class AiSupervisorScreen extends StatefulWidget {
-  const AiSupervisorScreen({super.key});
+  final String userRole;
+  const AiSupervisorScreen({super.key, this.userRole = 'AUDITOR'});
 
   @override
   State<AiSupervisorScreen> createState() => _AiSupervisorScreenState();
@@ -73,11 +85,14 @@ class _AiSupervisorScreenState extends State<AiSupervisorScreen> {
   bool _processing = false;
   bool _serverReady = false;
   bool _firstMessage = true;
+  late final AiToolRole _userRole;
 
   @override
   void initState() {
     super.initState();
-    _addMessage('Sistema', 'BioLab Supervisor AI listo. Herramientas cargadas: ${_tools.all.length}', isSystem: true);
+    _userRole = _roleFromString(widget.userRole);
+    final count = _tools.getAllForRole(_userRole).length;
+    _addMessage('Sistema', 'BioLab Supervisor AI listo. Herramientas disponibles para tu rol: $count', isSystem: true);
     _checkServer();
   }
 
@@ -108,7 +123,7 @@ class _AiSupervisorScreenState extends State<AiSupervisorScreen> {
   }
 
   String get _systemPrompt {
-    return '$kBaseSystemPrompt\n\n${_tools.toolsDescription}';
+    return '$kBaseSystemPrompt\n\n${_tools.getToolsDescription(_userRole)}';
   }
 
   Future<void> _sendMessage() async {
@@ -180,6 +195,11 @@ class _AiSupervisorScreenState extends State<AiSupervisorScreen> {
   }
 
   Future<void> _executeTool(ParsedToolCall call, String originalQuery) async {
+    final allowed = _tools.getAllForRole(_userRole).any((t) => t.name == call.name);
+    if (!allowed) {
+      _addMessage('Sistema', '> Herramienta "${call.name}" no permitida para tu rol ($_userRole)', isError: true);
+      return;
+    }
     _addMessage('Sistema', '> Usando: ${call.name}', isSystem: true);
     final result = await _tools.execute(call.name, call.arguments);
     final resultMsg = StringBuffer();
@@ -243,7 +263,18 @@ IMPORTANTE: Responde en espanol. Si detectaste problemas, enumeralos y sugiere s
     return Scaffold(
       backgroundColor: OmniTheme.bg950,
       appBar: AppBar(
-        title: const Text('BioLab Supervisor AI'),
+        title: Row(children: [
+          const Text('BioLab Supervisor AI'),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: OmniTheme.accentBlue.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(widget.userRole, style: const TextStyle(color: OmniTheme.accentBlue, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+        ]),
         backgroundColor: OmniTheme.bg900,
         actions: [
           Container(
