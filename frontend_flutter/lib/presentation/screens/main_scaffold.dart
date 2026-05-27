@@ -15,12 +15,14 @@ import '../../sync/lan_discovery_service.dart';
 import '../../security/permission_service.dart';
 import '../../security/edit_lock_service.dart';
 import '../../ai/ai_service.dart';
+import '../../ai/distributed/model_manager.dart';
 import '../../domain/entities/user.dart';
 import '../../theme/omni_theme.dart';
 import 'form_entry_screen.dart';
 import 'settings_screen.dart';
 import 'reports_screen.dart';
 import 'login_screen.dart';
+import 'ai/model_manager_screen.dart';
 import '../widgets/update_dialog.dart';
 
 class MainScaffold extends StatefulWidget {
@@ -44,17 +46,18 @@ class _MainScaffoldState extends State<MainScaffold> {
   static const _navItems = [
     _NavItem('Inicio', Icons.dashboard_outlined, Icons.dashboard),
     _NavItem('Reportes', Icons.bar_chart_outlined, Icons.bar_chart),
-    _NavItem('Bitacora', Icons.book_outlined, Icons.book),
+    _NavItem('Bitácora', Icons.book_outlined, Icons.book),
     _NavItem('Procesamiento', Icons.biotech_outlined, Icons.biotech),
     _NavItem('Incubadoras', Icons.thermostat_outlined, Icons.thermostat),
     _NavItem('Ultracongeladores', Icons.ac_unit_outlined, Icons.ac_unit),
     _NavItem('Equipos', Icons.precision_manufacturing_outlined, Icons.precision_manufacturing),
     _NavItem('Autoclaves', Icons.local_fire_department_outlined, Icons.local_fire_department),
     _NavItem('Cobre', Icons.science_outlined, Icons.science),
-    _NavItem('Muestras (DEV)', Icons.biotech_outlined, Icons.biotech),
+    _NavItem('Muestras', Icons.biotech_outlined, Icons.biotech),
+    _NavItem('Modelos IA', Icons.auto_awesome_outlined, Icons.auto_awesome),
   ];
 
-  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre', 'muestras'];
+  static const _moduleKeys = ['', '', 'bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre', 'muestras', ''];
   static const _moduleColors = [
     null,
     Color(0xFF34D399),
@@ -66,6 +69,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     OmniTheme.orange400,
     Color(0xFF00BCD4),
     Color(0xFFFF6B35),
+    Color(0xFFA855F7),
   ];
 
   @override
@@ -296,8 +300,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   List<int> _getFilteredIndices() {
     final auth = context.read<AuthService>();
     final isDev = auth.isAdmin || auth.isOwner;
-    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-      .where((i) => i < 2 || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
+    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      .where((i) => i < 2 || i == 10 || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
       .toList();
   }
 
@@ -376,6 +380,8 @@ class _MainScaffoldState extends State<MainScaffold> {
             _loadStats();
           } else if (origIdx == 1) {
             Navigator.push(context, _smoothRoute(const ReportsScreen()));
+          } else if (origIdx == 10) {
+            Navigator.push(context, _smoothRoute(const ModelManagerScreen()));
           } else {
             _openModule(_moduleKeys[origIdx], _navItems[origIdx].label);
           }
