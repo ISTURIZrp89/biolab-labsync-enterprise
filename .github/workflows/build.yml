@@ -37,7 +37,7 @@ jobs:
         with:
           channel: stable
           flutter-version: '3.27.4'
-          cache: true
+          cache: false
 
       - name: Setup Node.js (LTS)
         uses: actions/setup-node@v4
