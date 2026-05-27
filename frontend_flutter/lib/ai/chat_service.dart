@@ -184,6 +184,16 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
         return response;
       }
 
+      if (await _isLlamaServerAvailable()) {
+        _statusMessage = 'Usando motor IA local...';
+        onThinking?.call('Generando respuesta...');
+        notifyListeners();
+        final response = await _inferWithLlamaServer(systemPrompt, contextData);
+        _addMessage('assistant', response);
+        _statusMessage = '';
+        return response;
+      }
+
       final llamaCli = await _getLlamaCliPath();
       if (llamaCli == null) {
         throw Exception('No hay motor de IA disponible. Ve a Ajustes > Modelos IA para descargar uno.');
@@ -423,6 +433,86 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     } catch (e) {
       if (e is TimeoutException) {
         throw Exception('Ollama tardó demasiado. Verifica que el modelo esté cargado.');
+      }
+      rethrow;
+    }
+  }
+
+  Future<bool> _isLlamaServerAvailable() async {
+    try {
+      final resp = await http.get(
+        Uri.parse('http://127.0.0.1:18080/health'),
+      ).timeout(const Duration(seconds: 2));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String> _inferWithLlamaServer(String systemPrompt, String? contextData) async {
+    try {
+      final messages = <Map<String, String>>[
+        {'role': 'system', 'content': systemPrompt},
+      ];
+
+      if (contextData != null && contextData.isNotEmpty) {
+        messages.add({'role': 'system', 'content': 'Contexto del laboratorio:\n$contextData'});
+      }
+
+      if (_currentSession != null && _currentSession!.messages.isNotEmpty) {
+        final recent = _currentSession!.messages
+            .where((m) => m.role == 'user' || m.role == 'assistant')
+            .takeLast(8);
+        for (final msg in recent) {
+          messages.add({'role': msg.role, 'content': msg.content});
+        }
+      }
+
+      final body = jsonEncode({
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': 1024,
+        'stream': false,
+        'cache_prompt': true,
+      });
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:18080/v1/chat/completions'),
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      ).timeout(const Duration(seconds: 120));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final choices = data['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final message = choices[0]['message'] as Map<String, dynamic>?;
+          if (message != null && message['content'] is String) {
+            return message['content'] as String;
+          }
+        }
+        return data['content'] as String? ?? 'Sin respuesta del modelo';
+      }
+
+      final fallbackBody = jsonEncode({
+        'prompt': messages.map((m) => '${m['role']}: ${m['content']}').join('\n'),
+        'n_predict': 512,
+        'temperature': 0.7,
+        'cache_prompt': true,
+      });
+      final fallbackRes = await http.post(
+        Uri.parse('http://127.0.0.1:18080/completion'),
+        headers: {'Content-Type': 'application/json'},
+        body: fallbackBody,
+      ).timeout(const Duration(seconds: 120));
+      if (fallbackRes.statusCode == 200) {
+        final data = jsonDecode(fallbackRes.body) as Map<String, dynamic>;
+        return data['content'] as String? ?? 'Sin respuesta del modelo';
+      }
+      throw Exception('llama-server error ${response.statusCode}: ${response.body}');
+    } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('El motor IA tardó demasiado. Verifica que el modelo esté cargado.');
       }
       rethrow;
     }
