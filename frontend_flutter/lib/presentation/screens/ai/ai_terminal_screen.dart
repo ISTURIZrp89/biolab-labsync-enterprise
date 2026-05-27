@@ -223,8 +223,21 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
 
   Future<void> _handleAsk(String question) async {
     final chat = context.read<ChatService>();
-    final response = await chat.generate(question);
-    _removeLast();
+    bool hadThinking = false;
+    final response = await chat.generate(
+      question,
+      onThinking: (step) {
+        setState(() {
+          if (hadThinking) {
+            if (_lines.isNotEmpty) _lines.removeLast();
+          }
+          _lines.add(_TerminalLine(text: '  🔧 $step', color: _terminalDim, italic: true));
+          hadThinking = true;
+        });
+        _scrollDown();
+      },
+    );
+    if (hadThinking) _removeLast();
     _addDialog('IA', response, _terminalGreen);
   }
 
@@ -540,12 +553,22 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
         }
 
         final chat = context.read<ChatService>();
-        _addLine('Procesando archivo con IA...', color: _terminalDim, italic: true);
+        bool hadFileThinking = false;
         final response = await chat.generate(
           'Analiza el siguiente archivo $name y dame un resumen:',
           contextData: content,
+          onThinking: (step) {
+            setState(() {
+              if (hadFileThinking) {
+                if (_lines.isNotEmpty) _lines.removeLast();
+              }
+              _lines.add(_TerminalLine(text: '  🔧 $step', color: _terminalDim, italic: true));
+              hadFileThinking = true;
+            });
+            _scrollDown();
+          },
         );
-        setState(() => _lines.removeLast());
+        if (hadFileThinking) _removeLast();
         for (final line in response.split('\n')) {
           _addLine(line);
         }

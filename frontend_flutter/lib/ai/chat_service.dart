@@ -156,10 +156,11 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     notifyListeners();
   }
 
-  Future<String> generate(String prompt, {String? contextData, String? userId}) async {
+  Future<String> generate(String prompt, {String? contextData, String? userId, void Function(String step)? onThinking}) async {
     if (_isGenerating) return '';
     _isGenerating = true;
     _statusMessage = 'Preparando...';
+    onThinking?.call('Preparando...');
     notifyListeners();
 
     try {
@@ -175,6 +176,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
 
       if (await _isOllamaAvailable()) {
         _statusMessage = 'Usando Ollama...';
+        onThinking?.call('Usando Ollama...');
         notifyListeners();
         final response = await _inferWithOllama(prompt, systemPrompt, contextData);
         _addMessage('assistant', response);
@@ -193,6 +195,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
       }
 
       _statusMessage = 'Procesando con IA local...';
+      onThinking?.call('Generando respuesta...');
       notifyListeners();
       final response = await _inferWithLlamaCpp(llamaCli, modelPath, prompt, systemPrompt, contextData);
       _addMessage('assistant', response);
@@ -207,7 +210,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     }
   }
 
-  Future<void> _ensureReady() async {
+  Future<void> _ensureReady({void Function(String step)? onThinking}) async {
     if (_ready) return;
     if (_initializing) {
       while (_initializing) await Future.delayed(const Duration(milliseconds: 100));
@@ -217,6 +220,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     try {
       final llamaCli = await _getLlamaCliPath();
       if (llamaCli == null) {
+        onThinking?.call('Descargando motor llama.cpp...');
         final ok = await _downloadLlamaCpp();
         if (!ok) {
           throw Exception('No se pudo descargar el motor de IA. Verifica tu conexion a internet.');
@@ -225,6 +229,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
 
       final model = _modelManager.activeModel;
       if (model == null || !model.isDownloaded) {
+        onThinking?.call('Seleccionando modelo para tu PC...');
         _statusMessage = 'Seleccionando modelo para tu PC...';
         notifyListeners();
         final hw = await HardwareDetector.detect();
@@ -432,7 +437,8 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
 
   Future<String> _inferWithLlamaCpp(String binaryPath, String modelPath, String prompt, String systemPrompt, String? contextData) async {
     try {
-      final fullPrompt = _buildPrompt(prompt, systemPrompt, contextData);
+      final modelId = _modelManager.activeModel?.id ?? '';
+      final fullPrompt = _buildPrompt(prompt, systemPrompt, contextData, modelId: modelId);
       final result = await Process.run(
         binaryPath,
         [
@@ -457,28 +463,76 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     }
   }
 
-  String _buildPrompt(String userPrompt, String systemPrompt, String? contextData) {
-    final buf = StringBuffer();
-    buf.writeln('<|system|>');
-    buf.writeln(systemPrompt);
-    if (contextData != null && contextData.isNotEmpty) {
-      buf.writeln('\nContexto del laboratorio:');
-      buf.writeln(contextData);
+  String _chatTemplate(String modelId) {
+    switch (modelId) {
+      case 'phi-3-mini': return 'phi3';
+      case 'qwen2.5-1.5b': return 'chatml';
+      case 'tinyllama': return 'tinyllama';
+      case 'gemma-2b': return 'gemma';
+      case 'llama-3.1-8b': return 'llama3';
+      case 'mistral-7b': return 'mistral';
+      default: return 'chatml';
     }
+  }
+
+  String _buildPrompt(String userPrompt, String systemPrompt, String? contextData, {String modelId = ''}) {
+    final template = _chatTemplate(modelId);
+    String fullSystem = systemPrompt;
+    if (contextData != null && contextData.isNotEmpty) {
+      fullSystem = '$fullSystem\n\nContexto del laboratorio:\n$contextData';
+    }
+
+    String historyText = '';
     if (_currentSession != null && _currentSession!.messages.length > 2) {
       final recent = _currentSession!.messages
           .where((m) => m.role == 'user' || m.role == 'assistant')
-          .takeLast(6);
-      buf.writeln('\nHistorial reciente:');
+          .takeLast(6)
+          .toList();
       for (final msg in recent) {
-        buf.writeln('<|${msg.role}|>');
-        buf.writeln(msg.content);
+        final role = msg.role == 'user' ? 'user' : 'assistant';
+        switch (template) {
+          case 'phi3':
+            historyText += '<|$role|>\n${msg.content}<|end|>\n';
+            break;
+          case 'chatml':
+            historyText += '<|im_start|>$role\n${msg.content}<|im_end|>\n';
+            break;
+          case 'tinyllama':
+            historyText += '<|$role|>\n${msg.content}\n';
+            break;
+          case 'gemma':
+            historyText += '<start_of_turn>$role\n${msg.content}<end_of_turn>\n';
+            break;
+          case 'llama3':
+            historyText += '<|start_header_id|>$role<|end_header_id|>\n\n${msg.content}<|eot_id|>\n';
+            break;
+          case 'mistral':
+            if (msg.role == 'user') {
+              historyText += '[INST] ${msg.content} [/INST]\n';
+            } else {
+              historyText += '${msg.content}</s>\n';
+            }
+            break;
+        }
       }
     }
-    buf.writeln('\n<|user|>');
-    buf.writeln(userPrompt);
-    buf.writeln('\n<|assistant|>');
-    return buf.toString();
+
+    switch (template) {
+      case 'phi3':
+        return '<|system|>\n$fullSystem<|end|>\n${historyText}<|user|>\n$userPrompt<|end|>\n<|assistant|>\n';
+      case 'chatml':
+        return '<|im_start|>system\n$fullSystem<|im_end|>\n${historyText}<|im_start|>user\n$userPrompt<|im_end|>\n<|im_start|>assistant\n';
+      case 'tinyllama':
+        return '<|system|>\n$fullSystem\n${historyText}<|user|>\n$userPrompt\n<|assistant|>\n';
+      case 'gemma':
+        return '<bos>$fullSystem\n\n<start_of_turn>user\n$userPrompt<end_of_turn>\n<start_of_turn>model\n';
+      case 'llama3':
+        return '<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n$fullSystem<|eot_id|>\n${historyText}<|start_header_id|>user<|end_header_id|>\n\n$userPrompt<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n';
+      case 'mistral':
+        return '<s>[INST] $fullSystem\n\n${historyText.replaceAll('</s>\n[INST]', '\n')}$userPrompt [/INST]\n';
+      default:
+        return '<|im_start|>system\n$fullSystem<|im_end|>\n${historyText}<|im_start|>user\n$userPrompt<|im_end|>\n<|im_start|>assistant\n';
+    }
   }
 
   Future<void> _loadSessions() async {
