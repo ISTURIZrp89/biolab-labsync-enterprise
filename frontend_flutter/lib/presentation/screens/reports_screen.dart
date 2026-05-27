@@ -14,6 +14,7 @@ import '../../domain/form_definitions.dart';
 import '../../security/auth_service.dart';
 import '../../services/closure_service.dart';
 import '../../theme/omni_theme.dart';
+import 'ai_import_screen.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -701,8 +702,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
             onSelected: (v) {
               if (v == 'batch') _showBatchExportDialog();
               if (v == 'annual') _generateAnnual();
+              if (v == 'ai_import') Navigator.push(context, MaterialPageRoute(builder: (_) => const AiImportScreen()));
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(value: 'ai_import', child: ListTile(
+                leading: Icon(Icons.auto_awesome, size: 18, color: OmniTheme.tertiary),
+                title: Text('Importar con IA', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                dense: true,
+              )),
               const PopupMenuItem(value: 'batch', child: ListTile(
                 leading: Icon(Icons.layers, size: 18, color: OmniTheme.accentBlue),
                 title: Text('Exportacion por lotes', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
