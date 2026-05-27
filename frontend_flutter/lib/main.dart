@@ -236,6 +236,13 @@ class _BioLabAppState extends State<BioLabApp> with WidgetsBindingObserver {
             }
           } catch (_) {}
         });
+        // Auto-arrancar motor IA si hay modelo activo
+        try {
+          final modelManager = context.read<ModelManager>();
+          if (modelManager.activeModel != null) {
+            modelManager.startInference('');
+          }
+        } catch (_) {}
       } catch (e) {
         debugPrint('Init error: $e');
       }
