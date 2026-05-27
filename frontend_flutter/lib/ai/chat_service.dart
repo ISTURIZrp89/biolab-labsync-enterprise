@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'distributed/hardware_detector.dart';
 import 'distributed/model_manager.dart';
 
 class ChatMessage {
@@ -158,7 +160,6 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
 
     try {
       final systemPrompt = await getSystemPrompt();
-      final modelPath = await getModelPath();
       final model = _modelManager.activeModel;
 
       if (_currentSession == null) {
@@ -168,10 +169,58 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
       _addMessage('user', prompt, metadata: userId != null ? {'userId': userId} : null);
 
       String response;
-      if (modelPath.isNotEmpty && await File(modelPath).exists()) {
-        response = await _inferWithLlamaCpp(modelPath, prompt, systemPrompt, contextData);
-      } else {
-        response = _generateFallback(prompt, contextData, model?.name);
+
+      // 1. Try Ollama (development PCs with Ollama installed)
+      if (await _isOllamaAvailable()) {
+        _statusMessage = 'Usando Ollama...';
+        notifyListeners();
+        response = await _inferWithOllama(prompt, systemPrompt, contextData);
+      }
+      // 2. Try llama-cli (bundled or system-installed)
+      else {
+        final llamaCli = await _getLlamaCliPath();
+        if (llamaCli != null) {
+          _statusMessage = 'Usando llama.cpp embebido...';
+          notifyListeners();
+          final modelPath = await getModelPath();
+          if (modelPath.isNotEmpty && await File(modelPath).exists()) {
+            response = await _inferWithLlamaCpp(llamaCli, modelPath, prompt, systemPrompt, contextData);
+          } else {
+            _statusMessage = 'Descargando modelo por defecto...';
+            notifyListeners();
+            await _ensureModelDownloaded();
+            final modelPath2 = await getModelPath();
+            if (modelPath2.isNotEmpty && await File(modelPath2).exists()) {
+              response = await _inferWithLlamaCpp(llamaCli, modelPath2, prompt, systemPrompt, contextData);
+            } else {
+              response = _generateFallback(prompt, contextData, model?.name);
+            }
+          }
+        }
+        // 3. Auto-download llama.cpp binary if not found
+        else if (await _downloadLlamaCpp()) {
+          _statusMessage = 'Descargando motor de IA...';
+          notifyListeners();
+          final llamaCli2 = await _getLlamaCliPath();
+          if (llamaCli2 != null) {
+            final modelPath = await getModelPath();
+            if (modelPath.isEmpty || !await File(modelPath).exists()) {
+              await _ensureModelDownloaded();
+            }
+            final modelPath2 = await getModelPath();
+            if (modelPath2.isNotEmpty && await File(modelPath2).exists()) {
+              response = await _inferWithLlamaCpp(llamaCli2, modelPath2, prompt, systemPrompt, contextData);
+            } else {
+              response = _generateFallback(prompt, contextData, model?.name);
+            }
+          } else {
+            response = _generateFallback(prompt, contextData, model?.name);
+          }
+        }
+        // 4. Simulated fallback
+        else {
+          response = _generateFallback(prompt, contextData, model?.name);
+        }
       }
 
       _addMessage('assistant', response);
@@ -186,6 +235,173 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     }
   }
 
+  Future<String?> _getLlamaCliPath() async {
+    final basePath = _modelManager.basePath;
+    final paths = [
+      'llama-cli',
+      '$basePath/llama-cli',
+      '$basePath/llama-cli.exe',
+      '${basePath}llama-cli.exe',
+    ];
+    for (final p in paths) {
+      try {
+        if (await File(p).exists()) return File(p).absolute.path;
+      } catch (_) {}
+    }
+    try {
+      final which = await Process.run('which', ['llama-cli']);
+      if (which.exitCode == 0) return which.stdout.toString().trim();
+    } catch (_) {}
+    try {
+      final where = await Process.run('where', ['llama-cli']);
+      if (where.exitCode == 0) return where.stdout.toString().trim();
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> _downloadLlamaCpp() async {
+    try {
+      final basePath = _modelManager.basePath;
+      final dir = Directory(basePath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+
+      String url;
+      String binaryName;
+      if (Platform.isLinux) {
+        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-ubuntu-x64.zip';
+        binaryName = 'llama-cli';
+      } else if (Platform.isMacOS) {
+        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-macos-x64.zip';
+        binaryName = 'llama-cli';
+      } else if (Platform.isWindows) {
+        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-win-cuda-x64.zip';
+        binaryName = 'llama-cli.exe';
+      } else {
+        return false;
+      }
+
+      _statusMessage = 'Descargando motor llama.cpp...';
+      notifyListeners();
+
+      final zipPath = '$basePath/llama.zip';
+      final client = HttpClient();
+      final request = await client.getUrl(Uri.parse(url));
+      final response = await request.close();
+      final file = File(zipPath);
+      await file.openWrite().addStream(response);
+      client.close();
+
+      // Extract just the llama-cli binary
+      if (Platform.isLinux || Platform.isMacOS) {
+        await Process.run('unzip', ['-o', '-j', zipPath, binaryName, '-d', basePath]);
+        await Process.run('chmod', ['+x', '$basePath/$binaryName']);
+      } else {
+        await Process.run('powershell', [
+          '-Command',
+          'Expand-Archive -Path "$zipPath" -DestinationPath "$basePath" -Force',
+        ]);
+      }
+      await File(zipPath).delete();
+      return await File('$basePath/$binaryName').exists();
+    } catch (e) {
+      _statusMessage = 'Error descargando motor IA: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> _ensureModelDownloaded() async {
+    final model = _modelManager.activeModel;
+    if (model != null && model.isDownloaded) return;
+
+    // Try to auto-select the best model for this hardware
+    final hw = await HardwareDetector.detect();
+    final selected = await _modelManager.autoSelect(hw);
+    if (selected != null) {
+      _statusMessage = 'Modelo listo: ${selected.name}';
+      notifyListeners();
+    }
+  }
+
+  Future<bool> _isOllamaAvailable() async {
+    try {
+      final response = await http.get(Uri.parse('http://localhost:11434/api/tags')).timeout(const Duration(seconds: 2));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _ollamaModelName(ModelInfo? model) {
+    if (model == null) return 'llama3.2:3b';
+    switch (model.id) {
+      case 'phi-3-mini': return 'phi3:mini';
+      case 'qwen2.5-1.5b': return 'qwen2.5:1.5b';
+      case 'tinyllama': return 'tinyllama:latest';
+      case 'gemma-2b': return 'gemma:2b';
+      case 'llama-3.1-8b': return 'llama3.1:8b';
+      case 'mistral-7b': return 'mistral:7b';
+      default: return 'llama3.2:3b';
+    }
+  }
+
+  Future<String> _inferWithOllama(String prompt, String systemPrompt, String? contextData) async {
+    try {
+      final modelName = _ollamaModelName(_modelManager.activeModel);
+
+      final messages = [
+        {'role': 'system', 'content': systemPrompt},
+      ];
+
+      if (contextData != null && contextData.isNotEmpty) {
+        messages.add({'role': 'system', 'content': 'Contexto del laboratorio:\n$contextData'});
+      }
+
+      if (_currentSession != null && _currentSession!.messages.length > 2) {
+        final recent = _currentSession!.messages
+            .where((m) => m.role == 'user' || m.role == 'assistant')
+            .takeLast(8);
+        for (final msg in recent) {
+          messages.add({'role': msg.role, 'content': msg.content});
+        }
+      }
+
+      messages.add({'role': 'user', 'content': prompt});
+
+      final body = jsonEncode({
+        'model': modelName,
+        'messages': messages,
+        'stream': false,
+        'options': {
+          'temperature': 0.7,
+          'num_ctx': 4096,
+          'num_predict': 1024,
+        },
+      });
+
+      final response = await http.post(
+        Uri.parse('http://localhost:11434/api/chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      ).timeout(const Duration(seconds: 120));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final reply = data['message'] as Map<String, dynamic>?;
+        if (reply != null && reply['content'] is String) {
+          return reply['content'] as String;
+        }
+        return data['response'] as String? ?? 'Sin respuesta del modelo';
+      }
+      throw Exception('Ollama error ${response.statusCode}: ${response.body}');
+    } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('Ollama tardó demasiado. Verifica que el modelo esté cargado.');
+      }
+      rethrow;
+    }
+  }
+
   void _addMessage(String role, String content, {Map<String, String>? metadata}) {
     if (_currentSession == null) return;
     _currentSession!.messages.add(ChatMessage(role: role, content: content, metadata: metadata));
@@ -193,11 +409,11 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
     notifyListeners();
   }
 
-  Future<String> _inferWithLlamaCpp(String modelPath, String prompt, String systemPrompt, String? contextData) async {
+  Future<String> _inferWithLlamaCpp(String binaryPath, String modelPath, String prompt, String systemPrompt, String? contextData) async {
     try {
       final fullPrompt = _buildPrompt(prompt, systemPrompt, contextData);
       final result = await Process.run(
-        'llama-cli',
+        binaryPath,
         [
           '-m', modelPath,
           '--prompt', fullPrompt,
@@ -214,7 +430,7 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
       }
       throw Exception('llama-cli exit code ${result.exitCode}: ${result.stderr}');
     } on ProcessException catch (e) {
-      throw Exception('llama-cli no encontrado. Instala llama.cpp o usa el modo simulado. ($e)');
+      throw Exception('Error ejecutando motor IA: $e');
     } catch (e) {
       rethrow;
     }

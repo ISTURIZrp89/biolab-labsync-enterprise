@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../ai/chat_service.dart';
 import '../../../ai/distributed/model_manager.dart';
@@ -163,6 +164,7 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
         break;
 
       case '/model':
+      case '/modelo':
         await _handleModel();
         break;
 
@@ -426,21 +428,40 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
     final mm = context.read<ModelManager>();
     final active = mm.activeModel;
     if (active != null) {
-      _addLine('Modelo activo:', color: _terminalBlue, bold: true);
+      _addLine('Modelo activo (app):', color: _terminalBlue, bold: true);
       _addLine('  ${active.name} (${active.id})', color: _terminalGreen);
       _addLine('  Backend: ${active.backend}', color: _terminalGreen);
       _addLine('  Tamano: ${active.sizeMB}MB', color: _terminalGreen);
     } else {
-      _addLine('No hay modelo activo. Descarga uno desde Modelos IA.', color: _terminalAmber);
+      _addLine('No hay modelo seleccionado en la app.', color: _terminalAmber);
     }
     final installed = mm.installedModels;
     if (installed.isNotEmpty) {
       _addLine('', color: _terminalDim);
-      _addLine('Modelos instalados:', color: _terminalBlue, bold: true);
+      _addLine('Modelos instalados (app):', color: _terminalBlue, bold: true);
       for (final m in installed) {
         _addLine('  ${m.id}${m.id == active?.id ? " (activo)" : ""}', color: _terminalGreen);
       }
     }
+
+    try {
+      final ollamaRes = await http.get(Uri.parse('http://localhost:11434/api/tags')).timeout(const Duration(seconds: 2));
+      if (ollamaRes.statusCode == 200) {
+        final ollamaData = jsonDecode(ollamaRes.body);
+        final models = ollamaData['models'] as List;
+        if (models.isNotEmpty) {
+          _addLine('', color: _terminalDim);
+          _addLine('Modelos Ollama disponibles:', color: _terminalBlue, bold: true);
+          for (final m in models) {
+            final name = m['name'] as String;
+            final size = m['details']?['parameter_size'] as String? ?? '';
+            _addLine('  $name${size.isNotEmpty ? " ($size)" : ""}', color: _terminalGreen);
+          }
+          _addLine('', color: _terminalDim);
+          _addLine('Usa: ollama pull <modelo> para instalar mas modelos.', color: _terminalAmber, italic: true);
+        }
+      }
+    } catch (_) {}
   }
 
   void _showHelp(bool isAdmin, AuthService auth) {
@@ -454,7 +475,7 @@ class _AiTerminalScreenState extends State<AiTerminalScreen> with TickerProvider
     _addLine('  /sql [query]       - Ejecutar consulta SQL (solo admin)', color: isAdmin ? _terminalRed : _terminalDim);
     _addLine('  /analyze [modulo]  - Analizar datos de un modulo', color: auth.canUseAI ? _terminalGreen : _terminalDim);
     _addLine('  /prompt [texto]    - Ver/cambiar system prompt (solo admin)', color: isAdmin ? _terminalGreen : _terminalDim);
-    _addLine('  /model             - Ver modelo activo', color: _terminalGreen);
+    _addLine('  /model /modelo      - Ver modelo activo', color: _terminalGreen);
     _addLine('  /sessions          - Listar sesiones activas', color: _terminalGreen);
     _addLine('  /clear             - Limpiar pantalla', color: _terminalGreen);
     _addLine('  /help              - Mostrar esta ayuda', color: _terminalGreen);
