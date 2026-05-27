@@ -407,7 +407,6 @@ class ClosureService extends ChangeNotifier {
                 _pReportRow('Periodo:', '${fmt.format(DateTime(year, month, 1))} - ${fmt.format(DateTime(year, month, lastDay))}'),
                 _pReportRow('Total registros:', '${entries.length}'),
                 _pReportRow('Dias cerrados:', '$closedCount de $lastDay'),
-                _pReportRow('Cerrado por:', user.nombre),
                 _pReportRow('Fecha de cierre:', fmt.format(now)),
               ]),
             ),
@@ -463,8 +462,8 @@ class ClosureService extends ChangeNotifier {
           ),
           if (moduleCounts.isEmpty) pw.Paragraph(text: 'Sin registros en el periodo.'),
           pw.SizedBox(height: 20),
-          pw.Header(text: 'DETALLE DE REGISTROS', level: 1),
-          ..._buildMonthlyEntryTable(entries),
+          pw.Header(text: 'DETALLE POR MODULO', level: 1),
+          ..._buildMonthlyEntryByModule(entries),
         ],
       ));
 
@@ -479,28 +478,82 @@ class ClosureService extends ChangeNotifier {
     }
   }
 
-  List<pw.Widget> _buildMonthlyEntryTable(List<Map<String, dynamic>> entries) {
+  List<pw.Widget> _buildMonthlyEntryByModule(List<Map<String, dynamic>> entries) {
     if (entries.isEmpty) return [pw.Paragraph(text: 'Sin registros en el periodo.')];
-    final data = <List<String>>[];
-    for (final row in entries) {
-      final mod = row['module'] as String? ?? '';
-      final date = row['date'] as String? ?? '';
-      Map<String, dynamic> dataMap = {};
-      try { dataMap = jsonDecode(row['data_json'] as String) as Map<String, dynamic>; } catch (_) {}
-      final user = dataMap['responsable'] as String? ?? dataMap['usuario'] as String? ?? dataMap['nombre'] as String? ?? '-';
-      final act = dataMap['actividad'] as String? ?? dataMap['observaciones'] as String? ?? dataMap['incidencias'] as String? ?? '-';
-      data.add([mod, date, user, act.length > 50 ? '${act.substring(0, 50)}...' : act]);
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final e in entries) {
+      final mod = e['module'] as String? ?? 'otros';
+      grouped.putIfAbsent(mod, () => []).add(e);
     }
-    return [
-      pw.TableHelper.fromTextArray(
-        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.white),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-        cellStyle: const pw.TextStyle(fontSize: 8),
+    final moduleNames = {
+      'bitacora': 'Bitacora General', 'procesamiento': 'Procesamiento',
+      'incubadoras': 'Incubadoras', 'ultracongeladores': 'Ultracongeladores',
+      'equipos': 'Equipos', 'autoclaves': 'Autoclaves', 'solucion_cobre': 'Solucion de Cobre',
+      'muestras': 'Muestras',
+    };
+    final order = ['incubadoras', 'autoclaves', 'ultracongeladores', 'equipos', 'procesamiento', 'bitacora', 'solucion_cobre', 'muestras'];
+    final widgets = <pw.Widget>[];
+    for (final mod in order) {
+      final modEntries = grouped[mod];
+      if (modEntries == null || modEntries.isEmpty) continue;
+      final label = moduleNames[mod] ?? mod;
+      widgets.add(pw.SizedBox(height: 12));
+      widgets.add(pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: const pw.BoxDecoration(color: PdfColors.blue50),
+        child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+          pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+          pw.Text('${modEntries.length} registro${modEntries.length == 1 ? '' : 's'}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+        ]),
+      ));
+      final data = <List<String>>[];
+      for (final row in modEntries) {
+        final date = row['date'] as String? ?? '';
+        Map<String, dynamic> dataMap = {};
+        try { dataMap = jsonDecode(row['data_json'] as String) as Map<String, dynamic>; } catch (_) {}
+        final user = dataMap['responsable'] as String? ?? dataMap['usuario'] as String? ?? dataMap['nombre'] as String? ?? '-';
+        final act = dataMap['actividad'] as String? ?? dataMap['observaciones'] as String? ?? dataMap['incidencias'] as String? ?? '-';
+        data.add([date, user, act.length > 60 ? '${act.substring(0, 60)}...' : act]);
+      }
+      widgets.add(pw.SizedBox(height: 4));
+      widgets.add(pw.TableHelper.fromTextArray(
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7.5, color: PdfColors.white),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue700),
+        cellStyle: const pw.TextStyle(fontSize: 7.5),
+        cellAlignments: {0: pw.Alignment.center, 1: pw.Alignment.centerLeft, 2: pw.Alignment.centerLeft},
+        headers: ['Fecha', 'Responsable', 'Actividad'],
+        data: data,
+      ));
+    }
+    if (grouped.containsKey('otros')) {
+      final otros = grouped['otros']!;
+      widgets.add(pw.SizedBox(height: 12));
+      widgets.add(pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+        child: pw.Text('Otros (${otros.length})', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+      ));
+      final data = <List<String>>[];
+      for (final row in otros) {
+        final mod = row['module'] as String? ?? '';
+        final date = row['date'] as String? ?? '';
+        Map<String, dynamic> dataMap = {};
+        try { dataMap = jsonDecode(row['data_json'] as String) as Map<String, dynamic>; } catch (_) {}
+        final user = dataMap['responsable'] as String? ?? dataMap['usuario'] as String? ?? dataMap['nombre'] as String? ?? '-';
+        final act = dataMap['actividad'] as String? ?? dataMap['observaciones'] as String? ?? dataMap['incidencias'] as String? ?? '-';
+        data.add([mod, date, user, act.length > 50 ? '${act.substring(0, 50)}...' : act]);
+      }
+      widgets.add(pw.SizedBox(height: 4));
+      widgets.add(pw.TableHelper.fromTextArray(
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7.5, color: PdfColors.white),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.grey600),
+        cellStyle: const pw.TextStyle(fontSize: 7.5),
         cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.centerLeft, 3: pw.Alignment.centerLeft},
         headers: ['Modulo', 'Fecha', 'Responsable', 'Actividad'],
         data: data,
-      ),
-    ];
+      ));
+    }
+    return widgets;
   }
 
   pw.Widget _pReportRow(String label, String value) {
@@ -664,8 +717,6 @@ class ClosureService extends ChangeNotifier {
             pw.Container(width: 80, height: 3, color: PdfColors.blue800),
             pw.SizedBox(height: 30),
             pw.Text('REPORTE ANUAL $year', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-            pw.SizedBox(height: 12),
-            pw.Text('Generado el ${fmt.format(now)} por ${user.nombre}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
             pw.SizedBox(height: 30),
             pw.Container(
               padding: const pw.EdgeInsets.all(20),
@@ -675,7 +726,6 @@ class ClosureService extends ChangeNotifier {
                 _pReportRow('Total registros:', '$totalEntries'),
                 _pReportRow('Dias cerrados:', '$totalDaysClosed de $totalDaysInYear'),
                 _pReportRow('Meses cerrados:', '${monthData.where((m) => m['closed'] as bool).length} de 12'),
-                _pReportRow('Generado por:', user.nombre),
                 _pReportRow('Fecha:', fmt.format(now)),
               ]),
             ),

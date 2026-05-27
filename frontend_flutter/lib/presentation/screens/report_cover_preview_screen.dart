@@ -94,7 +94,6 @@ class _ReportCoverPreviewScreenState extends State<ReportCoverPreviewScreen> {
           _previewRow('Mes:', '${monthNames[widget.month]} ${widget.year}'),
           _previewRow('Periodo:', '01/${widget.month.toString().padLeft(2, '0')}/${widget.year} - ${DateTime(widget.year, widget.month + 1, 0).day}/${widget.month.toString().padLeft(2, '0')}/${widget.year}'),
           _previewRow('Personal:', '${active.length} persona(s)'),
-          _previewRow('Cerrado por:', widget.user.nombre),
           const SizedBox(height: 16),
           if (active.isNotEmpty) ...[
             const Divider(color: OmniTheme.bg800),
