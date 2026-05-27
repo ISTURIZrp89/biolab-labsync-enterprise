@@ -126,6 +126,22 @@ class ModelManager extends ChangeNotifier {
     return t.isNotEmpty ? t : null;
   }();
 
+  static Future<bool> checkConnectivity() async {
+    try {
+      final client = http.Client();
+      try {
+        final resp = await client
+            .get(Uri.parse('https://huggingface.co'), headers: {'User-Agent': 'BioLab-LABSYNC/1.0'})
+            .timeout(const Duration(seconds: 8));
+        return resp.statusCode == 200;
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String?> _resolveHfRedirect(String url) async {
     final client = http.Client();
     try {
@@ -147,8 +163,15 @@ class ModelManager extends ChangeNotifier {
   Future<bool> downloadModel(ModelInfo model) async {
     if (_isDownloading) return false;
     _isDownloading = true;
-    _downloadStatus = 'Descargando ${model.name}...';
+    if (!await checkConnectivity()) {
+      _downloadStatus = 'Error: Sin conexion a internet. Verifique su red.';
+      notifyListeners();
+      _isDownloading = false;
+      notifyListeners();
+      return false;
+    }
     _downloadCompleter = Completer<void>();
+    _downloadStatus = 'Descargando ${model.name}...';
     notifyListeners();
 
     try {
