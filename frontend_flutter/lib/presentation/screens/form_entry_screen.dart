@@ -1066,7 +1066,7 @@ class _DailyLogFormState extends State<_DailyLogForm> {
                     onTap: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime.now(),
+                        initialDate: controller.text.isNotEmpty ? (DateTime.tryParse(controller.text) ?? DateTime.now()) : DateTime.now(),
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                         builder: (ctx, child) => Theme(data: Theme.of(context).copyWith(

@@ -306,7 +306,7 @@ class _FormScreenState extends State<_FormScreen> {
     final deviceId = prefs.getString('device_id') ?? 'unknown';
     final auth = context.read<AuthService>();
     final userId = auth.currentUser?.id ?? 'usr-admin';
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final date = formData['fecha']?.toString() ?? DateTime.now().toIso8601String().split('T')[0];
 
     try {
       if (widget.existingEntry != null) {
@@ -326,7 +326,7 @@ class _FormScreenState extends State<_FormScreen> {
       } else {
         await _formRepo.createEntry(
           module: widget.module,
-          date: today,
+          date: date,
           userId: userId,
           deviceId: deviceId,
           data: formData,

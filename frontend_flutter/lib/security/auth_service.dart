@@ -140,61 +140,22 @@ class AuthService extends ChangeNotifier {
       } catch (_) {}
     }
 
-    if (pin == "1234") {
+    const offlinePins = {
+      'usr-admin': {'pin': '1234', 'nombre': 'Admin (Offline)', 'rol': 'ADMIN', 'cargo': 'ADMINISTRADOR'},
+      'usr-jefe': {'pin': '0000', 'nombre': 'Jefe (Offline)', 'rol': 'JEFE', 'cargo': 'JEFE DE LABORATORIO'},
+      'usr-t1': {'pin': '1111', 'nombre': 'Tecnico (Offline)', 'rol': 'LABORATORIO', 'cargo': 'TÉCNICO'},
+      'usr-auditor': {'pin': '2222', 'nombre': 'Auditor (Offline)', 'rol': 'AUDITOR', 'cargo': 'QFB'},
+      'usr-dueno': {'pin': '3333', 'nombre': 'Director General (Offline)', 'rol': 'DUEÑO', 'cargo': 'DIRECTOR GENERAL'},
+    };
+    final offlineUser = offlinePins[userId];
+    if (offlineUser != null && pin == offlineUser['pin']) {
       await prefs.setString('jwt_token', 'local-offline-session');
-      _currentUser = User(id: userId, nombre: "Admin (Offline)", rol: "ADMIN", cargoOperativo: "ADMINISTRADOR");
-      _isAuthenticated = true;
-      _isLoading = false;
-      _sessionStart = DateTime.now();
-      _startSessionTimer();
-      _resetInactivityTimer();
-      notifyListeners();
-      await _persistUserSession(_currentUser!);
-      return true;
-    }
-
-    if (pin == "0000") {
-      await prefs.setString('jwt_token', 'local-offline-session');
-      _currentUser = User(id: userId, nombre: "Jefe (Offline)", rol: "JEFE", cargoOperativo: "JEFE DE LABORATORIO");
-      _isAuthenticated = true;
-      _isLoading = false;
-      _sessionStart = DateTime.now();
-      _startSessionTimer();
-      _resetInactivityTimer();
-      notifyListeners();
-      await _persistUserSession(_currentUser!);
-      return true;
-    }
-
-    if (pin == "1111") {
-      await prefs.setString('jwt_token', 'local-offline-session');
-      _currentUser = User(id: userId, nombre: "Tecnico (Offline)", rol: "LABORATORIO", cargoOperativo: "TÉCNICO");
-      _isAuthenticated = true;
-      _isLoading = false;
-      _sessionStart = DateTime.now();
-      _startSessionTimer();
-      _resetInactivityTimer();
-      notifyListeners();
-      await _persistUserSession(_currentUser!);
-      return true;
-    }
-
-    if (pin == "2222") {
-      await prefs.setString('jwt_token', 'local-offline-session');
-      _currentUser = User(id: userId, nombre: "Auditor (Offline)", rol: "AUDITOR", cargoOperativo: "QFB");
-      _isAuthenticated = true;
-      _isLoading = false;
-      _sessionStart = DateTime.now();
-      _startSessionTimer();
-      _resetInactivityTimer();
-      notifyListeners();
-      await _persistUserSession(_currentUser!);
-      return true;
-    }
-
-    if (pin == "3333") {
-      await prefs.setString('jwt_token', 'local-offline-session');
-      _currentUser = User(id: userId, nombre: "Director General (Offline)", rol: "DUEÑO", cargoOperativo: "DIRECTOR GENERAL");
+      _currentUser = User(
+        id: userId,
+        nombre: offlineUser['nombre']!,
+        rol: offlineUser['rol']!,
+        cargoOperativo: offlineUser['cargo']!,
+      );
       _isAuthenticated = true;
       _isLoading = false;
       _sessionStart = DateTime.now();
