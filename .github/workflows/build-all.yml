@@ -11,44 +11,8 @@ permissions:
   contents: write
 
 jobs:
-  # ---------------------------------------------------------------
-  # Compila backend Python a EXE portatil con PyInstaller
-  # ---------------------------------------------------------------
-  build-backend-windows:
-    runs-on: windows-2022
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build backend EXE with PyInstaller
-        run: |
-          mkdir -p dist
-          pyinstaller --onefile --noconsole --name labsync-backend --distpath dist main.py
-
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: labsync-backend-windows
-          path: backend/dist/labsync-backend.exe
-
-  # ---------------------------------------------------------------
-  # Compila Flutter Windows + empaqueta backend portatil
-  # ---------------------------------------------------------------
   build-windows:
     runs-on: windows-2022
-    needs: [build-backend-windows]
     defaults:
       run:
         working-directory: frontend_flutter
@@ -69,11 +33,16 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
-      - name: Download backend EXE
-        uses: actions/download-artifact@v4
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
-          name: labsync-backend-windows
-          path: backend-exe
+          python-version: '3.11'
+
+      - name: Build backend EXE with PyInstaller
+        run: |
+          cd ..\backend
+          pip install -r requirements.txt pyinstaller
+          pyinstaller --onefile --noconsole --name labsync-backend --distpath dist main.py
 
       - name: Diagnostic token
         env:
@@ -83,11 +52,6 @@ jobs:
             Write-Host "::notice::Token LICENSE_GITHUB_TOKEN presente ($($env:TOKEN.Length) caracteres, primeros 4: $($env:TOKEN.Substring(0,4))...)"
           } else {
             Write-Host "::error::Token LICENSE_GITHUB_TOKEN VACIO - Configuralo en Settings > Secrets and variables > Actions"
-            Write-Host "Pasos:"
-            Write-Host "  1. Crea un Fine-grained PAT en github.com/settings/tokens"
-            Write-Host "  2. Repository access: ISTURIZrp89/biolab-labsync-license"
-            Write-Host "  3. Permissions: Contents > Read-only"
-            Write-Host "  4. Agregalo como secret: LICENSE_GITHUB_TOKEN en la REPO PUBLICA"
           }
 
       - name: Build Windows
@@ -101,18 +65,18 @@ jobs:
         run: |
           mkdir -p build/installer/BioLab-LABSYNC/backend
           xcopy build\windows\x64\runner\Release\ build\installer\BioLab-LABSYNC\ /E /I /Y
-          xcopy ..\backend-exe\labsync-backend.exe build\installer\BioLab-LABSYNC\backend\ /Y
+          xcopy ..\backend\dist\labsync-backend.exe build\installer\BioLab-LABSYNC\backend\ /Y
 
       - name: Create portable ZIP
         run: |
           cd build/installer
-          7z a -tzip ../../BioLab-LABSYNC-Windows-Portable.zip BioLab-LABSYNC\
+          7z a -tzip ../../BioLab-LABSYNC-Windows.zip BioLab-LABSYNC\
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BioLab-LABSYNC-Windows-Portable
-          path: frontend_flutter/BioLab-LABSYNC-Windows-Portable.zip
+          name: BioLab-LABSYNC-Windows
+          path: frontend_flutter/BioLab-LABSYNC-Windows.zip
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -219,7 +183,7 @@ jobs:
           path: frontend_flutter/build/installer/BioLab-LABSYNC-macOS.dmg
 
   create-release:
-    needs: [build-backend-windows, build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -231,7 +195,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/BioLab-LABSYNC-Windows-Portable/BioLab-LABSYNC-Windows-Portable.zip
+            artifacts/BioLab-LABSYNC-Windows/BioLab-LABSYNC-Windows.zip
             artifacts/BioLab-LABSYNC-Linux/BioLab-LABSYNC-Linux.tar.gz
             artifacts/BioLab-LABSYNC-macOS/BioLab-LABSYNC-macOS.dmg
           generate_release_notes: true

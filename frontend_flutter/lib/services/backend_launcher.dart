@@ -77,7 +77,7 @@ class BackendLauncher {
   static Future<void> stop() async {
     if (_process != null) {
       _process!.kill();
-      await _process!.exitCode.timeout(Duration(seconds: 3), onTimeout: () => null);
+      await _process!.exitCode.timeout(Duration(seconds: 3), onTimeout: () => -1);
       _process = null;
     }
     _isStarted = false;
