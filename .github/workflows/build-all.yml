@@ -11,8 +11,44 @@ permissions:
   contents: write
 
 jobs:
+  # ---------------------------------------------------------------
+  # Compila backend Python a EXE portatil con PyInstaller
+  # ---------------------------------------------------------------
+  build-backend-windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build backend EXE with PyInstaller
+        run: |
+          mkdir -p dist
+          pyinstaller --onefile --name labsync-backend --distpath dist main.py
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: labsync-backend-windows
+          path: backend/dist/labsync-backend.exe
+
+  # ---------------------------------------------------------------
+  # Compila Flutter Windows + empaqueta backend portatil
+  # ---------------------------------------------------------------
   build-windows:
     runs-on: windows-2022
+    needs: [build-backend-windows]
     defaults:
       run:
         working-directory: frontend_flutter
@@ -32,6 +68,12 @@ jobs:
 
       - name: Flutter doctor
         run: flutter doctor -v
+
+      - name: Download backend EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: labsync-backend-windows
+          path: backend-exe
 
       - name: Diagnostic token
         env:
@@ -55,21 +97,22 @@ jobs:
           $define = if ("$env:TOKEN".Length -gt 0) { "--dart-define=LICENSE_GITHUB_TOKEN=$env:TOKEN" } else { "" }
           flutter build windows --release $define 2>&1
 
-      - name: Create installer
+      - name: Bundle backend + Flutter en un solo directorio portatil
         run: |
-          mkdir -p build/installer
+          mkdir -p build/installer/BioLab-LABSYNC/backend
           xcopy build\windows\x64\runner\Release\ build\installer\BioLab-LABSYNC\ /E /I /Y
+          xcopy ..\backend-exe\labsync-backend.exe build\installer\BioLab-LABSYNC\backend\ /Y
 
-      - name: Create ZIP
+      - name: Create portable ZIP
         run: |
           cd build/installer
-          7z a -tzip ../../BioLab-LABSYNC-Windows.zip BioLab-LABSYNC\
+          7z a -tzip ../../BioLab-LABSYNC-Windows-Portable.zip BioLab-LABSYNC\
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BioLab-LABSYNC-Windows
-          path: frontend_flutter/BioLab-LABSYNC-Windows.zip
+          name: BioLab-LABSYNC-Windows-Portable
+          path: frontend_flutter/BioLab-LABSYNC-Windows-Portable.zip
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -176,7 +219,7 @@ jobs:
           path: frontend_flutter/build/installer/BioLab-LABSYNC-macOS.dmg
 
   create-release:
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-backend-windows, build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -188,7 +231,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/BioLab-LABSYNC-Windows/BioLab-LABSYNC-Windows.zip
+            artifacts/BioLab-LABSYNC-Windows-Portable/BioLab-LABSYNC-Windows-Portable.zip
             artifacts/BioLab-LABSYNC-Linux/BioLab-LABSYNC-Linux.tar.gz
             artifacts/BioLab-LABSYNC-macOS/BioLab-LABSYNC-macOS.dmg
           generate_release_notes: true

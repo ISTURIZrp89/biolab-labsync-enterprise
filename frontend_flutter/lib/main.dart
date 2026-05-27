@@ -26,6 +26,7 @@ import 'services/user_service.dart';
 import 'services/closure_service.dart';
 import 'services/audit_service.dart';
 import 'services/vps_service.dart';
+import 'services/backend_launcher.dart';
 import 'presentation/screens/login_screen.dart';
 import 'theme/omni_theme.dart';
 
@@ -35,6 +36,8 @@ void main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('Flutter error: ${details.exception}');
   };
+
+  await BackendLauncher.start();
 
   try {
     ensureSqfliteInit();
@@ -170,10 +173,11 @@ class BioLabApp extends StatefulWidget {
   State<BioLabApp> createState() => _BioLabAppState();
 }
 
-class _BioLabAppState extends State<BioLabApp> {
+class _BioLabAppState extends State<BioLabApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final sync = context.read<SyncEngine>();
@@ -232,6 +236,20 @@ class _BioLabAppState extends State<BioLabApp> {
         debugPrint('Init error: $e');
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    BackendLauncher.stop();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      BackendLauncher.stop();
+    }
   }
 
   @override
