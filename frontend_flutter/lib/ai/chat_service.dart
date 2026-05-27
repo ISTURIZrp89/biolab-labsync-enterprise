@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'distributed/hardware_detector.dart';
+import 'distributed/llamacpp_engine.dart';
 import 'distributed/model_manager.dart';
 
 class ChatMessage {
@@ -236,6 +238,14 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
       'llama-cli$exe',
       '$basePath/llama-cli$exe',
     ];
+    if (Platform.isWindows) {
+      final localAppData = Platform.environment['LOCALAPPDATA'] ?? '.';
+      paths.add('$localAppData\\biolab-labsync\\llamacpp\\llama-cli$exe');
+    } else {
+      final home = Platform.environment['HOME'] ?? '.';
+      paths.add('$home/.local/share/biolab-labsync/llamacpp/llama-cli$exe');
+      paths.add('$home/Library/Application Support/biolab-labsync/llamacpp/llama-cli$exe');
+    }
     for (final p in paths) {
       try {
         if (await File(p).exists()) return File(p).absolute.path;
@@ -250,47 +260,67 @@ Usa el contexto proporcionado para dar respuestas relevantes al laboratorio.
 
   Future<bool> _downloadLlamaCpp() async {
     try {
+      _statusMessage = 'Verificando motor llama.cpp...';
+      notifyListeners();
+
+      await LlamacppEngine.ensureBinary();
+      final cliPath = await _getLlamaCliPath();
+      if (cliPath != null) return true;
+
       final basePath = _modelManager.basePath;
       final dir = Directory(basePath);
       if (!await dir.exists()) await dir.create(recursive: true);
+      final exe = Platform.isWindows ? '.exe' : '';
+      final binaryName = 'llama-cli$exe';
 
-      String url;
-      String binaryName;
-      if (Platform.isLinux) {
-        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-ubuntu-x64.zip';
-        binaryName = 'llama-cli';
-      } else if (Platform.isMacOS) {
-        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-macos-x64.zip';
-        binaryName = 'llama-cli';
-      } else if (Platform.isWindows) {
-        url = 'https://github.com/ggerganov/llama.cpp/releases/download/b4934/llama-b4934-bin-win-cuda-x64.zip';
-        binaryName = 'llama-cli.exe';
-      } else {
-        return false;
+      final versions = [
+        'b9360', 'b9357', 'b9354',
+      ];
+      String? platformDir;
+      if (Platform.isLinux) platformDir = 'ubuntu-x64';
+      else if (Platform.isMacOS) {
+        platformDir = Platform.numberOfProcessors < 6 ? 'macos-x64' : 'macos-arm64';
+      } else if (Platform.isWindows) platformDir = 'win-cpu-x64';
+
+      if (platformDir == null) return false;
+
+      for (final tag in versions) {
+        try {
+          final url = 'https://github.com/ggml-org/llama.cpp/releases/download/$tag/llama-${tag}-bin-$platformDir.zip';
+          _statusMessage = 'Descargando motor IA ($tag)...';
+          notifyListeners();
+
+          final zipPath = '$basePath/llama.zip';
+          final client = HttpClient();
+          final request = await client.getUrl(Uri.parse(url));
+          final response = await request.close();
+          final file = File(zipPath);
+          await file.openWrite().addStream(response);
+          client.close();
+
+          final zipBytes = await File(zipPath).readAsBytes();
+          final archive = ZipDecoder().decodeBytes(zipBytes);
+          for (final entry in archive) {
+            if (!entry.isFile) continue;
+            final entryName = entry.name.split('/').last;
+            if (entryName == binaryName || entryName == 'llama-cli' || entryName == 'llama-cli.exe') {
+              final outPath = '$basePath/$binaryName';
+              await File(outPath).writeAsBytes(entry.content);
+              if (!Platform.isWindows) {
+                await Process.run('chmod', ['+x', outPath]);
+              }
+              await File(zipPath).delete();
+              if (await File(outPath).exists()) return true;
+            }
+          }
+          await File(zipPath).delete();
+        } catch (e) {
+          print('[chat] Fallo con $tag: $e');
+        }
       }
-
-      _statusMessage = 'Descargando motor llama.cpp...';
+      _statusMessage = 'Error: No se pudo descargar el motor IA de ninguna fuente';
       notifyListeners();
-
-      final zipPath = '$basePath/llama.zip';
-      final client = HttpClient();
-      final request = await client.getUrl(Uri.parse(url));
-      final response = await request.close();
-      final file = File(zipPath);
-      await file.openWrite().addStream(response);
-      client.close();
-
-      if (Platform.isLinux || Platform.isMacOS) {
-        await Process.run('unzip', ['-o', '-j', zipPath, binaryName, '-d', basePath]);
-        await Process.run('chmod', ['+x', '$basePath/$binaryName']);
-      } else {
-        await Process.run('powershell', [
-          '-Command',
-          'Expand-Archive -Path "$zipPath" -DestinationPath "$basePath" -Force',
-        ]);
-      }
-      await File(zipPath).delete();
-      return await File('$basePath/$binaryName').exists();
+      return false;
     } catch (e) {
       _statusMessage = 'Error descargando motor IA: $e';
       notifyListeners();

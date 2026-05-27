@@ -94,6 +94,7 @@ class LlamacppEngine {
         throw Exception('Archivo demasiado pequeno (${response.bodyBytes.length} bytes)');
       }
       final archive = ZipDecoder().decodeBytes(response.bodyBytes);
+      String? cliPath;
       for (final file in archive) {
         if (file.isFile) {
           final name = file.name.split('/').last;
@@ -105,12 +106,26 @@ class LlamacppEngine {
             if (!Platform.isWindows) {
               await Process.run('chmod', ['+x', outPath]);
             }
-            print('[llamacpp] Extraido: $outPath (${file.content.length} bytes)');
-            return;
+            print('[llamacpp] Extraido server: $outPath (${file.content.length} bytes)');
+          }
+          if (name == 'llama-cli' || name == 'llama-cli.exe') {
+            final cliOut = '$_engineDir${Platform.isWindows ? '\\' : '/'}$name';
+            final cliFile = File(cliOut);
+            await cliFile.create(recursive: true);
+            await cliFile.writeAsBytes(file.content);
+            if (!Platform.isWindows) {
+              await Process.run('chmod', ['+x', cliOut]);
+            }
+            cliPath = cliOut;
+            print('[llamacpp] Extraido cli: $cliOut (${file.content.length} bytes)');
           }
         }
       }
-      throw Exception('No se encontro $_binaryName en el ZIP');
+      if (await File(binaryPath).exists()) return;
+      if (cliPath != null) {
+        throw Exception('Se extrajo llama-cli pero no $_binaryName');
+      }
+      throw Exception('No se encontro $_binaryName ni llama-cli en el ZIP');
     } finally {
       client.close();
     }
