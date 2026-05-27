@@ -1,9 +1,17 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import '../../domain/entities/form_entry.dart';
 import '../../domain/repositories/form_repository.dart';
 import '../db.dart';
+
+class DuplicateEntryException implements Exception {
+  final String message;
+  DuplicateEntryException(this.message);
+  @override
+  String toString() => message;
+}
 
 class FormRepositoryImpl implements FormRepository {
   final LocalDatabase _db = LocalDatabase.instance;
@@ -18,21 +26,7 @@ class FormRepositoryImpl implements FormRepository {
       whereArgs: [module, date],
       orderBy: 'created_at DESC',
     );
-    return rows.map((row) {
-      return FormEntry(
-        id: row['id'] as String,
-        module: row['module'] as String,
-        subModule: row['sub_module'] as String?,
-        date: row['date'] as String,
-        userId: row['user_id'] as String,
-        deviceId: row['device_id'] as String,
-        version: row['version'] as int,
-        data: jsonDecode(row['data_json'] as String),
-        status: row['status'] as String,
-        createdAt: row['created_at'] as String,
-        updatedAt: row['updated_at'] as String,
-      );
-    }).toList();
+    return rows.map((row) => _rowToEntry(row)).toList();
   }
 
   @override
@@ -44,21 +38,7 @@ class FormRepositoryImpl implements FormRepository {
       whereArgs: [module],
       orderBy: 'date DESC',
     );
-    return rows.map((row) {
-      return FormEntry(
-        id: row['id'] as String,
-        module: row['module'] as String,
-        subModule: row['sub_module'] as String?,
-        date: row['date'] as String,
-        userId: row['user_id'] as String,
-        deviceId: row['device_id'] as String,
-        version: row['version'] as int,
-        data: jsonDecode(row['data_json'] as String),
-        status: row['status'] as String,
-        createdAt: row['created_at'] as String,
-        updatedAt: row['updated_at'] as String,
-      );
-    }).toList();
+    return rows.map((row) => _rowToEntry(row)).toList();
   }
 
   Future<List<FormEntry>> getEntriesByModuleAndSubModule(String module, String subModule) async {
@@ -69,21 +49,7 @@ class FormRepositoryImpl implements FormRepository {
       whereArgs: [module, subModule],
       orderBy: 'date DESC',
     );
-    return rows.map((row) {
-      return FormEntry(
-        id: row['id'] as String,
-        module: row['module'] as String,
-        subModule: row['sub_module'] as String?,
-        date: row['date'] as String,
-        userId: row['user_id'] as String,
-        deviceId: row['device_id'] as String,
-        version: row['version'] as int,
-        data: jsonDecode(row['data_json'] as String),
-        status: row['status'] as String,
-        createdAt: row['created_at'] as String,
-        updatedAt: row['updated_at'] as String,
-      );
-    }).toList();
+    return rows.map((row) => _rowToEntry(row)).toList();
   }
 
   @override
@@ -95,7 +61,10 @@ class FormRepositoryImpl implements FormRepository {
       whereArgs: [id],
     );
     if (rows.isEmpty) return null;
-    final row = rows.first;
+    return _rowToEntry(rows.first);
+  }
+
+  FormEntry _rowToEntry(Map<String, dynamic> row) {
     return FormEntry(
       id: row['id'] as String,
       module: row['module'] as String,
@@ -114,9 +83,33 @@ class FormRepositoryImpl implements FormRepository {
   @override
   Future<void> saveEntry(FormEntry entry) async {
     final db = await _db.database;
-    await db.insert(
-      'form_entries',
-      {
+    await db.transaction((txn) async {
+      final checksum = LocalDatabase.computeChecksum(entry.data);
+
+      final existing = await txn.query('form_entries',
+        where: 'id = ?', whereArgs: [entry.id]);
+
+      if (existing.isNotEmpty) {
+        final currentVersion = existing.first['version'] as int;
+        if (entry.version <= currentVersion) {
+          throw Exception(
+            'Conflicto de version: registro #$currentVersion, '
+            'intentaste guardar #${entry.version}'
+          );
+        }
+      }
+
+      final dupes = await txn.query('form_entries',
+        where: 'date = ? AND module = ? AND user_id = ? AND data_json = ?',
+        whereArgs: [entry.date, entry.module, entry.userId, jsonEncode(entry.data)]);
+
+      if (dupes.isNotEmpty && dupes.first['id'] != entry.id) {
+        throw DuplicateEntryException(
+          'Ya existe un registro identico para ${entry.date} en ${entry.module}'
+        );
+      }
+
+      await txn.insert('form_entries', {
         'id': entry.id,
         'module': entry.module,
         'sub_module': entry.subModule,
@@ -125,12 +118,13 @@ class FormRepositoryImpl implements FormRepository {
         'device_id': entry.deviceId,
         'version': entry.version,
         'data_json': jsonEncode(entry.data),
+        'checksum': checksum,
         'status': entry.status,
         'created_at': entry.createdAt,
         'updated_at': entry.updatedAt,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+      }, conflictAlgorithm: ConflictAlgorithm.fail);
+    });
+
     await _db.queueSyncAction(
       action: entry.version > 1 ? 'UPDATE' : 'CREATE',
       entity: 'form_entries',

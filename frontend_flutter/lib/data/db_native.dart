@@ -43,7 +43,12 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 7,
+    version: 8,
+    onConfigure: (db) async {
+      await db.execute('PRAGMA journal_mode=WAL');
+      await db.execute('PRAGMA synchronous=NORMAL');
+      await db.execute('PRAGMA foreign_keys=ON');
+    },
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -55,6 +60,7 @@ Future<Database> openLocalDatabase(String filePath) async {
           device_id TEXT NOT NULL,
           version INTEGER NOT NULL,
           data_json TEXT NOT NULL,
+          checksum TEXT NOT NULL DEFAULT '',
           status TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -258,6 +264,9 @@ Future<Database> openLocalDatabase(String filePath) async {
             UNIQUE(year, month)
           )
         ''');
+      }
+      if (oldVersion < 8) {
+        try { await db.execute('ALTER TABLE form_entries ADD COLUMN checksum TEXT NOT NULL DEFAULT \'\''); } catch (_) {}
       }
     },
   );

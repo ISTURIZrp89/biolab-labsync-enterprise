@@ -175,6 +175,15 @@ class SyncEngine extends ChangeNotifier {
               final itemData = conflict['data'] as Map<String, dynamic>;
               final entity = conflict['entity'] as String? ?? 'form_entries';
               if (entity == 'form_entries') {
+                final existing = await db.query('form_entries',
+                  where: 'id = ?', whereArgs: [itemData['id']]);
+                if (existing.isNotEmpty) {
+                  final localVer = existing.first['version'] as int? ?? 0;
+                  if ((itemData['version'] as int? ?? 0) <= localVer) {
+                    await _localDb.deleteQueueItem(itemData['id'] as String);
+                    continue;
+                  }
+                }
                 await db.insert('form_entries', {
                   'id': itemData['id'],
                   'module': itemData['module'],
@@ -183,10 +192,11 @@ class SyncEngine extends ChangeNotifier {
                   'device_id': itemData['device_id'],
                   'version': itemData['version'],
                   'data_json': jsonEncode(itemData['data']),
+                  'checksum': itemData['checksum'] ?? '',
                   'status': itemData['status'],
                   'created_at': itemData['created_at'],
                   'updated_at': itemData['updated_at'],
-                }, conflictAlgorithm: ConflictAlgorithm.replace);
+                }, conflictAlgorithm: ConflictAlgorithm.fail);
               }
             }
 
@@ -252,10 +262,11 @@ class SyncEngine extends ChangeNotifier {
                 'device_id': itemData['device_id'],
                 'version': remoteVersion,
                 'data_json': jsonEncode(itemData['data']),
+                'checksum': itemData['checksum'] ?? '',
                 'status': itemData['status'],
                 'created_at': itemData['created_at'],
                 'updated_at': itemData['updated_at'],
-              }, conflictAlgorithm: ConflictAlgorithm.replace);
+              }, conflictAlgorithm: ConflictAlgorithm.fail);
               pulled++;
             } else if (entity == 'day_closures') {
               await db.insert('day_closures', {

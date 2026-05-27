@@ -16,6 +16,7 @@ import '../../sync/lan_discovery_service.dart';
 import '../../sync/lan_sync_server.dart';
 import '../../services/update_service.dart';
 import '../../services/license_service.dart';
+import 'backup_screen.dart';
 import '../../theme/omni_theme.dart';
 import '../screens/csv_import_screen.dart';
 import 'ai/ai_dashboard_screen.dart';
@@ -1601,9 +1602,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.backup, color: OmniTheme.green400),
-                title: const Text('Exportar Backup', style: TextStyle(color: OmniTheme.textPrimary)),
-                subtitle: const Text('Respaldar configuracion y datos', style: TextStyle(color: OmniTheme.textMuted)),
-                onTap: _exportBackup,
+                title: const Text('Respaldos', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Ver, restaurar y crear backups', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
               ),
               ListTile(
                 leading: const Icon(Icons.system_update, color: OmniTheme.accentBlue),

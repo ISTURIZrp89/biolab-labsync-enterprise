@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/db.dart';
 import '../domain/entities/user.dart';
+import 'backup_service.dart';
 
 class ClosureInfo {
   final String id;
@@ -189,30 +190,26 @@ class ClosureService extends ChangeNotifier {
       reopenLog: existing?.reopenLog ?? [],
     );
 
-    await db.insert('day_closures', closure.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-    _dailyClosures[date] = closure;
+    await db.transaction((txn) async {
+      await txn.insert('day_closures', closure.toMap(), conflictAlgorithm: ConflictAlgorithm.fail);
+      _dailyClosures[date] = closure;
 
-    if (existing != null) {
-      await _localDb.queueSyncAction(
-        action: 'UPDATE',
-        entity: 'day_closures',
-        entityId: id,
-        data: closure.toMap(),
-      );
-    } else {
-      await _localDb.queueSyncAction(
-        action: 'CREATE',
-        entity: 'day_closures',
-        entityId: id,
-        data: closure.toMap(),
-      );
-    }
+      if (existing != null) {
+        await _localDb.queueSyncAction(
+          action: 'UPDATE', entity: 'day_closures', entityId: id, data: closure.toMap(),
+        );
+      } else {
+        await _localDb.queueSyncAction(
+          action: 'CREATE', entity: 'day_closures', entityId: id, data: closure.toMap(),
+        );
+      }
 
-    await _logAudit('CLOSE_DAY', user.id, {
-      'date': date,
-      'closed_by': user.nombre,
-      'notes': notes,
+      await _logAuditTxn(txn, 'CLOSE_DAY', user.id, {
+        'date': date, 'closed_by': user.nombre, 'notes': notes,
+      });
     });
+
+    await BackupService().backupDaily(date);
 
     _safeNotify();
     return closure;
@@ -253,21 +250,20 @@ class ClosureService extends ChangeNotifier {
       reopenLog: List.from(existing.reopenLog),
     );
 
-    await db.insert('day_closures', updated.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-    _dailyClosures[date] = updated;
+    await BackupService().backupDaily(date);
 
-    await _localDb.queueSyncAction(
-      action: 'UPDATE',
-      entity: 'day_closures',
-      entityId: existing.id,
-      data: existing.toMap(),
-    );
+    await db.transaction((txn) async {
+      await txn.insert('day_closures', updated.toMap(), conflictAlgorithm: ConflictAlgorithm.fail);
+      _dailyClosures[date] = updated;
 
-    await _logAudit('REOPEN_DAY', user.id, {
-      'date': date,
-      'reopened_by': user.nombre,
-      'motivo': motivo,
-      'reopen_count': existing.reopenLog.length,
+      await _localDb.queueSyncAction(
+        action: 'UPDATE', entity: 'day_closures', entityId: existing.id, data: existing.toMap(),
+      );
+
+      await _logAuditTxn(txn, 'REOPEN_DAY', user.id, {
+        'date': date, 'reopened_by': user.nombre, 'motivo': motivo,
+        'reopen_count': existing.reopenLog.length,
+      });
     });
 
     _safeNotify();
@@ -298,30 +294,38 @@ class ClosureService extends ChangeNotifier {
       daysClosed: closedCount,
     );
 
-    await db.insert('month_closures', {
-      'id': 'mc-$key',
-      'year': year,
-      'month': month,
-      'status': 'CERRADO',
-      'closed_by': user.nombre,
-      'closed_at': now,
-      'notes': notes,
-      'days_total': daysInMonth,
-      'days_closed': closedCount,
-      'reopen_log_json': '[]',
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      await txn.insert('month_closures', {
+        'id': 'mc-$key',
+        'year': year,
+        'month': month,
+        'status': 'CERRADO',
+        'closed_by': user.nombre,
+        'closed_at': now,
+        'notes': notes,
+        'days_total': daysInMonth,
+        'days_closed': closedCount,
+        'reopen_log_json': '[]',
+      }, conflictAlgorithm: ConflictAlgorithm.fail);
 
-    _monthlyClosures[key] = closure;
+      _monthlyClosures[key] = closure;
+
+      await _logAuditTxn(txn, 'CLOSE_MONTH', user.id, {
+        'year': year,
+        'month': month,
+        'closed_by': user.nombre,
+        'days_closed': closedCount,
+        'days_total': daysInMonth,
+      });
+    });
 
     _generateMonthlyReport(year, month, user);
 
-    await _logAudit('CLOSE_MONTH', user.id, {
-      'year': year,
-      'month': month,
-      'closed_by': user.nombre,
-      'days_closed': closedCount,
-      'days_total': daysInMonth,
-    });
+    await BackupService().backupMonthly(year, month);
+
+    if (month == 12) {
+      await BackupService().backupAnnual(year);
+    }
 
     _safeNotify();
     return closure;
@@ -518,14 +522,15 @@ class ClosureService extends ChangeNotifier {
     final now = DateTime.now().toUtc().toIso8601String();
     final key = '$year-${month.toString().padLeft(2, "0")}';
 
-    await db.delete('month_closures', where: 'year = ? AND month = ?', whereArgs: [year, month]);
-    _monthlyClosures.remove(key);
+    await BackupService().backupMonthly(year, month);
 
-    await _logAudit('REOPEN_MONTH', user.id, {
-      'year': year,
-      'month': month,
-      'reopened_by': user.nombre,
-      'motivo': motivo,
+    await db.transaction((txn) async {
+      await txn.delete('month_closures', where: 'year = ? AND month = ?', whereArgs: [year, month]);
+      _monthlyClosures.remove(key);
+
+      await _logAuditTxn(txn, 'REOPEN_MONTH', user.id, {
+        'year': year, 'month': month, 'reopened_by': user.nombre, 'motivo': motivo,
+      });
     });
 
     _safeNotify();
@@ -536,6 +541,19 @@ class ClosureService extends ChangeNotifier {
     try {
       final db = await _localDb.database;
       await db.insert('audit_log', {
+        'id': 'audit-${DateTime.now().microsecondsSinceEpoch}',
+        'action': action,
+        'user_id': userId,
+        'device_id': '',
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+        'details_json': jsonEncode(details),
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _logAuditTxn(dynamic txn, String action, String userId, Map<String, dynamic> details) async {
+    try {
+      await txn.insert('audit_log', {
         'id': 'audit-${DateTime.now().microsecondsSinceEpoch}',
         'action': action,
         'user_id': userId,
