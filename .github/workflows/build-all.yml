@@ -42,7 +42,7 @@ jobs:
         run: |
           cd ..\backend
           pip install -r requirements.txt pyinstaller
-          pyinstaller --onefile --noconsole --name labsync-backend --distpath dist main.py
+          pyinstaller --onefile --noconsole --name labsync-backend --distpath dist --hidden-import=passlib.handlers.bcrypt main.py
 
       - name: Diagnostic token
         env:
