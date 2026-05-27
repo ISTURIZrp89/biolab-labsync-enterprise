@@ -226,6 +226,13 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_SYSCOMMAND:
+      if ((wparam & 0xFFF0) == SC_MINIMIZE) {
+        MinimizeToTray();
+        return 0;
+      }
+      return DefWindowProc(window_handle_, message, wparam, lparam);
+
     case WM_DESTROY:
       RemoveTrayIcon();
       window_handle_ = nullptr;

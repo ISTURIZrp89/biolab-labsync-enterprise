@@ -11,6 +11,7 @@ class LlamacppEngine {
   static bool _isRunning = false;
   static StreamSubscription<String>? _stdoutSub;
   static String _lastModelPath = '';
+  static String _stderrBuffer = '';
 
   static final List<_VersionSource> _versions = [
     _VersionSource('b9360', 'https://github.com/ggml-org/llama.cpp/releases/download/b9360/'),
@@ -135,7 +136,7 @@ class LlamacppEngine {
     required String modelPath,
     String systemPrompt = '',
     int nCtx = 2048,
-    int nGpuLayers = 999,
+    int nGpuLayers = 0,
   }) async {
     if (_isRunning) {
       if (modelPath == _lastModelPath) return;
@@ -151,15 +152,16 @@ class LlamacppEngine {
 
     _lastModelPath = modelPath;
 
+    _stderrBuffer = '';
+
     final args = [
       '-m', modelPath,
       '--host', '127.0.0.1',
       '--port', '$_port',
       '-c', '$nCtx',
-      '-ngl', '$nGpuLayers',
+      if (nGpuLayers > 0) '-ngl', if (nGpuLayers > 0) '$nGpuLayers',
       '--cont-batching',
       '-np', '1',
-      '--mlock',
     ];
 
     print('[llamacpp] Iniciando: $binaryPath ${args.join(' ')}');
@@ -180,7 +182,10 @@ class LlamacppEngine {
     _serverProcess!.stderr
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .listen((line) => print('[llamacpp:err] $line'));
+        .listen((line) {
+      _stderrBuffer += '$line\n';
+      print('[llamacpp:err] $line');
+    });
 
     _serverProcess!.exitCode.then((code) {
       print('[llamacpp] Proceso termino codigo $code');
@@ -196,6 +201,19 @@ class LlamacppEngine {
   static Future<void> _waitForServer({Duration timeout = const Duration(seconds: 120)}) async {
     final start = DateTime.now();
     while (DateTime.now().difference(start) < timeout) {
+      if (_serverProcess == null) {
+        throw Exception('El proceso del servidor fue destruido');
+      }
+      try {
+        await _serverProcess!.exitCode.timeout(Duration.zero);
+        final stderr = _stderrBuffer.isNotEmpty
+            ? '\nStderr: $_stderrBuffer'
+            : '';
+        throw Exception('El servidor llama.cpp termino inesperadamente$stderr');
+      } on TimeoutException {
+        // proceso aun vivo, continuar
+      }
+
       try {
         final client = http.Client();
         try {
@@ -212,7 +230,7 @@ class LlamacppEngine {
       } catch (_) {}
       await Future.delayed(const Duration(milliseconds: 500));
     }
-    // Try once more via /completion endpoint
+    // intento final via /completion
     try {
       final client = http.Client();
       try {
@@ -222,14 +240,15 @@ class LlamacppEngine {
           body: '{"prompt":"test","n_predict":1}',
         ).timeout(const Duration(seconds: 5));
         if (resp.statusCode == 200) {
-          print('[llamacpp] Servidor listo (confirmado por completion)');
+          print('[llamacpp] Servidor listo (completion)');
           return;
         }
       } finally {
         client.close();
       }
     } catch (_) {}
-    throw TimeoutException('El servidor llama.cpp no respondio en $timeout');
+    final stderr = _stderrBuffer.isNotEmpty ? '\nStderr: $_stderrBuffer' : '';
+    throw TimeoutException('El servidor llama.cpp no respondio en $timeout$stderr');
   }
 
   static Future<String> complete({
