@@ -18,6 +18,7 @@ import '../../services/update_service.dart';
 import '../../theme/omni_theme.dart';
 import '../screens/csv_import_screen.dart';
 import 'ai/ai_dashboard_screen.dart';
+import 'ai/ai_supervisor_screen.dart';
 import 'ai/model_manager_screen.dart';
 import 'ai/node_network_screen.dart';
 import 'ai/shared_memory_screen.dart';
@@ -61,12 +62,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _dbSize = 'Calculando...';
   String _driveBackupPath = '';
   String _systemPrompt = '';
+  String _companyName = '';
+  String _logoBase64 = '';
+  List<String> _personnel = [];
 
   @override
   void initState() {
     super.initState();
     _platform = _getPlatformName();
     _loadSettings();
+    _loadCompanyInfo();
     _loadEquipment();
     _loadUsers();
     _loadDriveBackupPath();
@@ -118,6 +123,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     _loadDbSize();
+  }
+
+  Future<void> _loadCompanyInfo() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      final rows = await db.query('company_info', where: 'id = ?', whereArgs: ['default']);
+      if (rows.isNotEmpty) {
+        final row = rows.first;
+        setState(() {
+          _companyName = row['company_name'] as String? ?? '';
+          _logoBase64 = row['logo_base64'] as String? ?? '';
+          final personnelRaw = row['personnel_json'] as String? ?? '[]';
+          _personnel = (jsonDecode(personnelRaw) as List).cast<String>();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveCompanyInfo() async {
+    try {
+      final db = await LocalDatabase.instance.database;
+      await db.insert('company_info', {
+        'id': 'default',
+        'company_name': _companyName,
+        'logo_base64': _logoBase64,
+        'personnel_json': jsonEncode(_personnel),
+        'report_output_path': _savePath,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    } catch (_) {}
   }
 
   Future<void> _loadDbSize() async {
@@ -1195,6 +1229,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ]),
+            _buildAccordion('Empresa (Reportes)', Icons.business, false, [
+              ListTile(
+                leading: const Icon(Icons.edit, color: OmniTheme.accentBlue),
+                title: const Text('Nombre de la empresa', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_companyName.isNotEmpty ? _companyName : 'No configurado', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () async {
+                  final ctrl = TextEditingController(text: _companyName);
+                  final result = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: OmniTheme.bg900,
+                      title: const Text('Nombre de la empresa', style: TextStyle(color: Colors.white)),
+                      content: TextField(controller: ctrl, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: 'BioLab S.A. de C.V.', hintStyle: TextStyle(color: Colors.white38))),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+                        ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text), style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue), child: const Text('Guardar', style: TextStyle(color: Colors.white))),
+                      ],
+                    ),
+                  );
+                  if (result != null) {
+                    setState(() => _companyName = result);
+                    _saveCompanyInfo();
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.image, color: OmniTheme.green400),
+                title: const Text('Logo de la empresa', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_logoBase64.isNotEmpty ? 'Logo cargado' : 'No configurado', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () async {
+                  final result = await FilePicker.platform.pickFiles(type: FileType.image);
+                  if (result != null && result.files.isNotEmpty) {
+                    final bytes = await File(result.files.single.path!).readAsBytes();
+                    setState(() => _logoBase64 = base64Encode(bytes));
+                    _saveCompanyInfo();
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Logo cargado'), backgroundColor: OmniTheme.green400));
+                  }
+                },
+              ),
+              if (_logoBase64.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: OmniTheme.red400),
+                  title: const Text('Eliminar logo', style: TextStyle(color: OmniTheme.red400)),
+                  onTap: () {
+                    setState(() => _logoBase64 = '');
+                    _saveCompanyInfo();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.people, color: OmniTheme.accentBlue),
+                title: const Text('Personal / Responsables', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text('${_personnel.length} persona(s)', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                onTap: () => _showPersonnelDialog(),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder, color: OmniTheme.accentBlue),
+                title: const Text('Carpeta de Reportes', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_savePath.isNotEmpty ? _savePath : 'No configurada', style: const TextStyle(color: OmniTheme.textMuted, fontSize: 11)),
+                trailing: const Icon(Icons.edit, color: OmniTheme.textMuted),
+                onTap: () => _changePathDialog('save_path', 'Carpeta de Reportes', 'Ruta donde se guardaran los reportes mensuales', _savePath, (v) => _savePath = v),
+              ),
+            ]),
             _buildAccordion('Usuarios (${_users.length})', Icons.people, false, [
               ..._users.asMap().entries.map((u) => ListTile(dense: true,
                 leading: Icon(Icons.person, size: 20, color: _roleColor(u.value['rol'] ?? '')),
@@ -1314,6 +1412,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Hardware, rendimiento y estado', style: TextStyle(color: OmniTheme.textMuted)),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiDashboardScreen())),
+              ),
+              ListTile(
+                leading: const Icon(Icons.chat, color: OmniTheme.accentBlue),
+                title: const Text('Supervisor AI Chat', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: const Text('Asistente con IA local para supervision y diagnostico', style: TextStyle(color: OmniTheme.textMuted)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: OmniTheme.textMuted),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiSupervisorScreen())),
               ),
               ListTile(
                 leading: const Icon(Icons.model_training, color: Color(0xFFB197FC)),
@@ -1571,6 +1676,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await p.setStringList('custom_opts_$key', existing);
         setState(() {});
       }
+    }
+  }
+
+  Future<void> _showPersonnelDialog() async {
+    final list = List<String>.from(_personnel);
+    final addCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: OmniTheme.bg900,
+          title: const Text('Personal / Responsables', style: TextStyle(color: Colors.white)),
+          content: SizedBox(
+            width: 300,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Agregue los nombres del personal que apareceran en los reportes.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const SizedBox(height: 12),
+                if (list.isEmpty)
+                  const Text('No hay personal registrado', style: TextStyle(color: Colors.white38, fontSize: 12))
+                else
+                  ...list.asMap().entries.map((e) => ListTile(
+                    dense: true,
+                    title: Text(e.value, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: Colors.redAccent),
+                      onPressed: () => setDialogState(() => list.removeAt(e.key)),
+                    ),
+                  )),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: addCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(hintText: 'Nombre del responsable', hintStyle: TextStyle(color: Colors.white38)),
+                      onSubmitted: (v) {
+                        if (v.trim().isNotEmpty) {
+                          setDialogState(() { list.add(v.trim()); addCtrl.clear(); });
+                        }
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: OmniTheme.accentBlue),
+                    onPressed: () {
+                      if (addCtrl.text.trim().isNotEmpty) {
+                        setDialogState(() { list.add(addCtrl.text.trim()); addCtrl.clear(); });
+                      }
+                    },
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+              child: const Text('Guardar', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == true) {
+      setState(() => _personnel = list);
+      _saveCompanyInfo();
     }
   }
 

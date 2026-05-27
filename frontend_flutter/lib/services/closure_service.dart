@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/db.dart';
 import '../domain/entities/user.dart';
 
@@ -308,6 +313,8 @@ class ClosureService extends ChangeNotifier {
 
     _monthlyClosures[key] = closure;
 
+    _generateMonthlyReport(year, month, user);
+
     await _logAudit('CLOSE_MONTH', user.id, {
       'year': year,
       'month': month,
@@ -318,6 +325,188 @@ class ClosureService extends ChangeNotifier {
 
     _safeNotify();
     return closure;
+  }
+
+  Future<void> _generateMonthlyReport(int year, int month, User user) async {
+    try {
+      final db = await _localDb.database;
+      final prefs = await SharedPreferences.getInstance();
+      final savePath = prefs.getString('save_path') ?? '';
+      if (savePath.isEmpty) return;
+
+      String companyName = '';
+      String logoBase64 = '';
+      List<String> personnel = [];
+      try {
+        final rows = await db.query('company_info', where: 'id = ?', whereArgs: ['default']);
+        if (rows.isNotEmpty) {
+          companyName = rows.first['company_name'] as String? ?? '';
+          logoBase64 = rows.first['logo_base64'] as String? ?? '';
+          final raw = rows.first['personnel_json'] as String? ?? '[]';
+          personnel = (jsonDecode(raw) as List).cast<String>();
+        }
+      } catch (_) {}
+
+      final start = '$year-${month.toString().padLeft(2, "0")}-01';
+      final lastDay = DateTime(year, month + 1, 0).day;
+      final end = '$year-${month.toString().padLeft(2, "0")}-${lastDay.toString().padLeft(2, "0")}';
+
+      final entries = await db.query('form_entries',
+        where: 'date >= ? AND date <= ?',
+        whereArgs: [start, end],
+        orderBy: 'date ASC',
+      );
+
+      final monthNames = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+      final pdf = pw.Document();
+      final fmt = DateFormat('dd/MM/yyyy');
+      final now = DateTime.now();
+      final displayName = companyName.isNotEmpty ? companyName : 'BIOLAB LABSYNC';
+
+      int closedCount = 0;
+      for (int d = 1; d <= lastDay; d++) {
+        final ds = '$year-${month.toString().padLeft(2, "0")}-${d.toString().padLeft(2, "0")}';
+        if (_dailyClosures[ds]?.isClosed == true) closedCount++;
+      }
+
+      final moduleNames = {
+        'bitacora': 'Bitacora General', 'procesamiento': 'Procesamiento',
+        'incubadoras': 'Incubadoras', 'ultracongeladores': 'Ultracongeladores',
+        'equipos': 'Equipos', 'autoclaves': 'Autoclaves', 'solucion_cobre': 'Solucion de Cobre',
+      };
+      final moduleCounts = <String, int>{};
+      for (final e in entries) {
+        final mod = e['module'] as String? ?? '';
+        moduleCounts[mod] = (moduleCounts[mod] ?? 0) + 1;
+      }
+
+      pdf.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (ctx) => pw.Column(
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          children: [
+            if (logoBase64.isNotEmpty)
+              pw.Image(pw.MemoryImage(base64Decode(logoBase64)), height: 80, fit: pw.BoxFit.contain),
+            pw.SizedBox(height: 20),
+            pw.Text(displayName, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+            pw.SizedBox(height: 8),
+            pw.Container(width: 80, height: 3, color: PdfColors.blue800),
+            pw.SizedBox(height: 30),
+            pw.Text('BITACORA DE ${monthNames[month]} $year', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+            pw.SizedBox(height: 30),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(20),
+              decoration: pw.BoxDecoration(color: PdfColors.grey50, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))),
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                _pReportRow('Mes:', '${monthNames[month]} $year'),
+                _pReportRow('Periodo:', '${fmt.format(DateTime(year, month, 1))} - ${fmt.format(DateTime(year, month, lastDay))}'),
+                _pReportRow('Total registros:', '${entries.length}'),
+                _pReportRow('Dias cerrados:', '$closedCount de $lastDay'),
+                _pReportRow('Cerrado por:', user.nombre),
+                _pReportRow('Fecha de cierre:', fmt.format(now)),
+              ]),
+            ),
+            pw.SizedBox(height: 20),
+            if (personnel.isNotEmpty) ...[
+              pw.Divider(),
+              pw.SizedBox(height: 8),
+              pw.Text('Personal Responsable:', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+              pw.SizedBox(height: 4),
+              ...personnel.map((p) => pw.Text('  - $p', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))),
+            ],
+            pw.Spacer(),
+            pw.Text('$displayName - Documento Controlado', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+            pw.Text('Generado automaticamente por LABSYNC', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey400)),
+          ],
+        ),
+      ));
+
+      pdf.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        header: (ctx) => pw.Container(
+          decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue800, width: 2))),
+          padding: const pw.EdgeInsets.only(bottom: 12),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Text(displayName, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+            pw.Text('${monthNames[month]} $year', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ]),
+        ),
+        footer: (ctx) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          margin: const pw.EdgeInsets.only(top: 12),
+          decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Text('$displayName - Documento Controlado', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500)),
+            pw.Text('Pag. ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+          ]),
+        ),
+        build: (ctx) => [
+          pw.Header(text: 'RESUMEN DEL MES', level: 0),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center},
+            headers: ['Modulo', 'Registros'],
+            data: moduleNames.entries.map((e) {
+              final count = moduleCounts[e.key] ?? 0;
+              return [e.value, '$count'];
+            }).where((r) => r[1] != '0').toList(),
+          ),
+          if (moduleCounts.isEmpty) pw.Paragraph(text: 'Sin registros en el periodo.'),
+          pw.SizedBox(height: 20),
+          pw.Header(text: 'DETALLE DE REGISTROS', level: 1),
+          ..._buildMonthlyEntryTable(entries),
+        ],
+      ));
+
+      final dir = Directory(savePath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final fileName = 'Bitacora_de_${monthNames[month]}_$year.pdf';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(await pdf.save());
+      debugPrint('Reporte mensual generado: ${file.path}');
+    } catch (e) {
+      debugPrint('Error generando reporte mensual: $e');
+    }
+  }
+
+  List<pw.Widget> _buildMonthlyEntryTable(List<Map<String, dynamic>> entries) {
+    if (entries.isEmpty) return [pw.Paragraph(text: 'Sin registros en el periodo.')];
+    final data = <List<String>>[];
+    for (final row in entries) {
+      final mod = row['module'] as String? ?? '';
+      final date = row['date'] as String? ?? '';
+      Map<String, dynamic> dataMap = {};
+      try { dataMap = jsonDecode(row['data_json'] as String) as Map<String, dynamic>; } catch (_) {}
+      final user = dataMap['responsable'] as String? ?? dataMap['usuario'] as String? ?? dataMap['nombre'] as String? ?? '-';
+      final act = dataMap['actividad'] as String? ?? dataMap['observaciones'] as String? ?? dataMap['incidencias'] as String? ?? '-';
+      data.add([mod, date, user, act.length > 50 ? '${act.substring(0, 50)}...' : act]);
+    }
+    return [
+      pw.TableHelper.fromTextArray(
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.white),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+        cellStyle: const pw.TextStyle(fontSize: 8),
+        cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.centerLeft, 3: pw.Alignment.centerLeft},
+        headers: ['Modulo', 'Fecha', 'Responsable', 'Actividad'],
+        data: data,
+      ),
+    ];
+  }
+
+  pw.Widget _pReportRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
+      child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+        pw.Text(value, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey800)),
+      ]),
+    );
   }
 
   Future<MonthlyClosureInfo> reopenMonth(int year, int month, User user, {required String motivo}) async {

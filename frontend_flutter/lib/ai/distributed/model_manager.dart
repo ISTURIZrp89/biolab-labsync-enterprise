@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'hardware_detector.dart';
+import 'llamacpp_engine.dart';
 
 class ModelInfo {
   final String id;
@@ -136,27 +138,68 @@ class ModelManager extends ChangeNotifier {
         notifyListeners();
         await Future.delayed(const Duration(milliseconds: 500));
       } else {
-        final uri = Uri.parse(model.url);
-        final client = HttpClient();
-        final request = await client.getUrl(uri);
-        final response = await request.close();
-        final totalBytes = response.contentLength;
-        int receivedBytes = 0;
-        final file = File(filePath);
-        final sink = file.openWrite();
+        final client = http.Client();
+        try {
+          final request = http.Request('GET', Uri.parse(model.url));
+          request.headers.addAll({
+            'User-Agent': 'BioLab-LABSYNC/1.0',
+            'Accept': '*/*',
+          });
+          final streamedResponse = await client.send(request);
 
-        await for (final chunk in response) {
-          sink.add(chunk);
-          receivedBytes += chunk.length;
-          if (totalBytes > 0) {
-            final progress = receivedBytes / totalBytes;
-            model.downloadProgress = progress;
-            _downloadStatus = 'Descargando ${model.name}... ${(progress * 100).toStringAsFixed(1)}%';
+          if (streamedResponse.statusCode != 200) {
+            final body = await streamedResponse.stream.bytesToString();
+            throw HttpException(
+              'HTTP ${streamedResponse.statusCode}: ${streamedResponse.reasonPhrase}\n'
+              'Servidor respondio: ${body.length > 200 ? body.substring(0, 200) : body}',
+            );
           }
-          notifyListeners();
+
+          final totalBytes = streamedResponse.contentLength ?? 0;
+          if (totalBytes > 0 && totalBytes < 10000) {
+            final body = await streamedResponse.stream.bytesToString();
+            throw HttpException(
+              'El servidor devolvio un archivo demasiado pequeno (${totalBytes}b). '
+              'Posible pagina de error. Respuesta: ${body.length > 200 ? body.substring(0, 200) : body}',
+            );
+          }
+
+          int receivedBytes = 0;
+          final file = File(filePath);
+          final sink = file.openWrite();
+          final stopwatch = Stopwatch()..start();
+          int lastReport = 0;
+
+          await for (final chunk in streamedResponse.stream) {
+            sink.add(chunk);
+            receivedBytes += chunk.length;
+            if (totalBytes > 0) {
+              final progress = receivedBytes / totalBytes;
+              model.downloadProgress = progress;
+              final speed = receivedBytes / (1024 * 1024) / (stopwatch.elapsedMilliseconds / 1000);
+              _downloadStatus = 'Descargando ${model.name}... ${(progress * 100).toStringAsFixed(1)}% '
+                  '(${(receivedBytes / (1024 * 1024)).toStringAsFixed(1)}/${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB, '
+                  '${speed.toStringAsFixed(1)} MB/s)';
+            } else {
+              final mb = receivedBytes / (1024 * 1024);
+              if (mb - lastReport > 10) {
+                lastReport = mb.toInt();
+                _downloadStatus = 'Descargando ${model.name}... ${mb.toStringAsFixed(0)} MB recibidos';
+              }
+            }
+            notifyListeners();
+          }
+          await sink.close();
+          stopwatch.stop();
+
+          final fileSize = await File(filePath).length();
+          if (fileSize < 10000) {
+            await File(filePath).delete();
+            throw HttpException('Archivo descargado corrupto: solo $fileSize bytes');
+          }
+        } finally {
+          client.close();
         }
-        await sink.close();
-        client.close();
       }
 
       final installed = ModelInfo(
@@ -181,6 +224,52 @@ class ModelManager extends ChangeNotifier {
       _downloadCompleter = null;
       notifyListeners();
     }
+  }
+
+  Future<bool> downloadLlamaCppEngine() async {
+    _downloadStatus = 'Verificando motor llama.cpp...';
+    notifyListeners();
+    try {
+      await LlamacppEngine.ensureBinary();
+      _downloadStatus = 'Motor llama.cpp listo';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _downloadStatus = 'Error al descargar motor llama.cpp: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> startInference(String systemPrompt) async {
+    if (_activeModel == null) {
+      _downloadStatus = 'Error: No hay modelo activo seleccionado';
+      notifyListeners();
+      return false;
+    }
+    final modelPath = '$basePath/${_activeModel!.id}.${_activeModel!.format}';
+    if (!await File(modelPath).exists()) {
+      _downloadStatus = 'Error: Archivo del modelo no encontrado en $modelPath';
+      notifyListeners();
+      return false;
+    }
+    try {
+      await LlamacppEngine.ensureBinary();
+      await LlamacppEngine.startServer(modelPath: modelPath, systemPrompt: systemPrompt);
+      _downloadStatus = 'Motor de inferencia iniciado correctamente';
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _downloadStatus = 'Error al iniciar inferencia: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> stopInference() async {
+    await LlamacppEngine.stopServer();
+    _downloadStatus = 'Motor de inferencia detenido';
+    notifyListeners();
   }
 
   Future<void> deleteModel(String modelId) async {

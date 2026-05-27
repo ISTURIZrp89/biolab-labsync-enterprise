@@ -7,7 +7,9 @@ import 'package:uuid/uuid.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/entities/form_entry.dart';
 import '../../security/auth_service.dart';
+import '../../security/permission_service.dart';
 import '../../sync/sync_engine.dart';
+import '../../services/closure_service.dart';
 import '../../theme/omni_theme.dart';
 import '../widgets/dynamic_form.dart';
 import 'package:intl/intl.dart';
@@ -96,6 +98,42 @@ class _FormListScreenState extends State<FormListScreen> {
       ),
     );
     _loadData();
+  }
+
+  Future<void> _confirmDeleteEntry(FormEntry entry) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Eliminar registro', style: TextStyle(color: Colors.white)),
+        content: const Text('Esta seguro de eliminar este registro? Esta accion no se puede deshacer.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        await _formRepo.deleteEntry(entry.id);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Registro eliminado'),
+          backgroundColor: Colors.green,
+        ));
+        _loadData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error al eliminar: $e'),
+            backgroundColor: Colors.red,
+          ));
+        }
+      }
+    }
   }
 
   Future<void> _syncNow() async {
@@ -214,6 +252,7 @@ class _FormListScreenState extends State<FormListScreen> {
                               orElse: () => 'Sin datos',
                             );
                             final dateStr = _formatDate(entry.date);
+                            final canDelete = context.read<PermissionService>().canEdit(widget.module);
 
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -244,8 +283,23 @@ class _FormListScreenState extends State<FormListScreen> {
                                       ),
                                     IconButton(
                                       icon: const Icon(Icons.edit, color: Colors.white54),
-                                      onPressed: () => _openForm(existing: entry),
+                                      onPressed: () {
+                                        final closureSvc = context.read<ClosureService>();
+                                        if (closureSvc.isDayClosed(entry.date) && !closureSvc.isDayReopened(entry.date)) {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                            content: Text('Dia cerrado. Rebralo desde el panel principal para editar.'),
+                                            backgroundColor: Colors.orange,
+                                          ));
+                                          return;
+                                        }
+                                        _openForm(existing: entry);
+                                      },
                                     ),
+                                    if (canDelete)
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                        onPressed: () => _confirmDeleteEntry(entry),
+                                      ),
                                   ],
                                 ),
                               ),

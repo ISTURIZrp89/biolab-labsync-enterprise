@@ -1671,31 +1671,39 @@ class _MainScaffoldState extends State<MainScaffold> {
     final motivoCtrl = TextEditingController();
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: OmniTheme.bg900,
-        title: const Text('Reabrir dia', style: TextStyle(color: Colors.white)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Reabrir el dia $date? (maximo 24 horas desde cierre)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: motivoCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'Motivo de reapertura *',
-              labelStyle: TextStyle(color: Colors.white54),
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
-          ElevatedButton(
-            onPressed: motivoCtrl.text.isNotEmpty ? () => Navigator.pop(ctx, true) : null,
-            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.orange400),
-            child: const Text('Reabrir', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        var motivoValido = motivoCtrl.text.trim().isNotEmpty;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: OmniTheme.bg900,
+              title: const Text('Reabrir dia', style: TextStyle(color: Colors.white)),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('Reabrir el dia $date? (maximo 24h desde cierre)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: motivoCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo de reapertura *',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setDialogState(() => motivoValido = motivoCtrl.text.trim().isNotEmpty),
+                ),
+              ]),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+                ElevatedButton(
+                  onPressed: motivoValido ? () => Navigator.pop(ctx, true) : null,
+                  style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.orange400),
+                  child: const Text('Reabrir', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     if (confirm == true && mounted) {
       try {

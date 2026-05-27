@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../ai/distributed/model_manager.dart';
 import '../../../ai/distributed/hardware_detector.dart';
+import '../../../ai/distributed/llamacpp_engine.dart';
 import '../../../theme/omni_theme.dart';
 
 class ModelManagerScreen extends StatefulWidget {
@@ -37,6 +38,42 @@ class _ModelManagerScreenState extends State<ModelManagerScreen> {
                   const SizedBox(height: 8),
                   Text('Instalados: ${manager.installedModels.length} | Activo: ${manager.activeModel?.name ?? "Ninguno"}',
                       style: const TextStyle(color: OmniTheme.textSecondary, fontSize: 13)),
+                  const Divider(color: OmniTheme.bg700, height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Motor llama.cpp',
+                                style: TextStyle(color: OmniTheme.accentBlue, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 2),
+                            Text(LlamacppEngine.isRunning ? 'En ejecucion (puerto ${LlamacppEngine.port})' : 'Detenido',
+                                style: TextStyle(
+                                    color: LlamacppEngine.isRunning ? OmniTheme.green400 : OmniTheme.textMuted, fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        icon: Icon(LlamacppEngine.isRunning ? Icons.stop : Icons.download, size: 14),
+                        label: Text(LlamacppEngine.isRunning ? 'Detener' : 'Motor', style: const TextStyle(fontSize: 10)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: LlamacppEngine.isRunning ? OmniTheme.red400 : OmniTheme.accentBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: Size.zero,
+                        ),
+                        onPressed: () async {
+                          if (LlamacppEngine.isRunning) {
+                            await LlamacppEngine.stopServer();
+                          } else {
+                            await manager.downloadLlamaCppEngine();
+                          }
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),

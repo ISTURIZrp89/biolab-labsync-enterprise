@@ -14,8 +14,10 @@ import '../../domain/entities/form_entry.dart';
 import '../widgets/smart_form_field.dart';
 import '../../security/auth_service.dart';
 import '../../security/edit_lock_service.dart';
+import '../../security/permission_service.dart';
 import '../../ai/ai_service.dart';
 import '../../services/user_service.dart';
+import '../../services/closure_service.dart';
 import '../../services/audit_service.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/omni_theme.dart';
@@ -162,10 +164,26 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
       lockHolder = lockSvc.getLockHolder(entry.id);
     } catch (_) { lockHolder = null; }
 
+    bool canDelete = false;
+    try {
+      final permSvc = context.read<PermissionService>();
+      canDelete = permSvc.canEdit(widget.module);
+    } catch (_) {}
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () {
+          try {
+            final closureSvc = context.read<ClosureService>();
+            if (closureSvc.isDayClosed(entry.date) && !closureSvc.isDayReopened(entry.date)) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Dia cerrado. Rebralo desde el panel principal para editar.'),
+                backgroundColor: OmniTheme.orange400,
+              ));
+              return;
+            }
+          } catch (_) {}
           try {
             final lockSvc = context.read<EditLockService>();
             final auth = context.read<AuthService>();
@@ -218,6 +236,13 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
                   ),
                   child: Text(entry.status.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: entry.status == 'synced' ? OmniTheme.green400 : OmniTheme.orange400)),
                 ),
+                if (canDelete) ...[
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => _confirmDeleteEntry(entry),
+                    child: const Icon(Icons.delete_outline, size: 16, color: OmniTheme.red400),
+                  ),
+                ],
               ]),
               const SizedBox(height: 8),
               Text(responsable, style: const TextStyle(fontSize: 11, color: OmniTheme.textSecondary)),
@@ -238,6 +263,44 @@ class _FormEntryScreenState extends State<FormEntryScreen> with SingleTickerProv
         ),
       ),
     );
+  }
+}
+
+  Future<void> _confirmDeleteEntry(FormEntry entry) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Eliminar registro', style: TextStyle(color: Colors.white)),
+        content: const Text('Esta seguro de eliminar este registro? Esta accion no se puede deshacer.', style: TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.red400),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      try {
+        final repo = context.read<FormRepositoryImpl>();
+        await repo.deleteEntry(entry.id);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Registro eliminado'),
+          backgroundColor: OmniTheme.green400,
+        ));
+        _loadEntries();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error al eliminar: $e'),
+            backgroundColor: OmniTheme.red400,
+          ));
+        }
+      }
+    }
   }
 }
 

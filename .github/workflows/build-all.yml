@@ -139,6 +139,9 @@ jobs:
           channel: stable
           cache: false
 
+      - name: Ensure iOS platform files (required for macOS SPM)
+        run: flutter create --platforms=ios --project-name biolab_labsync .
+
       - name: Install dependencies
         run: flutter pub get
 
