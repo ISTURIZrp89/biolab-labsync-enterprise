@@ -709,7 +709,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 dense: true,
               )),
               const PopupMenuItem(value: 'annual', child: ListTile(
-                leading: Icon(Icons.calendar_view_year, size: 18, color: OmniTheme.green400),
+                leading: Icon(Icons.date_range, size: 18, color: OmniTheme.green400),
                 title: Text('Reporte Anual', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
                 dense: true,
               )),

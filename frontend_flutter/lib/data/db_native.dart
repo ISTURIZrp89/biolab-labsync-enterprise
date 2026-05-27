@@ -230,27 +230,6 @@ Future<Database> openLocalDatabase(String filePath) async {
           'report_output_path': '',
         });
       }
-    },
-        // Granular field-level audit trail
-        try { await db.execute('ALTER TABLE audit_log ADD COLUMN entity_id TEXT'); } catch (_) {}
-        try { await db.execute('ALTER TABLE audit_log ADD COLUMN changed_fields_json TEXT'); } catch (_) {}
-        await db.execute('''
-          CREATE TABLE IF NOT EXISTS company_info (
-            id TEXT PRIMARY KEY DEFAULT 'default',
-            company_name TEXT NOT NULL DEFAULT '',
-            logo_base64 TEXT NOT NULL DEFAULT '',
-            personnel_json TEXT NOT NULL DEFAULT '[]',
-            report_output_path TEXT NOT NULL DEFAULT ''
-          )
-        ''');
-        await db.insert('company_info', {
-          'id': 'default',
-          'company_name': '',
-          'logo_base64': '',
-          'personnel_json': '[]',
-          'report_output_path': '',
-        });
-      }
       if (oldVersion < 7) {
         await db.execute('''
           CREATE TABLE IF NOT EXISTS report_personnel (

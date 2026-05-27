@@ -1614,18 +1614,11 @@ class _MainScaffoldState extends State<MainScaffold> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(ctx, false);
-                await _showDayEditForm(date);
-              },
-              child: const Text('Editar registros', style: TextStyle(color: OmniTheme.accentBlue)),
-            ),
-            ElevatedButton(
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
               child: const Text('Cerrar dia', style: TextStyle(color: Colors.white)),
@@ -1652,19 +1645,6 @@ class _MainScaffoldState extends State<MainScaffold> {
         }
       }
     }
-  }
-
-  Future<void> _showDayEditForm(String date) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FormEntryScreen(
-          module: 'bitacora',
-          moduleLabel: 'Bitacora General',
-          initialDate: date,
-        ),
-      ),
-    );
   }
 
   Future<void> _confirmCloseMonth(int year, int month, User user) async {
