@@ -36,8 +36,6 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.27.4'
-          cache: false
 
       - name: Setup Node.js (LTS)
         uses: actions/setup-node@v4
