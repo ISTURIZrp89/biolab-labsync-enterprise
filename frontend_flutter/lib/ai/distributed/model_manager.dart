@@ -184,7 +184,7 @@ class ModelManager extends ChangeNotifier {
         notifyListeners();
         await Future.delayed(const Duration(milliseconds: 500));
       } else {
-        final resolvedUrl = await _resolveHfRedirect(model.url);
+        final resolvedUrl = (await _resolveHfRedirect(model.url)) ?? model.url;
 
         final client = http.Client();
         try {

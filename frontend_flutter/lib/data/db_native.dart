@@ -43,7 +43,7 @@ Future<Database> openLocalDatabase(String filePath) async {
 
   return openDatabase(
     dbPath,
-    version: 6,
+    version: 7,
     onCreate: (db, version) async {
       await db.execute('''
         CREATE TABLE form_entries (
@@ -130,6 +130,35 @@ Future<Database> openLocalDatabase(String filePath) async {
           UNIQUE(year, month)
         )
       ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS report_personnel (
+          id TEXT PRIMARY KEY,
+          year INTEGER NOT NULL,
+          month INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          nombre TEXT NOT NULL,
+          cargo TEXT NOT NULL DEFAULT '',
+          area TEXT NOT NULL DEFAULT '',
+          activo INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          UNIQUE(year, month, user_id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS report_covers (
+          id TEXT PRIMARY KEY,
+          year INTEGER NOT NULL,
+          month INTEGER NOT NULL,
+          title TEXT NOT NULL DEFAULT '',
+          subtitle TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(year, month)
+        )
+      ''');
     },
     onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
@@ -200,6 +229,56 @@ Future<Database> openLocalDatabase(String filePath) async {
           'personnel_json': '[]',
           'report_output_path': '',
         });
+      }
+    },
+        // Granular field-level audit trail
+        try { await db.execute('ALTER TABLE audit_log ADD COLUMN entity_id TEXT'); } catch (_) {}
+        try { await db.execute('ALTER TABLE audit_log ADD COLUMN changed_fields_json TEXT'); } catch (_) {}
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS company_info (
+            id TEXT PRIMARY KEY DEFAULT 'default',
+            company_name TEXT NOT NULL DEFAULT '',
+            logo_base64 TEXT NOT NULL DEFAULT '',
+            personnel_json TEXT NOT NULL DEFAULT '[]',
+            report_output_path TEXT NOT NULL DEFAULT ''
+          )
+        ''');
+        await db.insert('company_info', {
+          'id': 'default',
+          'company_name': '',
+          'logo_base64': '',
+          'personnel_json': '[]',
+          'report_output_path': '',
+        });
+      }
+      if (oldVersion < 7) {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS report_personnel (
+            id TEXT PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            user_id TEXT NOT NULL,
+            nombre TEXT NOT NULL,
+            cargo TEXT NOT NULL DEFAULT '',
+            area TEXT NOT NULL DEFAULT '',
+            activo INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            UNIQUE(year, month, user_id)
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS report_covers (
+            id TEXT PRIMARY KEY,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            subtitle TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(year, month)
+          )
+        ''');
       }
     },
   );

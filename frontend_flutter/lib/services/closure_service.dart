@@ -565,6 +565,206 @@ class ClosureService extends ChangeNotifier {
     return statuses;
   }
 
+  Future<String?> generateAnnualReport(int year, User user) async {
+    try {
+      final db = await _localDb.database;
+      final prefs = await SharedPreferences.getInstance();
+      final savePath = prefs.getString('save_path') ?? '';
+      if (savePath.isEmpty) return null;
+
+      String companyName = '';
+      String logoBase64 = '';
+      try {
+        final rows = await db.query('company_info', where: 'id = ?', whereArgs: ['default']);
+        if (rows.isNotEmpty) {
+          companyName = rows.first['company_name'] as String? ?? '';
+          logoBase64 = rows.first['logo_base64'] as String? ?? '';
+        }
+      } catch (_) {}
+
+      final monthNames = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+        'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+      final fmt = DateFormat('dd/MM/yyyy');
+      final now = DateTime.now();
+      final displayName = companyName.isNotEmpty ? companyName : 'BIOLAB LABSYNC';
+
+      final monthData = <Map<String, dynamic>>[];
+      int totalEntries = 0;
+      int totalDaysClosed = 0;
+      int totalDaysInYear = 0;
+
+      for (int m = 1; m <= 12; m++) {
+        final lastDay = DateTime(year, m + 1, 0).day;
+        totalDaysInYear += lastDay;
+
+        final start = '$year-${m.toString().padLeft(2, "0")}-01';
+        final end = '$year-${m.toString().padLeft(2, "0")}-${lastDay.toString().padLeft(2, "0")}';
+        final entries = await db.query('form_entries',
+          where: 'date >= ? AND date <= ?', whereArgs: [start, end],
+          orderBy: 'date ASC');
+
+        final mcKey = '$year-${m.toString().padLeft(2, "0")}';
+        final mcRows = await db.query('month_closures',
+          where: 'id = ?', whereArgs: ['mc-$mcKey']);
+
+        bool closed = mcRows.isNotEmpty;
+        int closedDays = 0;
+        if (closed) {
+          closedDays = (mcRows.first['days_closed'] as int? ?? 0);
+          totalDaysClosed += closedDays;
+        }
+
+        final moduleCounts = <String, int>{};
+        for (final e in entries) {
+          final mod = e['module'] as String? ?? '';
+          moduleCounts[mod] = (moduleCounts[mod] ?? 0) + 1;
+        }
+
+        monthData.add({
+          'month': m,
+          'monthName': monthNames[m],
+          'entries': entries.length,
+          'closed': closed,
+          'closedDays': closedDays,
+          'totalDays': lastDay,
+          'moduleCounts': moduleCounts,
+        });
+        totalEntries += entries.length;
+      }
+
+      final pdf = pw.Document();
+      pdf.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (ctx) => pw.Column(
+          children: [
+            if (logoBase64.isNotEmpty)
+              pw.Image(pw.MemoryImage(base64Decode(logoBase64)), height: 80, fit: pw.BoxFit.contain),
+            pw.SizedBox(height: 20),
+            pw.Text(displayName, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+            pw.SizedBox(height: 8),
+            pw.Container(width: 80, height: 3, color: PdfColors.blue800),
+            pw.SizedBox(height: 30),
+            pw.Text('REPORTE ANUAL $year', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+            pw.SizedBox(height: 12),
+            pw.Text('Generado el ${fmt.format(now)} por ${user.nombre}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+            pw.SizedBox(height: 30),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(20),
+              decoration: pw.BoxDecoration(color: PdfColors.grey50, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))),
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                _pReportRow('Ano:', '$year'),
+                _pReportRow('Total registros:', '$totalEntries'),
+                _pReportRow('Dias cerrados:', '$totalDaysClosed de $totalDaysInYear'),
+                _pReportRow('Meses cerrados:', '${monthData.where((m) => m['closed'] as bool).length} de 12'),
+                _pReportRow('Generado por:', user.nombre),
+                _pReportRow('Fecha:', fmt.format(now)),
+              ]),
+            ),
+            pw.Spacer(),
+            pw.Text('$displayName - Documento Controlado', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+            pw.Text('Generado automaticamente por LABSYNC', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey400)),
+          ],
+        ),
+      ));
+
+      pdf.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        header: (ctx) => pw.Container(
+          decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue800, width: 2))),
+          padding: const pw.EdgeInsets.only(bottom: 12),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Text(displayName, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+            pw.Text('Reporte Anual $year', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ]),
+        ),
+        footer: (ctx) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          margin: const pw.EdgeInsets.only(top: 12),
+          decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5))),
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            pw.Text('$displayName - Documento Controlado', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500)),
+            pw.Text('Pag. ${ctx.pageNumber} de ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
+          ]),
+        ),
+        build: (ctx) => [
+          pw.Header(text: 'RESUMEN MENSUAL', level: 0),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignments: {0: pw.Alignment.center, 1: pw.Alignment.center, 2: pw.Alignment.center, 3: pw.Alignment.center, 4: pw.Alignment.center},
+            headers: ['Mes', 'Registros', 'Dias Cerrados', 'Cobertura', 'Estado'],
+            data: monthData.map((md) => [
+              md['monthName'],
+              '${md['entries']}',
+              '${md['closedDays']}/${md['totalDays']}',
+              md['totalDays'] > 0 ? '${((md['closedDays'] as int) / (md['totalDays'] as int) * 100).toStringAsFixed(0)}%' : '-',
+              md['closed'] ? 'Cerrado' : 'Abierto',
+            ]).toList(),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Header(text: 'ESTADISTICAS POR MODULO', level: 1),
+          pw.SizedBox(height: 8),
+          ..._buildAnnualModuleTable(monthData),
+        ],
+      ));
+
+      final dir = Directory(savePath);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final fileName = 'Reporte_Anual_$year.pdf';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(await pdf.save());
+      debugPrint('Reporte anual generado: ${file.path}');
+      return file.path;
+    } catch (e) {
+      debugPrint('Error generando reporte anual: $e');
+      return null;
+    }
+  }
+
+  List<pw.Widget> _buildAnnualModuleTable(List<Map<String, dynamic>> monthData) {
+    final allModules = <String>{};
+    for (final md in monthData) {
+      allModules.addAll((md['moduleCounts'] as Map<String, int>).keys);
+    }
+    if (allModules.isEmpty) return [pw.Paragraph(text: 'Sin registros en el periodo.')];
+
+    final sortedModules = allModules.toList()..sort();
+    final moduleNames = {
+      'bitacora': 'Bitacora General', 'procesamiento': 'Procesamiento',
+      'incubadoras': 'Incubadoras', 'ultracongeladores': 'Ultracongeladores',
+      'equipos': 'Equipos', 'autoclaves': 'Autoclaves', 'solucion_cobre': 'Solucion de Cobre',
+      'muestras': 'Muestras',
+    };
+
+    final moduleTotals = <String, int>{};
+    for (final mod in sortedModules) {
+      moduleTotals[mod] = 0;
+      for (final md in monthData) {
+        moduleTotals[mod] = (moduleTotals[mod] ?? 0) + ((md['moduleCounts'] as Map<String, int>)[mod] ?? 0);
+      }
+    }
+
+    return [
+      pw.TableHelper.fromTextArray(
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.white),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
+        cellStyle: const pw.TextStyle(fontSize: 8),
+        cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center, 2: pw.Alignment.center},
+        headers: ['Modulo', 'Total Anual', 'Promedio/Mes'],
+        data: sortedModules.map((mod) => [
+          moduleNames[mod] ?? mod,
+          '${moduleTotals[mod]}',
+          monthData.length > 0 ? '${(moduleTotals[mod]! / monthData.length).toStringAsFixed(1)}' : '0',
+        ]).toList(),
+      ),
+    ];
+  }
+
   void _safeNotify() {
     if (!_disposed) notifyListeners();
   }

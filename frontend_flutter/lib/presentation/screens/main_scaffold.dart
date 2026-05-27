@@ -25,6 +25,7 @@ import 'login_screen.dart';
 import 'ai/model_manager_screen.dart';
 import 'ai/ai_terminal_screen.dart';
 import '../widgets/update_dialog.dart';
+import 'report_cover_preview_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -1548,87 +1549,163 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Future<void> _confirmCloseDay(String date, User user) async {
-    try {
-      final aiService = context.read<AiService>();
-      final db = await LocalDatabase.instance.database;
-      final entries = await db.query('form_entries', where: 'date = ?', whereArgs: [date]);
-      final allIssues = <String>[];
-      for (final row in entries) {
-        Map<String, dynamic> data = {};
-        try {
-          data = jsonDecode(row['data_json'] as String) as Map<String, dynamic>;
-        } catch (_) {}
-        final issues = aiService.validateEntryForClosure(data);
-        if (issues.isNotEmpty) {
-          allIssues.add('${row['module']}: ${issues.join(", ")}');
-        }
+    final aiService = context.read<AiService>();
+    final closureService = context.read<ClosureService>();
+    final db = await LocalDatabase.instance.database;
+    final entries = await db.query('form_entries', where: 'date = ?', whereArgs: [date]);
+
+    final allIssues = <String>[];
+    final moduleCount = <String, int>{};
+    for (final row in entries) {
+      final mod = row['module'] as String? ?? '';
+      moduleCount[mod] = (moduleCount[mod] ?? 0) + 1;
+      Map<String, dynamic> data = {};
+      try { data = jsonDecode(row['data_json'] as String) as Map<String, dynamic>; } catch (_) {}
+      final issues = aiService.validateEntryForClosure(data);
+      if (issues.isNotEmpty) {
+        allIssues.add('$mod: ${issues.join(", ")}');
       }
-      if (allIssues.isNotEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Observaciones: ${allIssues.take(3).join(" | ")}'),
-            backgroundColor: OmniTheme.orange400,
-            duration: const Duration(seconds: 4),
-          ));
-        }
-      }
-    } catch (_) {}
+    }
 
     final notesCtrl = TextEditingController();
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: OmniTheme.bg900,
-        title: const Text('Cerrar dia', style: TextStyle(color: Colors.white)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Confirmar cierre del dia $date?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: notesCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'Notas (opcional)',
-              labelStyle: TextStyle(color: Colors.white54),
-              border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: OmniTheme.bg900,
+          title: Row(children: [
+            const Icon(Icons.summarize, color: OmniTheme.accentBlue, size: 20),
+            const SizedBox(width: 8),
+            Text('Resumen del dia $date', style: const TextStyle(color: Colors.white, fontSize: 15)),
+          ]),
+          content: SizedBox(
+            width: 380,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${entries.length} registro(s) en total', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                const SizedBox(height: 8),
+                ...moduleCount.entries.map((e) => Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 2),
+                  child: Text('${e.key}: ${e.value} entrada(s)', style: const TextStyle(color: OmniTheme.textSecondary, fontSize: 11)),
+                )),
+                if (allIssues.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Observaciones:', style: TextStyle(color: OmniTheme.orange400, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ...allIssues.take(5).map((i) => Padding(
+                    padding: const EdgeInsets.only(left: 8, top: 2),
+                    child: Text('! $i', style: const TextStyle(color: OmniTheme.orange400, fontSize: 10)),
+                  )),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Notas (opcional)',
+                    labelStyle: TextStyle(color: Colors.white54),
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                if (allIssues.isNotEmpty)
+                  Text('Revise las observaciones antes de cerrar.', style: const TextStyle(color: OmniTheme.orange400, fontSize: 10)),
+              ]),
             ),
           ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
-            child: const Text('Confirmar cierre', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx, false);
+                await _showDayEditForm(date);
+              },
+              child: const Text('Editar registros', style: TextStyle(color: OmniTheme.accentBlue)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
+              child: const Text('Cerrar dia', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
     if (confirm == true && mounted) {
       try {
-        await context.read<ClosureService>().closeDay(date, user, notes: notesCtrl.text);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Dia $date cerrado exitosamente'),
-          backgroundColor: OmniTheme.green400,
-        ));
+        await closureService.closeDay(date, user, notes: notesCtrl.text);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Dia $date cerrado exitosamente'),
+            backgroundColor: OmniTheme.green400,
+          ));
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: OmniTheme.red400,
-        ));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: OmniTheme.red400,
+          ));
+        }
       }
     }
   }
 
+  Future<void> _showDayEditForm(String date) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FormEntryScreen(
+          module: 'bitacora',
+          moduleLabel: 'Bitacora General',
+          initialDate: date,
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmCloseMonth(int year, int month, User user) async {
     final key = '$year-${month.toString().padLeft(2, '0')}';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: 500,
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: ReportCoverPreviewScreen(
+              year: year,
+              month: month,
+              user: user,
+              onConfirm: () {
+                Navigator.pop(ctx);
+                _doCloseMonth(year, month, user, key);
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _doCloseMonth(int year, int month, User user, String key) async {
     final notesCtrl = TextEditingController();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: OmniTheme.bg900,
-        title: const Text('Cerrar mes', style: TextStyle(color: Colors.white)),
+        title: const Text('Confirmar Cierre de Mes', style: TextStyle(color: Colors.white)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Confirmar cierre del mes ${_monthName(month)} $year?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text('Cerrar ${_monthName(month)} $year?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text('Se generara el reporte PDF automaticamente.', style: const TextStyle(color: Colors.white54, fontSize: 11)),
           const SizedBox(height: 12),
           TextField(
             controller: notesCtrl,

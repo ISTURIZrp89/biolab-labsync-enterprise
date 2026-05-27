@@ -12,6 +12,7 @@ import '../../data/db.dart';
 import '../../data/repositories/form_repository_impl.dart';
 import '../../domain/form_definitions.dart';
 import '../../security/auth_service.dart';
+import '../../services/closure_service.dart';
 import '../../theme/omni_theme.dart';
 
 class ReportsScreen extends StatefulWidget {
@@ -86,6 +87,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } catch (_) {}
     _moduleOptions = List.from(_allModules);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _generateAnnual() async {
+    final auth = context.read<AuthService>();
+    final user = auth.currentUser;
+    if (user == null) return;
+    final year = DateTime.now().year;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('Reporte Anual', style: TextStyle(color: Colors.white)),
+        content: Text('Generar reporte anual de $year?', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.green400),
+            child: const Text('Generar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final svc = context.read<ClosureService>();
+      final path = await svc.generateAnnualReport(year, user);
+      if (mounted) {
+        if (path != null) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Reporte anual guardado en: $path'),
+            backgroundColor: OmniTheme.green400,
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Error al generar reporte anual. Verifique la ruta de guardado.'),
+            backgroundColor: OmniTheme.red400,
+          ));
+        }
+      }
+    }
   }
 
   Future<void> _loadReport() async {
@@ -659,11 +700,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
             color: OmniTheme.bg800,
             onSelected: (v) {
               if (v == 'batch') _showBatchExportDialog();
+              if (v == 'annual') _generateAnnual();
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'batch', child: ListTile(
                 leading: Icon(Icons.layers, size: 18, color: OmniTheme.accentBlue),
                 title: Text('Exportacion por lotes', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                dense: true,
+              )),
+              const PopupMenuItem(value: 'annual', child: ListTile(
+                leading: Icon(Icons.calendar_view_year, size: 18, color: OmniTheme.green400),
+                title: Text('Reporte Anual', style: TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
                 dense: true,
               )),
             ],
