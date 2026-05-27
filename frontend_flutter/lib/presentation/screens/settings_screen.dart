@@ -60,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _lanServerPort = 8766;
   String _dbSize = 'Calculando...';
   String _driveBackupPath = '';
+  String _systemPrompt = '';
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadEquipment();
     _loadUsers();
     _loadDriveBackupPath();
+    _loadSystemPrompt();
   }
 
   @override
@@ -1321,6 +1323,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ModelManagerScreen())),
               ),
               ListTile(
+                leading: const Icon(Icons.assistant, color: const Color(0xFF00BCD4)),
+                title: const Text('System Prompt del Asistente', style: TextStyle(color: OmniTheme.textPrimary)),
+                subtitle: Text(_systemPrompt.isEmpty ? 'Configurar prompt del asistente IA' : (_systemPrompt.length > 40 ? '${_systemPrompt.substring(0, 40)}...' : _systemPrompt), style: const TextStyle(color: OmniTheme.textMuted, fontSize: 10)),
+                trailing: const Icon(Icons.edit, size: 14, color: OmniTheme.accentBlue),
+                onTap: () => _editSystemPrompt(),
+              ),
+              ListTile(
                 leading: const Icon(Icons.hub, color: OmniTheme.green400),
                 title: const Text('Red de Nodos', style: TextStyle(color: OmniTheme.textPrimary)),
                 subtitle: const Text('Gestionar red distribuida de equipos', style: TextStyle(color: OmniTheme.textMuted)),
@@ -1647,6 +1656,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadDriveBackupPath() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _driveBackupPath = prefs.getString('drive_backup_path') ?? '');
+  }
+
+  Future<void> _loadSystemPrompt() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _systemPrompt = prefs.getString('ai_system_prompt') ?? '');
+  }
+
+  Future<void> _editSystemPrompt() async {
+    final ctrl = TextEditingController(text: _systemPrompt);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OmniTheme.bg900,
+        title: const Text('System Prompt del Asistente', style: TextStyle(color: OmniTheme.textPrimary)),
+        content: SizedBox(
+          width: 500,
+          child: TextField(
+            controller: ctrl,
+            maxLines: 10,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: const InputDecoration(
+              hintText: 'Define como el asistente IA debe comportarse...',
+              hintStyle: TextStyle(color: Colors.white24),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (result == true && mounted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ai_system_prompt', ctrl.text);
+      setState(() => _systemPrompt = ctrl.text);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('System prompt guardado'),
+        backgroundColor: OmniTheme.green400,
+      ));
+    }
   }
 
   Future<void> _pickDriveFolder() async {

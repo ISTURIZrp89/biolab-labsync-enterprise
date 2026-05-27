@@ -39,6 +39,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   Map<String, int> _moduleCounts = {};
   Map<String, int> _dayEntryCounts = {};
   Map<String, List<Map<String, dynamic>>> _dayEntries = {};
+  String? _selectedDayDate;
+  List<Map<String, dynamic>> _selectedDayEntries = [];
   bool _statsLoaded = false;
   Set<String> _allowedModules = {};
   bool _permLoaded = false;
@@ -301,7 +303,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     final auth = context.read<AuthService>();
     final isDev = auth.isAdmin || auth.isOwner;
     return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-      .where((i) => i < 2 || i == 10 || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
+      .where((i) => i < 2 || (i == 10 && isDev) || _allowedModules.contains(_moduleKeys[i]) || (i == 9 && isDev))
       .toList();
   }
 
@@ -863,6 +865,10 @@ class _MainScaffoldState extends State<MainScaffold> {
           _buildDailyStatus(),
           const SizedBox(height: 20),
           _buildPendingBar(),
+          if (_selectedDayDate != null) ...[
+            const SizedBox(height: 16),
+            _buildSelectedDayPanel(),
+          ],
         ],
       ),
     );
@@ -872,23 +878,27 @@ class _MainScaffoldState extends State<MainScaffold> {
     final auth = context.read<AuthService>();
     return Row(
       children: [
-        IconButton(
-          icon: const Icon(Icons.chevron_left, size: 20),
-          onPressed: () => setState(() {
-            _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
-            _loadStats();
-          }),
-          color: OmniTheme.textMuted,
-        ),
-        Text('${_monthName(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
-        IconButton(
-          icon: const Icon(Icons.chevron_right, size: 20),
-          onPressed: () => setState(() {
-            _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
-            _loadStats();
-          }),
-          color: OmniTheme.textMuted,
-        ),
+          IconButton(
+            icon: const Icon(Icons.chevron_left, size: 20),
+            onPressed: () => setState(() {
+              _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
+              _selectedDayDate = null;
+              _selectedDayEntries = [];
+              _loadStats();
+            }),
+            color: OmniTheme.textMuted,
+          ),
+          Text('${_monthName(_selectedDate.month)} ${_selectedDate.year}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: OmniTheme.textPrimary)),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, size: 20),
+            onPressed: () => setState(() {
+              _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+              _selectedDayDate = null;
+              _selectedDayEntries = [];
+              _loadStats();
+            }),
+            color: OmniTheme.textMuted,
+          ),
         if (auth.canClose) ...[
           const SizedBox(width: 8),
           TextButton.icon(
@@ -967,7 +977,10 @@ class _MainScaffoldState extends State<MainScaffold> {
                   }
 
                   return GestureDetector(
-                    onTap: () => _showDayEntries(dateStr),
+                    onTap: () => setState(() {
+                      _selectedDayDate = dateStr;
+                      _selectedDayEntries = _dayEntries[dateStr] ?? [];
+                    }),
                     child: Container(
                       width: 36, height: 36,
                       decoration: BoxDecoration(
@@ -1014,6 +1027,174 @@ class _MainScaffoldState extends State<MainScaffold> {
       const SizedBox(width: 4),
       Text(label, style: const TextStyle(fontSize: 9, color: OmniTheme.textMuted)),
     ]);
+  }
+
+  Widget _buildSelectedDayPanel() {
+    final dateStr = _selectedDayDate!;
+    final entries = _selectedDayEntries;
+    final auth = context.watch<AuthService>();
+    final closureService = context.watch<ClosureService>();
+    final isClosed = closureService.isDayClosed(dateStr);
+    final allModules = ['bitacora', 'procesamiento', 'incubadoras', 'ultracongeladores', 'equipos', 'autoclaves', 'solucion_cobre'];
+    final modules = allModules.where((m) => _allowedModules.contains(m)).toList();
+    final moduleLabels = ['Bitacora', 'Procesamiento', 'Incubadoras', 'Ultracongeladores', 'Equipos', 'Autoclaves', 'Cobre'];
+    final canCloseDay = auth.canClose;
+    final dayNum = dateStr.split('-').last;
+    final monthNum = dateStr.split('-')[1];
+    final yearNum = dateStr.split('-')[0];
+    final dateDisplay = '$dayNum/$monthNum/$yearNum';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: OmniTheme.accentBlue.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.calendar_today, size: 16, color: OmniTheme.accentBlue),
+                ),
+                const SizedBox(width: 10),
+                Text(dateDisplay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: OmniTheme.textPrimary)),
+                if (isClosed) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: OmniTheme.green400.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                    child: const Text('Cerrado', style: TextStyle(fontSize: 10, color: OmniTheme.green400, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+                const Spacer(),
+                Text('${entries.length} registros', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                const SizedBox(width: 12),
+                if (!isClosed)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.add, size: 18, color: OmniTheme.accentBlue),
+                    tooltip: 'Nuevo registro',
+                    color: OmniTheme.bg800,
+                    onSelected: (module) {
+                      Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => FormEntryScreen(module: module, moduleLabel: moduleLabels[modules.indexOf(module)]),
+                      )).then((_) => _loadStats());
+                    },
+                    itemBuilder: (_) => modules.asMap().entries.map((e) =>
+                      PopupMenuItem(value: e.value, child: Text(moduleLabels[e.key], style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)))
+                    ).toList(),
+                  ),
+                if (canCloseDay && !isClosed) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.lock, size: 16, color: OmniTheme.green400),
+                    tooltip: 'Cerrar dia',
+                    onPressed: () => _confirmCloseDay(dateStr, auth.currentUser!),
+                  ),
+                ],
+                if (isClosed && canCloseDay) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.lock_open, size: 16, color: OmniTheme.orange400),
+                    tooltip: 'Reabrir dia',
+                    onPressed: () => _showReopenDialog(dateStr, auth.currentUser!),
+                  ),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20, color: OmniTheme.textMuted),
+                  onPressed: () => setState(() {
+                    _selectedDayDate = null;
+                    _selectedDayEntries = [];
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (entries.isEmpty && !isClosed)
+              _buildEmptyDayModules(modules, moduleLabels)
+            else if (entries.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: Text('Dia cerrado sin registros', style: TextStyle(color: OmniTheme.textMuted, fontSize: 12))),
+              )
+            else
+              SizedBox(
+                height: 300,
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: entries.length,
+                  itemBuilder: (ctx, index) {
+                    final entry = entries[index];
+                    Map<String, dynamic> data = {};
+                    try { data = jsonDecode(entry['data_json'] as String); } catch (_) {}
+                    final moduleKey = entry['module']?.toString() ?? '';
+                    final modIdx = modules.indexOf(moduleKey);
+                    final label = modIdx >= 0 ? moduleLabels[modIdx] : moduleKey.toUpperCase();
+                      return Card(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => FormEntryScreen(module: moduleKey, moduleLabel: label),
+                          )).then((_) => _loadStats());
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                Container(width: 4, height: 16, decoration: BoxDecoration(
+                                  color: entry['status'] == 'synced' ? OmniTheme.green400 : OmniTheme.orange400,
+                                  borderRadius: BorderRadius.circular(2),
+                                )),
+                                const SizedBox(width: 8),
+                                Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: OmniTheme.textMuted, letterSpacing: 1)),
+                              ]),
+                              const SizedBox(height: 8),
+                              ...data.entries.take(4).map((e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(children: [
+                                  Text('${e.key}: ', style: const TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
+                                  Expanded(child: Text(e.value?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                ]),
+                              )),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyDayModules(List<String> modules, List<String> labels) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: modules.asMap().entries.map((e) {
+        final colors = [OmniTheme.accentBlue, OmniTheme.red400, OmniTheme.green400, OmniTheme.orange400, const Color(0xFFF472B6), const Color(0xFFB197FC), const Color(0xFF00BCD4)];
+        final icons = [Icons.book_outlined, Icons.biotech_outlined, Icons.thermostat_outlined, Icons.ac_unit_outlined, Icons.precision_manufacturing_outlined, Icons.local_fire_department_outlined, Icons.science_outlined];
+        return ActionChip(
+          avatar: Icon(icons[e.key % icons.length], size: 14, color: colors[e.key % colors.length]),
+          label: Text(labels[e.key], style: const TextStyle(fontSize: 11)),
+          onPressed: () {
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => FormEntryScreen(module: e.value, moduleLabel: labels[e.key]),
+            )).then((_) => _loadStats());
+          },
+        );
+      }).toList(),
+    );
   }
 
   void _showDayEntries(String dateStr) {
@@ -1441,7 +1622,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         backgroundColor: OmniTheme.bg900,
         title: const Text('Reabrir dia', style: TextStyle(color: Colors.white)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Reabrir el dia $date? (maximo 3 dias desde cierre)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text('Reabrir el dia $date? (maximo 24 horas desde cierre)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
           const SizedBox(height: 12),
           TextField(
             controller: motivoCtrl,

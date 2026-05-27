@@ -73,6 +73,8 @@ class ModelManager extends ChangeNotifier {
     _availableModels = [
       ModelInfo(id: 'phi-3-mini', name: 'Phi-3 Mini (Microsoft)', format: 'gguf', source: 'huggingface',
           url: 'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf', sizeMB: 2400, backend: 'llama.cpp'),
+      ModelInfo(id: 'qwen2.5-1.5b', name: 'Qwen2.5 1.5B (Alibaba)', format: 'gguf', source: 'huggingface',
+          url: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf', sizeMB: 980, backend: 'llama.cpp'),
       ModelInfo(id: 'tinyllama', name: 'TinyLlama 1.1B', format: 'gguf', source: 'huggingface',
           url: 'https://huggingface.co/TheBloke/TinyLlama-1.1B-GGUF/resolve/main/tinyllama-1.1b-q4_k_m.gguf', sizeMB: 700, backend: 'llama.cpp'),
       ModelInfo(id: 'gemma-2b', name: 'Gemma 2B (Google)', format: 'gguf', source: 'huggingface',

@@ -24,7 +24,7 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _endDate = DateTime.now();
-  String? _selectedModule;
+  Set<String> _selectedModules = {};
   List<Map<String, dynamic>> _entries = [];
   bool _loading = false;
   bool _generated = false;
@@ -39,13 +39,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     'equipos',
     'procesamiento',
     'bitacora',
+    'solucion_cobre',
+    'muestras',
   ];
   List<String> _moduleOptions = [];
 
   String get _moduleLabel {
-    if (_selectedModule == null) return 'Todos los modulos';
-    final mod = findModule(_selectedModule!);
-    return mod['label'] as String? ?? _selectedModule!;
+    if (_selectedModules.isEmpty) return 'Todos los modulos';
+    final labels = _selectedModules.map((m) {
+      final mod = findModule(m);
+      return mod['label'] as String? ?? m;
+    });
+    final list = labels.toList();
+    if (list.length <= 2) return list.join(', ');
+    return '${list.length} modulos seleccionados';
   }
 
   @override
@@ -90,9 +97,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       String where;
       List<dynamic> args;
-      if (_selectedModule != null) {
-        where = 'date >= ? AND date <= ? AND module = ?';
-        args = [s, e, _selectedModule];
+      if (_selectedModules.isNotEmpty) {
+        final placeholders = _selectedModules.map((_) => '?').join(',');
+        where = 'date >= ? AND date <= ? AND module IN ($placeholders)';
+        args = [s, e, ..._selectedModules];
       } else {
         where = 'date >= ? AND date <= ?';
         args = [s, e];
@@ -252,25 +260,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Text('Período:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Text('${fmt.format(_startDate)} - ${fmt.format(_endDate)}', style: const pw.TextStyle(fontSize: 9)),
+                pw.Text('Periodo:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('${fmt.format(_startDate)} - ${fmt.format(_endDate)}', style: pw.TextStyle(fontSize: 9)),
               ]),
               pw.SizedBox(height: 4),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Text('Módulo:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Text(_moduleLabel, style: const pw.TextStyle(fontSize: 9)),
+                pw.Text('Modulo:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text(_moduleLabel, style: pw.TextStyle(fontSize: 9)),
               ]),
               if (user != null) ...[
                 pw.SizedBox(height: 4),
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                  pw.Text('Elaborado por:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('${user.nombre} (${user.rol})', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text('Elaborado por:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('${user.nombre} (${user.rol})', style: pw.TextStyle(fontSize: 9)),
                 ]),
               ],
               pw.SizedBox(height: 4),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Text('Total registros:', style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
-                pw.Text('$_totalEntries', style: const pw.TextStyle(fontSize: 9, color: PdfColors.blue800)),
+                pw.Text('Total registros:', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                pw.Text('$_totalEntries', style: pw.TextStyle(fontSize: 9, color: PdfColors.blue800)),
               ]),
             ]),
           ),
@@ -480,9 +488,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final db = await LocalDatabase.instance.database;
         String where;
         List<dynamic> args;
-        if (_selectedModule != null) {
-          where = 'date >= ? AND date <= ? AND module = ?';
-          args = [s, e, _selectedModule];
+        if (_selectedModules.isNotEmpty) {
+          final placeholders = _selectedModules.map((_) => '?').join(',');
+          where = 'date >= ? AND date <= ? AND module IN ($placeholders)';
+          args = [s, e, ..._selectedModules];
         } else {
           where = 'date >= ? AND date <= ?';
           args = [s, e];
@@ -558,6 +567,73 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  Future<void> _showModuleSelector() async {
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) {
+        final tempSelected = Set<String>.from(_selectedModules);
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            backgroundColor: OmniTheme.bg900,
+            title: const Text('Seleccionar modulos', style: TextStyle(color: OmniTheme.textPrimary, fontSize: 15)),
+            content: SizedBox(
+              width: 300,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CheckboxListTile(
+                    title: const Text('Todos', style: TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
+                    value: tempSelected.isEmpty,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (_) {
+                      setDialogState(() => tempSelected.clear());
+                    },
+                  ),
+                  const Divider(height: 1, color: OmniTheme.bg800),
+                  ..._moduleOptions.map((m) {
+                    final mod = findModule(m);
+                    final label = mod['label'] as String? ?? m;
+                    return CheckboxListTile(
+                      title: Text(label, style: const TextStyle(fontSize: 13, color: OmniTheme.textPrimary)),
+                      value: tempSelected.contains(m),
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (v) {
+                        setDialogState(() {
+                          if (v == true) {
+                            tempSelected.add(m);
+                          } else {
+                            tempSelected.remove(m);
+                          }
+                        });
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar', style: TextStyle(color: OmniTheme.textMuted)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, tempSelected),
+                style: ElevatedButton.styleFrom(backgroundColor: OmniTheme.accentBlue),
+                child: const Text('Aplicar', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (result != null && mounted) {
+      setState(() => _selectedModules = result);
+      _loadReport();
+    }
+  }
+
   String _monthName(int m) {
     const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return months[m - 1];
@@ -627,24 +703,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
           const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(8)),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: _selectedModule,
-                dropdownColor: OmniTheme.bg800,
-                style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary),
-                hint: const Text('Todos los modulos', style: TextStyle(fontSize: 12, color: OmniTheme.textMuted)),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Todos los modulos', style: TextStyle(fontSize: 12))),
-                  ..._moduleOptions.map((m) {
-                    final mod = findModule(m);
-                    return DropdownMenuItem(value: m, child: Text(mod['label'] as String? ?? m, style: const TextStyle(fontSize: 12)));
-                  }),
-                ],
-                onChanged: (v) { setState(() => _selectedModule = v); _loadReport(); },
-              ),
+          InkWell(
+            onTap: _showModuleSelector,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(border: Border.all(color: OmniTheme.bg700), borderRadius: BorderRadius.circular(8)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.category, size: 16, color: OmniTheme.accentBlue),
+                const SizedBox(width: 8),
+                Text(_moduleLabel, style: const TextStyle(fontSize: 12, color: OmniTheme.textPrimary)),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 16, color: OmniTheme.textMuted),
+              ]),
             ),
           ),
           const Spacer(),

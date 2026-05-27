@@ -223,9 +223,9 @@ class ClosureService extends ChangeNotifier {
     }
 
     final closedAt = DateTime.parse(existing.closedAt);
-    final daysSinceClose = DateTime.now().difference(closedAt).inDays;
-    if (daysSinceClose > 3) {
-      throw Exception('No se puede reabrir: han pasado mas de 3 dias desde el cierre');
+    final hoursSinceClose = DateTime.now().difference(closedAt).inHours;
+    if (hoursSinceClose > 24) {
+      throw Exception('No se puede reabrir: han pasado mas de 24 horas desde el cierre');
     }
 
     final reopenEntry = {
