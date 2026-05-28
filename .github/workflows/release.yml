@@ -23,6 +23,10 @@ jobs:
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
+      - name: Generate Windows platform files
+        working-directory: packages/frontend
+        run: flutter create --platforms=windows .
+
       - name: Build
         working-directory: packages/frontend
         run: flutter build windows --release
@@ -60,6 +64,10 @@ jobs:
 
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
+
+      - name: Generate Linux platform files
+        working-directory: packages/frontend
+        run: flutter create --platforms=linux .
 
       - name: Build
         working-directory: packages/frontend
