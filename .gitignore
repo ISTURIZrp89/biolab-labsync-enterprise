@@ -9,8 +9,8 @@ packages/frontend/ios/
 packages/frontend/web/
 
 # Python
-packages/backend/__pycache__/
-packages/backend/*.pyc
+**/__pycache__/
+**/*.pyc
 packages/backend/.venv/
 packages/backend/venv/
 packages/backend/*.egg-info/
