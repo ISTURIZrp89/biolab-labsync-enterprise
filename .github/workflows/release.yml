@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -15,12 +15,11 @@ jobs:
           - os: windows-latest
             target: windows
             ext: exe
+            path: build/windows/x64/runner/Release/
           - os: ubuntu-latest
             target: linux
             ext: AppImage
-          - os: macos-latest
-            target: macos
-            ext: dmg
+            path: build/linux/x64/release/bundle/
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +28,7 @@ jobs:
         with:
           flutter-version: "3.22"
           channel: stable
+          cache: true
 
       - name: Build frontend
         working-directory: packages/frontend
@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: biolab-${{ matrix.target }}
-          path: packages/frontend/build/${{ matrix.target }}/*/
+          path: packages/frontend/${{ matrix.path }}
 
   release:
     needs: build
@@ -51,5 +51,4 @@ jobs:
           files: |
             biolab-windows/*
             biolab-linux/*
-            biolab-macos/*
           generate_release_notes: true

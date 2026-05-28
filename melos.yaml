@@ -2,4 +2,3 @@ name: biolab_labsync_enterprise
 packages:
   - packages/frontend
   - packages/backend
-  - packages/shared
