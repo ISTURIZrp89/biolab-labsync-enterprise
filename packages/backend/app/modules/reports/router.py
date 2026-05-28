@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user
 from app.models.form_entry import FormEntry
 from app.models.day_closure import DayClosure
 from app.models.month_closure import MonthClosure
@@ -17,7 +18,10 @@ drive_service = GoogleDriveService()
 
 
 @router.post("/pdf/generate-bitacora")
-async def generate_bitacora_pdf(payload: dict):
+async def generate_bitacora_pdf(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
     data = payload.get("data", {})
     fields = payload.get("fields", {})
     pdf = PDFGenerator.generate_bitacora_html(data, fields)
@@ -25,7 +29,12 @@ async def generate_bitacora_pdf(payload: dict):
 
 
 @router.get("/pdf/view/{module}/{date}")
-async def view_bitacora_pdf(module: str, date: str, db: AsyncSession = Depends(get_session)):
+async def view_bitacora_pdf(
+    module: str,
+    date: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(FormEntry).where(
             FormEntry.module == module,
@@ -50,7 +59,9 @@ async def view_bitacora_pdf(module: str, date: str, db: AsyncSession = Depends(g
 
 
 @router.get("/pdf/templates")
-async def list_templates():
+async def list_templates(
+    current_user: dict = Depends(get_current_user),
+):
     return {
         "templates": [
             {"id": "default", "name": "Plantilla General"},
@@ -64,7 +75,9 @@ async def list_templates():
 
 
 @router.get("/drive/status")
-async def drive_status():
+async def drive_status(
+    current_user: dict = Depends(get_current_user),
+):
     return drive_service.get_status()
 
 
@@ -72,6 +85,7 @@ async def drive_status():
 async def preview_cover_page(
     year: int,
     month: int,
+    current_user: dict = Depends(get_current_user),
     generated_by: str = "Administrador",
     db: AsyncSession = Depends(get_session),
 ):
@@ -111,7 +125,12 @@ async def preview_cover_page(
 
 
 @router.post("/export/monthly")
-async def export_monthly(year: int, month: int, db: AsyncSession = Depends(get_session)):
+async def export_monthly(
+    year: int,
+    month: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     start = f"{year}-{month:02d}-01"
     end = f"{year+1}-01-01" if month == 12 else f"{year}-{month+1:02d}-01"
 

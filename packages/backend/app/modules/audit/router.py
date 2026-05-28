@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user
 from app.models.audit_log import AuditLog
 from app.schemas.audit import AuditWriteRequest
 
@@ -38,6 +39,7 @@ def _serialize_log(log: AuditLog) -> dict:
 
 @router.get("")
 async def get_audit_logs(
+    current_user: dict = Depends(get_current_user),
     limit: int = 100,
     action: str = None,
     user_id: str = None,
@@ -54,7 +56,11 @@ async def get_audit_logs(
 
 
 @router.get("/entity/{entity_id}")
-async def get_entity_history(entity_id: str, db: AsyncSession = Depends(get_session)):
+async def get_entity_history(
+    entity_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(AuditLog)
         .where(AuditLog.entity_id == entity_id)
@@ -65,7 +71,12 @@ async def get_entity_history(entity_id: str, db: AsyncSession = Depends(get_sess
 
 
 @router.get("/diffs")
-async def get_diff_logs(limit: int = 200, action: str = None, db: AsyncSession = Depends(get_session)):
+async def get_diff_logs(
+    current_user: dict = Depends(get_current_user),
+    limit: int = 200,
+    action: str = None,
+    db: AsyncSession = Depends(get_session),
+):
     query = select(AuditLog).where(
         AuditLog.changed_fields_json.isnot(None),
         AuditLog.changed_fields_json != "[]",
@@ -79,7 +90,11 @@ async def get_diff_logs(limit: int = 200, action: str = None, db: AsyncSession =
 
 
 @router.post("")
-async def write_audit_log(payload: AuditWriteRequest, db: AsyncSession = Depends(get_session)):
+async def write_audit_log(
+    payload: AuditWriteRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     log = AuditLog(
         action=payload.action.upper(),
         user_id=payload.user_id,
@@ -94,7 +109,10 @@ async def write_audit_log(payload: AuditWriteRequest, db: AsyncSession = Depends
 
 
 @router.get("/stats")
-async def get_audit_stats(db: AsyncSession = Depends(get_session)):
+async def get_audit_stats(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(select(func.count(AuditLog.id)))
     total = result.scalar()
 

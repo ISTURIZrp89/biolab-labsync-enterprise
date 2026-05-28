@@ -8,27 +8,56 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/database/database_provider.dart';
 import '../data/database/app_database.dart';
 
-class SyncEngine {
+class SyncState {
+  final bool isSyncing;
+  final bool isOnline;
+  final int syncCount;
+  final int failedCount;
+  final DateTime? lastSync;
+
+  const SyncState({
+    this.isSyncing = false,
+    this.isOnline = false,
+    this.syncCount = 0,
+    this.failedCount = 0,
+    this.lastSync,
+  });
+
+  SyncState copyWith({
+    bool? isSyncing,
+    bool? isOnline,
+    int? syncCount,
+    int? failedCount,
+    DateTime? lastSync,
+  }) {
+    return SyncState(
+      isSyncing: isSyncing ?? this.isSyncing,
+      isOnline: isOnline ?? this.isOnline,
+      syncCount: syncCount ?? this.syncCount,
+      failedCount: failedCount ?? this.failedCount,
+      lastSync: lastSync ?? this.lastSync,
+    );
+  }
+}
+
+class SyncEngine extends Notifier<SyncState> {
   Timer? _periodicTimer;
-  bool _isSyncing = false;
-  bool _isOnline = false;
-  int _syncCount = 0;
-  int _failedCount = 0;
+  AppDatabase? _db;
 
-  final AppDatabase _db;
-
-  SyncEngine(this._db);
-
-  bool get isOnline => _isOnline;
-  bool get isSyncing => _isSyncing;
-  int get syncCount => _syncCount;
-  int get failedCount => _failedCount;
+  @override
+  SyncState build() {
+    _db = ref.watch(databaseProvider);
+    ref.onDispose(() {
+      _periodicTimer?.cancel();
+      _periodicTimer = null;
+    });
+    return const SyncState();
+  }
 
   void startPeriodicSync({Duration interval = const Duration(minutes: 5)}) {
     _periodicTimer?.cancel();
-    _periodicTimer = Timer.periodic(interval, (_) {
-      synchronize();
-    });
+    _periodicTimer = Timer.periodic(interval, (_) => synchronize());
+    synchronize();
   }
 
   void stopPeriodicSync() {
@@ -41,23 +70,23 @@ class SyncEngine {
       final prefs = await SharedPreferences.getInstance();
       final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
       final response = await http
-          .get(Uri.parse('$backendUrl/api/health'))
+          .get(Uri.parse('$backendUrl/health'))
           .timeout(const Duration(seconds: 5));
-      _isOnline = response.statusCode == 200;
+      state = state.copyWith(isOnline: response.statusCode == 200);
     } catch (e) {
-      _isOnline = false;
+      state = state.copyWith(isOnline: false);
     }
-    return _isOnline;
+    return state.isOnline;
   }
 
   Future<bool> synchronize() async {
-    if (_isSyncing) return false;
-    _isSyncing = true;
+    if (state.isSyncing) return false;
+    state = state.copyWith(isSyncing: true);
 
     try {
       await checkOnline();
-      if (!_isOnline) {
-        _isSyncing = false;
+      if (!state.isOnline) {
+        state = state.copyWith(isSyncing: false);
         return false;
       }
 
@@ -66,7 +95,7 @@ class SyncEngine {
       final lastSync = prefs.getString('last_sync_timestamp') ?? '';
       final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
 
-      final queueItems = await _db.getSyncQueue();
+      final queueItems = await _db!.getSyncQueue();
 
       final mappedQueue = <Map<String, dynamic>>[];
       for (final item in queueItems) {
@@ -101,7 +130,7 @@ class SyncEngine {
         if (resData['success'] == true) {
           final processed = (resData['processed_ids'] as List?) ?? [];
           for (final id in processed) {
-            await _db.deleteQueueItem(id as int);
+            await _db!.deleteQueueItem(id as int);
           }
 
           final updates = (resData['updates_to_pull'] as List?) ?? [];
@@ -109,7 +138,8 @@ class SyncEngine {
             final entity = update['entity'] as String;
             final itemData = update['data'] as Map<String, dynamic>;
             if (entity == 'form_entries') {
-              await _db.into(_db.formEntries).insertOnConflictUpdate(
+              final now = DateTime.now();
+              await _db!.into(_db!.formEntries).insertOnConflictUpdate(
                     FormEntriesCompanion.insert(
                       id: itemData['id'],
                       module: itemData['module'] ?? '',
@@ -126,28 +156,23 @@ class SyncEngine {
 
           await prefs.setString(
               'last_sync_timestamp', resData['server_time'] ?? DateTime.now().toUtc().toIso8601String());
-          _syncCount++;
+          state = state.copyWith(
+            syncCount: state.syncCount + 1,
+            lastSync: DateTime.now(),
+          );
         }
       } else {
-        _failedCount++;
+        state = state.copyWith(failedCount: state.failedCount + 1);
       }
     } catch (e) {
-      _isOnline = false;
-      _failedCount++;
+      state = state.copyWith(isOnline: false, failedCount: state.failedCount + 1);
       debugPrint('Sync error: $e');
     } finally {
-      _isSyncing = false;
+      state = state.copyWith(isSyncing: false);
     }
 
-    return _isOnline;
-  }
-
-  void dispose() {
-    stopPeriodicSync();
+    return state.isOnline;
   }
 }
 
-final syncEngineProvider = Provider<SyncEngine>((ref) {
-  final db = ref.watch(databaseProvider);
-  return SyncEngine(db);
-});
+final syncEngineProvider = NotifierProvider<SyncEngine, SyncState>(SyncEngine.new);

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user
 from app.models.template import Template
 from app.models.form_entry import FormEntry
 from app.schemas.templates import TemplateResponse
@@ -95,7 +96,10 @@ async def seed_templates(db: AsyncSession):
 
 
 @router.get("/templates")
-async def list_templates(db: AsyncSession = Depends(get_session)):
+async def list_templates(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(select(Template))
     templates = result.scalars().all()
     output = []
@@ -112,7 +116,11 @@ async def list_templates(db: AsyncSession = Depends(get_session)):
 
 
 @router.get("/templates/{template_id}")
-async def get_template(template_id: str, db: AsyncSession = Depends(get_session)):
+async def get_template(
+    template_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(select(Template).where(Template.id == template_id))
     t = result.scalar_one_or_none()
     if not t:
@@ -128,7 +136,11 @@ async def get_template(template_id: str, db: AsyncSession = Depends(get_session)
 
 
 @router.post("/form-entries")
-async def save_form_entry(payload: dict, db: AsyncSession = Depends(get_session)):
+async def save_form_entry(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     entry = FormEntry(
         id=payload.get("id"),
         module=payload.get("module", ""),
@@ -146,6 +158,7 @@ async def save_form_entry(payload: dict, db: AsyncSession = Depends(get_session)
 
 @router.get("/form-entries")
 async def get_form_entries(
+    current_user: dict = Depends(get_current_user),
     module: str = None,
     date: str = None,
     db: AsyncSession = Depends(get_session),

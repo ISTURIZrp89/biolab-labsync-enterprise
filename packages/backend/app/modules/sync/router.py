@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user
 from app.models.device import Device
 from app.models.form_entry import FormEntry
 from app.models.day_closure import DayClosure
@@ -18,7 +19,11 @@ router = APIRouter(prefix="/api/sync", tags=["Sync"])
 
 
 @router.post("", response_model=SyncResponse)
-async def sync_data(payload: SyncPayload, db: AsyncSession = Depends(get_session)):
+async def sync_data(
+    payload: SyncPayload,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(select(Device).where(Device.id == payload.device_id))
     device = result.scalar_one_or_none()
     if not device:
@@ -287,7 +292,11 @@ async def sync_data(payload: SyncPayload, db: AsyncSession = Depends(get_session
 
 
 @router.get("/status")
-async def get_sync_status(limit: int = 20, db: AsyncSession = Depends(get_session)):
+async def get_sync_status(
+    current_user: dict = Depends(get_current_user),
+    limit: int = 20,
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(SyncHistory).order_by(SyncHistory.synced_at.desc()).limit(limit)
     )

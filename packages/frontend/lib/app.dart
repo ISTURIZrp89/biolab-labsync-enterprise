@@ -6,6 +6,7 @@ import 'core/theme.dart';
 import 'core/constants.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/dashboard_screen.dart';
+import 'services/auth_service.dart';
 import 'sync/sync_engine.dart';
 import 'sync/lan_discovery_service.dart';
 
@@ -16,33 +17,39 @@ class BioLabApp extends ConsumerStatefulWidget {
   ConsumerState<BioLabApp> createState() => _BioLabAppState();
 }
 
-class _BioLabAppState extends ConsumerState<BioLabApp> with WidgetsBindingObserver {
+class _BioLabAppState extends ConsumerState<BioLabApp> {
+  bool _checkingAuth = true;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initServices());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(authProvider.notifier).tryAutoLogin();
+      if (mounted) {
+        setState(() => _checkingAuth = false);
+        _initServices();
+      }
+    });
   }
 
   Future<void> _initServices() async {
     try {
-      final syncEngine = ref.read(syncEngineProvider);
-      syncEngine.startPeriodicSync();
-      final discovery = ref.read(lanDiscoveryServiceProvider);
-      discovery.startDiscovery();
+      ref.read(syncEngineProvider.notifier).startPeriodicSync();
+      ref.read(lanDiscoveryServiceProvider.notifier).startDiscovery();
     } catch (e) {
       debugPrint('Init services error: $e');
     }
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    final initialRoute = _checkingAuth
+        ? null
+        : authState.isAuthenticated
+            ? '/dashboard'
+            : '/login';
+
     return MaterialApp(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
@@ -55,7 +62,7 @@ class _BioLabAppState extends ConsumerState<BioLabApp> with WidgetsBindingObserv
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('es', ''), Locale('en', '')],
-      initialRoute: '/login',
+      initialRoute: initialRoute,
       routes: {
         '/login': (_) => const LoginScreen(),
         '/dashboard': (_) => const DashboardScreen(),

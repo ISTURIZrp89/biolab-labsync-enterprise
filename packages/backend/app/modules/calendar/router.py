@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.core.dependencies import get_current_user
 from app.models.day_closure import DayClosure
 from app.models.month_closure import MonthClosure
 from app.models.form_entry import FormEntry
@@ -51,7 +52,12 @@ async def get_day_status(date_str: str, db: AsyncSession) -> dict:
 
 
 @router.get("/month")
-async def get_month(year: int, month: int, db: AsyncSession = Depends(get_session)):
+async def get_month(
+    current_user: dict = Depends(get_current_user),
+    year: int = None,
+    month: int = None,
+    db: AsyncSession = Depends(get_session),
+):
     start = date(year, month, 1)
     end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     days = []
@@ -63,7 +69,11 @@ async def get_month(year: int, month: int, db: AsyncSession = Depends(get_sessio
 
 
 @router.get("/day/{date_str}")
-async def get_day(date_str: str, db: AsyncSession = Depends(get_session)):
+async def get_day(
+    date_str: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError:
@@ -72,7 +82,11 @@ async def get_day(date_str: str, db: AsyncSession = Depends(get_session)):
 
 
 @router.post("/close-day")
-async def close_day(payload: DayClosureRequest, db: AsyncSession = Depends(get_session)):
+async def close_day(
+    payload: DayClosureRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     existing = await db.execute(select(DayClosure).where(DayClosure.date == payload.date))
     closure = existing.scalar_one_or_none()
 
@@ -106,7 +120,11 @@ async def close_day(payload: DayClosureRequest, db: AsyncSession = Depends(get_s
 
 
 @router.post("/reopen-day")
-async def reopen_day(payload: DayReopenRequest, db: AsyncSession = Depends(get_session)):
+async def reopen_day(
+    payload: DayReopenRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(select(DayClosure).where(DayClosure.date == payload.date))
     closure = result.scalar_one_or_none()
     if not closure:
@@ -133,7 +151,11 @@ async def reopen_day(payload: DayReopenRequest, db: AsyncSession = Depends(get_s
 
 
 @router.post("/close-month")
-async def close_month(payload: MonthClosureRequest, db: AsyncSession = Depends(get_session)):
+async def close_month(
+    payload: MonthClosureRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(MonthClosure).where(
             MonthClosure.year == payload.year,
@@ -172,7 +194,11 @@ async def close_month(payload: MonthClosureRequest, db: AsyncSession = Depends(g
 
 
 @router.post("/reopen-month")
-async def reopen_month(payload: MonthReopenRequest, db: AsyncSession = Depends(get_session)):
+async def reopen_month(
+    payload: MonthReopenRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(MonthClosure).where(
             MonthClosure.year == payload.year,
@@ -204,7 +230,12 @@ async def reopen_month(payload: MonthReopenRequest, db: AsyncSession = Depends(g
 
 
 @router.get("/month-status/{year}/{month}")
-async def get_month_status(year: int, month: int, db: AsyncSession = Depends(get_session)):
+async def get_month_status(
+    year: int,
+    month: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
     result = await db.execute(
         select(MonthClosure).where(
             MonthClosure.year == year,

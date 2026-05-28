@@ -117,11 +117,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-origins = [o.strip() for o in settings.cors_origins.split(",")] if settings.cors_origins != "*" else ["*"]
+if settings.cors_origins == "*":
+    origins = ["*"]
+elif settings.debug:
+    origins = ["*"]
+else:
+    origins = [o.strip() for o in settings.cors_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -5,56 +5,60 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/entities/user.dart';
 
-final authProvider = ChangeNotifierProvider<AuthService>((ref) => AuthService());
+class AuthState {
+  final User? currentUser;
+  final String? token;
+  final bool isLoading;
 
-class AuthService extends ChangeNotifier {
-  User? _currentUser;
-  String? _token;
-  bool _isLoading = false;
+  const AuthState({this.currentUser, this.token, this.isLoading = false});
 
-  User? get currentUser => _currentUser;
-  String? get token => _token;
-  bool get isLoading => _isLoading;
-  bool get isAuthenticated => _currentUser != null && _token != null;
+  bool get isAuthenticated => currentUser != null && token != null;
 
-  Future<bool> login(String userId, String pin) async {
-    _isLoading = true;
-    notifyListeners();
+  AuthState copyWith({User? currentUser, String? token, bool? isLoading}) {
+    return AuthState(
+      currentUser: currentUser ?? this.currentUser,
+      token: token ?? this.token,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
+}
+
+class AuthService extends Notifier<AuthState> {
+  @override
+  AuthState build() => const AuthState();
+
+  Future<bool> login(String userId, String pin, String deviceId) async {
+    state = state.copyWith(isLoading: true);
     try {
       final prefs = await SharedPreferences.getInstance();
       final serverUrl = prefs.getString('server_url') ?? 'http://localhost:8000';
       final response = await http.post(
         Uri.parse('$serverUrl/auth/login'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'pin': pin}),
+        body: jsonEncode({'user_id': userId, 'pin': pin, 'device_id': deviceId}),
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        _token = data['token'];
-        _currentUser = User.fromJson(data['user']);
-        await prefs.setString('auth_token', _token!);
-        await prefs.setString('user_id', _currentUser!.id.toString());
-        _isLoading = false;
-        notifyListeners();
+        final token = data['token'] as String;
+        final user = User.fromJson(data['user']);
+        await prefs.setString('auth_token', token);
+        await prefs.setString('user_id', user.id.toString());
+        state = AuthState(currentUser: user, token: token, isLoading: false);
         return true;
       }
-      _isLoading = false;
-      notifyListeners();
+      state = state.copyWith(isLoading: false);
       return false;
     } catch (e) {
-      _isLoading = false;
-      notifyListeners();
+      state = state.copyWith(isLoading: false);
       return false;
     }
   }
 
   Future<void> logout() async {
-    _currentUser = null;
-    _token = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('user_id');
-    notifyListeners();
+    state = const AuthState();
   }
 
   Future<bool> tryAutoLogin() async {
@@ -62,9 +66,7 @@ class AuthService extends ChangeNotifier {
     final savedToken = prefs.getString('auth_token');
     final savedUserId = prefs.getString('user_id');
     if (savedToken != null && savedUserId != null) {
-      _token = savedToken;
-      _isLoading = true;
-      notifyListeners();
+      state = AuthState(token: savedToken, isLoading: true);
       try {
         final serverUrl = prefs.getString('server_url') ?? 'http://localhost:8000';
         final response = await http.get(
@@ -73,17 +75,16 @@ class AuthService extends ChangeNotifier {
         );
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          _currentUser = User.fromJson(data['user']);
-          _isLoading = false;
-          notifyListeners();
+          final user = User.fromJson(data['user']);
+          state = AuthState(currentUser: user, token: savedToken, isLoading: false);
           return true;
         }
       } catch (_) {}
-      _token = null;
       await prefs.remove('auth_token');
     }
-    _isLoading = false;
-    notifyListeners();
+    state = const AuthState();
     return false;
   }
 }
+
+final authProvider = NotifierProvider<AuthService, AuthState>(AuthService.new);

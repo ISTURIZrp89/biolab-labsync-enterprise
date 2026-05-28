@@ -76,6 +76,11 @@ async def create_user(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Usuario ya existe")
 
+    if payload.pin and len(payload.pin) < 4:
+        raise HTTPException(status_code=400, detail="El PIN debe tener al menos 4 caracteres")
+    if payload.password and len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="La contrasena debe tener al menos 6 caracteres")
+
     user = Usuario(
         id=payload.id,
         nombre=payload.nombre,
@@ -132,16 +137,44 @@ async def update_user(
     if "activo" in payload:
         user.activo = payload["activo"]
     if "pin" in payload and payload["pin"]:
+        if len(payload["pin"]) < 4:
+            raise HTTPException(status_code=400, detail="El PIN debe tener al menos 4 caracteres")
         user.pin_hash = pwd_context.hash(payload["pin"])
     if "password" in payload and payload["password"]:
+        if len(payload["password"]) < 6:
+            raise HTTPException(status_code=400, detail="La contrasena debe tener al menos 6 caracteres")
         user.pass_hash = pwd_context.hash(payload["password"])
-
     await db.commit()
 
     audit = AuditLog(
         action="UPDATE_USER",
         user_id=current_user.get("sub"),
         details_json=json.dumps({"updated_user_id": user_id}),
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"success": True, "user_id": user_id}
+
+
+@router.post("/{user_id}/reactivate")
+async def reactivate_user(
+    user_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    result = await db.execute(select(Usuario).where(Usuario.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    user.activo = True
+    await db.commit()
+
+    audit = AuditLog(
+        action="REACTIVATE_USER",
+        user_id=current_user.get("sub"),
+        details_json=json.dumps({"reactivated_user_id": user_id}),
     )
     db.add(audit)
     await db.commit()

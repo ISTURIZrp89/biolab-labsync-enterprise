@@ -5,8 +5,9 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.core.config import settings
 from app.core.database import Base
-from app.models import Usuario
+from app.models import Usuario, FormEntry, Template, Device, DayClosure, MonthClosure, AuditLog, SyncHistory, UpdateInfo, Setting
 
 config = context.config
 if config.config_file_name is not None:
@@ -16,7 +17,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline():
-    url = config.get_main_option("sqlalchemy.url")
+    url = settings.database_url
     context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
@@ -29,8 +30,10 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations():
+    config_section = config.get_section(config.config_ini_section, {})
+    config_section["sqlalchemy.url"] = settings.async_database_url
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        config_section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

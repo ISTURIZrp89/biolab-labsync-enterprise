@@ -44,11 +44,17 @@ class FormEntries extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  @override
+  List<TableIndex> get indexes => [
+    TableIndex('idx_form_entries_user_id', [userId]),
+    TableIndex('idx_form_entries_date', [date]),
+  ];
 }
 
 class DayClosures extends Table {
   TextColumn get id => text().clientDefault(() => '')();
-  TextColumn get date => text().unique()();
+  DateTimeColumn get date => dateTime().unique()();
   TextColumn get status => text()();
   TextColumn get closedBy => text().named('closed_by').nullable()();
   DateTimeColumn get closedAt => dateTime().named('closed_at').nullable()();
@@ -57,6 +63,11 @@ class DayClosures extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  @override
+  List<TableIndex> get indexes => [
+    TableIndex('idx_day_closures_date', [date]),
+  ];
 }
 
 class MonthClosures extends Table {
@@ -71,6 +82,11 @@ class MonthClosures extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  @override
+  List<TableIndex> get indexes => [
+    TableIndex('idx_month_closures_year_month', [year, month], isUnique: true),
+  ];
 }
 
 class SyncQueue extends Table {
@@ -82,6 +98,11 @@ class SyncQueue extends Table {
   TextColumn get timestamp => text()();
 
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  List<TableIndex> get indexes => [
+    TableIndex('idx_sync_queue_timestamp', [timestamp]),
+  ];
 }
 
 class AuditLogs extends Table {
@@ -97,6 +118,12 @@ class AuditLogs extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+
+  @override
+  List<TableIndex> get indexes => [
+    TableIndex('idx_audit_logs_user_id', [userId]),
+    TableIndex('idx_audit_logs_timestamp', [timestamp]),
+  ];
 }
 
 class Templates extends Table {
@@ -126,7 +153,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.recreateAll();
+      }
+    },
+  );
 
   Future<bool> checkIntegrity() async {
     try {
@@ -166,8 +205,14 @@ class AppDatabase extends _$AppDatabase {
       await dbFile.copy('$dbPath.${now.millisecondsSinceEpoch}');
     }
 
-    final sourcePath = (database as NativeDatabase).path;
-    await File(sourcePath).copy(dbPath);
+    final dbFile = File(dbPath);
+    final sourceFile = File(p.join(
+      (await getApplicationDocumentsDirectory()).path,
+      'biolab_labsync.db',
+    ));
+    if (await sourceFile.exists()) {
+      await sourceFile.copy(dbPath);
+    }
     return dbPath;
   }
 
@@ -202,14 +247,15 @@ class AppDatabase extends _$AppDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final docsDir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(docsDir.path, 'labsync_local.db'));
+    final dbFileName = 'biolab_labsync.db';
+    final file = File(p.join(docsDir.path, dbFileName));
 
     final prefs = await SharedPreferences.getInstance();
     final customPath = prefs.getString('db_path');
     if (customPath != null) {
-      final customFile = File(p.join(customPath, 'labsync_local.db'));
-      if (await customFile.exists()) {
-        return NativeDatabase(customFile);
+      final customDir = Directory(customPath);
+      if (await customDir.exists()) {
+        return NativeDatabase(File(p.join(customPath, dbFileName)));
       }
     }
 

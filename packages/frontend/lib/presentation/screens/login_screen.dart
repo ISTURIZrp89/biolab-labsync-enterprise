@@ -62,14 +62,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
     if (_users.isEmpty) {
       _users = [
-        {'id': 'usr-admin', 'nombre': 'Administrador', 'rol': 'ADMIN', 'pin': '1234'},
-        {'id': 'usr-jefe', 'nombre': 'Dr. Alberto Parra Barrera', 'rol': 'JEFE', 'pin': '0000'},
-        {'id': 'usr-t1', 'nombre': 'Biol. Maria Guadalupe Ramirez Padilla', 'rol': 'LABORATORIO', 'pin': '1111'},
-        {'id': 'usr-auditor', 'nombre': 'Auditor Externo', 'rol': 'AUDITOR', 'pin': '2222'},
-        {'id': 'usr-dueno', 'nombre': 'Director General', 'rol': 'DUENO', 'pin': '3333'},
+        {'id': 'usr-admin', 'nombre': 'Administrador', 'rol': 'ADMIN'},
+        {'id': 'usr-jefe', 'nombre': 'Dr. Alberto Parra Barrera', 'rol': 'JEFE'},
+        {'id': 'usr-t1', 'nombre': 'Biol. Maria Guadalupe Ramirez Padilla', 'rol': 'LABORATORIO'},
+        {'id': 'usr-auditor', 'nombre': 'Auditor Externo', 'rol': 'AUDITOR'},
+        {'id': 'usr-dueno', 'nombre': 'Director General', 'rol': 'DUENO'},
       ];
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<bool> _tryOfflineLogin(String userId, String pin) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('offline_pins');
+    if (cached == null) return false;
+    try {
+      final pins = jsonDecode(cached) as Map<String, dynamic>;
+      return pins[userId] == pin;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _cachePinsForOffline(String userId, String pin) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('offline_pins');
+    final pins = cached != null ? jsonDecode(cached) as Map<String, dynamic> : <String, dynamic>{};
+    pins[userId] = pin;
+    await prefs.setString('offline_pins', jsonEncode(pins));
   }
 
   Future<void> _attemptLogin() async {
@@ -84,20 +104,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       return;
     }
 
-    final authService = ref.read(authServiceProvider);
+    final authService = ref.read(authProvider.notifier);
     final prefs = await SharedPreferences.getInstance();
     final deviceId = prefs.getString('device_id') ?? 'dev-unknown';
     final success = await authService.login(_selectedUserId!, pin, deviceId);
 
     if (success && mounted) {
+      await _cachePinsForOffline(_selectedUserId!, pin);
       Navigator.pushReplacementNamed(context, '/dashboard');
     } else {
-      setState(() => _errorMessage = 'PIN incorrecto');
+      final offlineOk = await _tryOfflineLogin(_selectedUserId!, pin);
+      if (offlineOk && mounted) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      } else {
+        setState(() => _errorMessage = 'PIN incorrecto');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    final isLoading = authState.isLoading;
     final selectedUser = _selectedUserId != null
         ? _users.where((u) => u['id'].toString() == _selectedUserId).firstOrNull
         : null;
@@ -203,11 +231,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   fontSize: 14, color: Colors.white),
                               decoration: const InputDecoration(
                                 labelText: 'USUARIO',
-                                prefixIcon: Icon(
-                                  Icons.person_outline,
-                                  size: 18,
-                                  color: Colors.white54,
-                                ),
+                                prefixIcon: Icon(Icons.person_outline,
+                                    size: 18, color: Colors.white54),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -259,8 +284,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              onPressed: _attemptLogin,
-                              child: const Text('INICIAR SESION'),
+                              onPressed: isLoading ? null : _attemptLogin,
+                              child: isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text('INICIAR SESION'),
                             ),
                           ),
                         ],
