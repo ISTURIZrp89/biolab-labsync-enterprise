@@ -1,10 +1,11 @@
 name: biolab_labsync
-description: "BioLab LABSYNC Enterprise - Desktop"
+description: "BioLab LABSYNC Enterprise v7.0 - Desktop (Windows/macOS/Linux)"
+publish_to: 'none'
 version: 7.0.0
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
-  flutter: ">=3.22.0"
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
 
 dependencies:
   flutter:
@@ -48,14 +49,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-
-  # Code generation
   drift_dev: ^2.21.0
   build_runner: ^2.4.0
   riverpod_generator: ^2.4.0
   json_serializable: ^6.8.0
-
-  # Testing
   mocktail: ^1.0.0
 
 flutter:

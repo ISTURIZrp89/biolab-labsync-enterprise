@@ -1,14 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-part 'dashboard_service.g.dart';
+class DashboardService {
+  Map<String, dynamic> _data = {};
 
-@riverpod
-class DashboardNotifier extends _$DashboardNotifier {
-  @override
-  Map<String, dynamic> build() => {};
+  Map<String, dynamic> get data => _data;
 
-  Future<void> loadDashboard() async {
-    state = {'status': 'loaded', 'entries': 0, 'pending_sync': 0};
+  Future<void> load() async {
+    _data = {
+      'status': 'loaded',
+      'entries_count': 0,
+      'pending_sync': 0,
+      'modules': [],
+    };
   }
 }
+
+final dashboardServiceProvider = Provider<DashboardService>((ref) {
+  return DashboardService();
+});

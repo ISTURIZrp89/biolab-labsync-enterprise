@@ -1,12 +1,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Enum as SAEnum
+from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
+import enum
 
 from app.core.database import Base
-
-import enum
 
 
 class UserRole(str, enum.Enum):
@@ -23,13 +22,18 @@ class Usuario(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     nombre: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="user_role"), default=UserRole.LABORATORIO
+    cargo: Mapped[str | None] = mapped_column(String(255))
+    cargo_operativo: Mapped[str | None] = mapped_column(String(255))
+    area: Mapped[str] = mapped_column(String(255), default="Cultivo Celular")
+    supervisor: Mapped[str] = mapped_column(String(255), default="")
+    firma: Mapped[str] = mapped_column(String(255), default="")
+    rol: Mapped[UserRole] = mapped_column(
+        SAEnum(UserRole, name="user_role"), nullable=False
     )
-    activo: Mapped[bool] = mapped_column(default=True)
+    pin_hash: Mapped[str | None] = mapped_column(String(255))
+    pass_hash: Mapped[str | None] = mapped_column(String(255))
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

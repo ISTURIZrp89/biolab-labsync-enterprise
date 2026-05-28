@@ -1,51 +1,44 @@
-# BioLab LABSYNC Enterprise — Guía para IA
+# BioLab LABSYNC Enterprise — Guia de contexto para IA
 
 ## Stack
-- **Frontend**: Flutter (Dart) con Riverpod + drift + WebSockets
-- **Backend**: Python FastAPI modular + PostgreSQL
-- **Infra**: Docker Compose (Redis, PostgreSQL)
+- **Frontend**: Flutter (Dart) + Riverpod + drift (SQLite local)
+- **Backend**: Python FastAPI asincrono + SQLite/PostgreSQL
+- **Sync**: REST API + WebSockets + LAN discovery (UDP)
+- **Infra**: Docker Compose (opcional)
 
-## Convenciones
-- Commits en español, formato: `tipo: descripción`
-- Clean Architecture: domain → data → presentation
-- Riverpod: providers en archivos separados por feature
-- drift: usar DAOs para cada entidad
-- Backend: módulos independientes con router + service + schemas
+## Arquitectura
+
+### Backend (packages/backend/)
+```
+app/
+  core/       → Config, DB async, JWT, dependencias
+  models/     → SQLAlchemy ORM (Usuario, FormEntry, etc.)
+  schemas/    → Pydantic validation
+  modules/    → Modulos independientes (auth, sync, calendar, etc.)
+  services/   → PDF, Google Drive, rate limiter
+```
+
+### Frontend (packages/frontend/)
+```
+lib/
+  core/       → Theme, constants
+  data/       → drift database + providers
+  domain/     → Entidades
+  presentation/ → Screens + Widgets
+  services/   → Auth, Sync, Backup, etc.
+  sync/       → SyncEngine + LAN Discovery
+  security/   → Permisos
+```
 
 ## Comandos
 ```bash
-# Frontend
-cd packages/frontend
-flutter pub get
-flutter run -d windows
-flutter test
-
-# Backend
-cd packages/backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# Infra
-docker compose up -d
-
-# Pruebas backend
-pytest
-
-# Lint
-cd packages/frontend && flutter analyze
-cd packages/backend && ruff check .
+cd packages/frontend && flutter pub get && flutter run -d windows
+cd packages/backend && pip install -r requirements.txt && uvicorn app.main:app --reload
+cd packages/backend && pytest
 ```
 
-## Estructura
-```
-packages/
-  frontend/    → Flutter (Riverpod + drift)
-  backend/     → FastAPI modular
-  shared/      → Tipos/DTOs compartidos
-```
-
-## Notas
-- No usar Provider legacy, solo Riverpod
-- drift para toda la capa de datos local
-- WebSockets para sync en tiempo real
-- Alembic para migraciones de BD
+## Notas clave
+- Riverpod en vez de Provider
+- drift en vez de sqflite
+- Backend async con SQLAlchemy asincrono
+- Seeds de usuarios y plantillas automaticos al iniciar backend
