@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+            ext: exe
+          - os: ubuntu-latest
+            target: linux
+            ext: AppImage
+          - os: macos-latest
+            target: macos
+            ext: dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22"
+          channel: stable
+
+      - name: Build frontend
+        working-directory: packages/frontend
+        run: flutter build ${{ matrix.target }} --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: biolab-${{ matrix.target }}
+          path: packages/frontend/build/${{ matrix.target }}/*/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            biolab-windows/*
+            biolab-linux/*
+            biolab-macos/*
+          generate_release_notes: true

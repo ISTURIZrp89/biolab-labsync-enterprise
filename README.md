@@ -1,83 +1,53 @@
-# LABSYNC Enterprise
+# BioLab LABSYNC Enterprise v7.0
 
-Sistema de gestion de bitacoras para laboratorio clinico. Multiplataforma (Windows, macOS, Linux) con licencia por activacion, auto-update, y modulo de IA distribuida.
+Sistema de bitácora digital para laboratorios clínicos. Multiplataforma (Windows, macOS, Linux).
 
-## 🔑 Clave de activacion para desarrollo
+## Stack
 
-Usa esta clave para probar la app:
-
-```
-LABSYNC-DEMO-Y1ZZ-TGJ3
-```
-
-Sucursal: **`demo`**. Cualquier app compilada funciona con esta clave.
-El administrador puede generar claves personalizadas por empresa/sucursal en el repositorio privado de licencias.
+| Capa | Tecnología |
+|---|---|
+| Frontend | Flutter + Riverpod + drift |
+| Backend | Python FastAPI + PostgreSQL |
+| Sync | WebSockets + Redis Pub/Sub |
+| Infra | Docker Compose |
 
 ## Requisitos
 
-- Flutter 3.16+
-- Git
-- Token de GitHub con permiso `Contents: Read` en `ISTURIZrp89/biolab-labsync-license`
+- Flutter >= 3.22
+- Python >= 3.11
+- Docker (opcional, para PostgreSQL + Redis)
 
-## Compilar
-
-```powershell
-.\build.ps1                    # Build para Windows
-.\build.ps1 -Run               # Compila y ejecuta
-.\build.ps1 -Platform macos    # Build para macOS
-```
-
-El token se inyecta via `--dart-define=LICENSE_GITHUB_TOKEN`. Se lee de la variable de entorno o se solicita interactivamente.
-
-## Compilar sin el script
+## Inicio rápido
 
 ```powershell
-$env:LICENSE_GITHUB_TOKEN = "ghp_..."
-flutter run --dart-define=LICENSE_GITHUB_TOKEN=$env:LICENSE_GITHUB_TOKEN
+.\setup.ps1
 ```
 
-## Estructura del proyecto
+### Manual
 
-```
-frontend_flutter/
-├── lib/
-│   ├── ai/distributed/     # IA distribuida (nodos, memoria compartida)
-│   ├── data/               # Persistencia SQLite + API
-│   ├── domain/             # Entidades y logica de negocio
-│   ├── presentation/       # UI (screens, widgets, dialogs)
-│   │   ├── screens/
-│   │   │   ├── activation_screen.dart   # Activacion por licencia
-│   │   │   ├── login_screen.dart        # Login con PIN offline
-│   │   │   ├── main_scaffold.dart       # Navegacion principal
-│   │   │   ├── settings_screen.dart     # Configuracion
-│   │   │   ├── remote_access_screen.dart # VPS + auditoria
-│   │   │   └── ai/                      # Paneles de IA
-│   │   └── widgets/
-│   │       └── update_dialog.dart        # Dialog de auto-update
-│   ├── security/           # Auth, permisos, PIN offline
-│   ├── services/
-│   │   ├── license_service.dart   # Validacion de licencia
-│   │   ├── update_service.dart    # Auto-update automatico
-│   │   ├── audit_service.dart     # Auditoria de actividades
-│   │   └── vps_service.dart       # Conexion remota VPS
-│   ├── sync/               # Sincronizacion offline-first + LAN
-│   └── theme/              # OmniTheme (violeta/cian/rosa)
-├── .github/workflows/
-│   └── build.yml           # CI/CD con inyeccion del token
-├── build.ps1               # Script de build multiplataforma
-└── build.sh                # Version Linux/macOS
+```bash
+# Frontend
+cd packages/frontend
+flutter pub get
+flutter run -d windows
+
+# Backend
+cd packages/backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Infraestructura (opcional para desarrollo)
+docker compose up -d
 ```
 
-## Licencias
+## Estructura
 
-Cada dispositivo requiere activacion con una clave `LABSYNC-SUCURSAL-XXXX-XXXX`. El repositorio privado `ISTURIZrp89/biolab-labsync-license` contiene:
+```
+packages/
+  frontend/   → Flutter app (Riverpod + drift)
+  backend/    → FastAPI modular
+```
 
-- `license.json` — Hashes SHA256 por sucursal + comandos remotos (revoke/wipe)
-- `update.json` — Versiones y enlaces de descarga para auto-update
-- `license_manager.ps1` — Herramienta para generar claves y gestionar licencias
+## Licencia
 
-La app valida la licencia cada 24 horas contra el repositorio privado via GitHub API.
-
-## CI/CD
-
-El workflow `.github/workflows/build.yml` compila automaticamente en cada push a `master` usando el secreto `LICENSE_GITHUB_TOKEN`.
+Uso empresarial. Ver repositorio de licencias.

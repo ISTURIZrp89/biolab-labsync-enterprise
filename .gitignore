@@ -1,106 +1,41 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-venv/
-ENV/
-env/
-.env
-*.db
-*.sqlite
-
 # Flutter
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-build/
-*.mode
-*.ipr
-*.iws
-*.swp
-*~
-*.lock
+packages/frontend/build/
+packages/frontend/.dart_tool/
+packages/frontend/.packages
+packages/frontend/.pub/
+packages/frontend/pubspec.lock
+packages/frontend/android/
+packages/frontend/ios/
+packages/frontend/web/
 
-# Node / JS Tools
-node_modules/
-.npm/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Sistema y Reportes locales
-C:\Users\HP\Documents\BioLab_Reportes/
-Reportes/
-*.csv
-*.html
-*.zip
-.DS_Store
-Thumbs.db
-
-# Archivos privados de laboratorio (NO subir al repo)
-*.xlsx
-*.xls
-*.docx
-*.doc
-*.pdf
-
-# Datos sensibles de laboratorio
-Descargas/
-Bitacoras/
-reportes_reales/
-datos_sensibles/
-
-# Configuracion local y secretos
-.env
-.env.local
-*.key
-*.pem
-*.cert
-secrets/
-
-# Backups y exportaciones locales
-backup/
-exports/
-reportes/
-
-# Carpetas temporales de desarrollo
-scratch/
-temp/
-logs/
-*.log
-
-# Archivos de sistema Windows
-Desktop.ini
-Thumbs.db
-*.lnk
+# Python
+packages/backend/__pycache__/
+packages/backend/*.pyc
+packages/backend/.venv/
+packages/backend/venv/
+packages/backend/*.egg-info/
+packages/backend/dist/
+packages/backend/build/
+packages/backend/.pytest_cache/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
-# Frontend Flutter
-frontend_flutter/.flutter-plugins
-frontend_flutter/.flutter-plugins-dependencies
-frontend_flutter/android/.gradle/
-frontend_flutter/android/local.properties
-frontend_flutter/ios/Pods/
-frontend_flutter/ios/.symlinks/
-frontend_flutter/ios/Flutter/Flutter.framework
-frontend_flutter/ios/Flutter/Flutter.podspec
-frontend_flutter/macos/Pods/
-frontend_flutter/linux/flutter/ephemeral/
-frontend_flutter/windows/flutter/ephemeral/
-frontend_flutter/web/manifest.json
-frontend_flutter/.packages
-frontend_flutter/.dart_tool/
+# OS
+.DS_Store
+Thumbs.db
 
-# Backend Python
-backend/__pycache__/
-backend/.venv/
-backend/venv/
-backend/*.db
-backend/*.sqlite
+# Env
+.env
+*.env.local
+
+# Build artifacts
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.tar.gz
