@@ -4,22 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            target: windows
-            ext: exe
-            path: build/windows/x64/runner/Release/
-          - os: ubuntu-latest
-            target: linux
-            ext: AppImage
-            path: build/linux/x64/release/bundle/
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -30,18 +20,59 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Build frontend
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Build
         working-directory: packages/frontend
-        run: flutter build ${{ matrix.target }} --release
+        run: flutter build windows --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: biolab-${{ matrix.target }}
-          path: packages/frontend/${{ matrix.path }}
+          name: biolab-windows
+          path: packages/frontend/build/windows/x64/runner/Release/
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            liblzma-dev \
+            libstdc++-12-dev \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22"
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build
+        working-directory: packages/frontend
+        run: flutter build linux --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: biolab-linux
+          path: packages/frontend/build/linux/x64/release/bundle/
 
   release:
-    needs: build
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -49,6 +80,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            biolab-windows/*
-            biolab-linux/*
+            biolab-windows/**
+            biolab-linux/**
           generate_release_notes: true
