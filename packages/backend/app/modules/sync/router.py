@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.dependencies import get_current_user
 from app.models.device import Device
+from app.modules.sync.websocket import sync_websocket
 from app.models.form_entry import FormEntry
 from app.models.day_closure import DayClosure
 from app.models.month_closure import MonthClosure
@@ -16,6 +17,11 @@ from app.models.sync_history import SyncHistory
 from app.schemas.sync import SyncPayload, SyncResponse
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, device_id: str):
+    await sync_websocket(websocket, device_id)
 
 
 @router.post("", response_model=SyncResponse)

@@ -19,9 +19,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @router.get("", response_model=list[UserResponse])
 async def list_users(
     current_user: dict = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_session),
 ):
-    result = await db.execute(select(Usuario))
+    result = await db.execute(select(Usuario).offset(skip).limit(limit))
     users = result.scalars().all()
     return [
         UserResponse(

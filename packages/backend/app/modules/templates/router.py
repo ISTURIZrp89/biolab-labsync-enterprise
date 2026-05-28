@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -11,88 +12,6 @@ from app.models.form_entry import FormEntry
 from app.schemas.templates import TemplateResponse
 
 router = APIRouter(prefix="/api", tags=["Templates"])
-
-TEMPLATES_SEED = [
-    {
-        "id": "tpl-incubadoras",
-        "name": "Bitacora de Incubadoras",
-        "module": "incubadoras",
-        "version": 1,
-        "fields": [
-            {"key": "temperatura", "label": "Temperatura (C)", "type": "number", "required": True, "min": 30, "max": 45},
-            {"key": "humedad", "label": "Humedad (%)", "type": "number", "required": True, "min": 0, "max": 100},
-            {"key": "co2", "label": "CO2 (%)", "type": "number", "required": False},
-            {"key": "observaciones", "label": "Observaciones", "type": "text", "required": False},
-            {"key": "firma", "label": "Firma del Tecnico", "type": "signature", "required": True},
-        ],
-    },
-    {
-        "id": "tpl-autoclaves",
-        "name": "Control de Autoclave",
-        "module": "autoclaves",
-        "version": 1,
-        "fields": [
-            {"key": "temperatura", "label": "Temperatura (C)", "type": "number", "required": True},
-            {"key": "presion", "label": "Presion (psi)", "type": "number", "required": True},
-            {"key": "tiempo", "label": "Tiempo (min)", "type": "number", "required": True},
-            {"key": "ciclo", "label": "Tipo de Ciclo", "type": "select", "required": True, "options": ["Liquidos", "Instrumentos", "Residuos", "Rapido"]},
-            {"key": "observaciones", "label": "Observaciones", "type": "text", "required": False},
-        ],
-    },
-    {
-        "id": "tpl-ultracongeladores",
-        "name": "Registro de Ultracongeladores",
-        "module": "ultracongeladores",
-        "version": 1,
-        "fields": [
-            {"key": "temperatura", "label": "Temperatura (C)", "type": "number", "required": True, "min": -90, "max": -60},
-            {"key": "alarma", "label": "Estado de Alarma", "type": "select", "required": True, "options": ["Normal", "Alerta", "Critico"]},
-            {"key": "respaldo_co2", "label": "Respaldo CO2", "type": "select", "required": True, "options": ["OK", "Bajo", "Vacio"]},
-            {"key": "observaciones", "label": "Observaciones", "type": "text", "required": False},
-        ],
-    },
-    {
-        "id": "tpl-equipos",
-        "name": "Bitacora de Equipos",
-        "module": "equipos",
-        "version": 1,
-        "fields": [
-            {"key": "equipo", "label": "Nombre del Equipo", "type": "text", "required": True},
-            {"key": "estado", "label": "Estado", "type": "select", "required": True, "options": ["Operativo", "En Mantenimiento", "Fuera de Servicio"]},
-            {"key": "horas_uso", "label": "Horas de Uso", "type": "number", "required": False},
-            {"key": "observaciones", "label": "Observaciones", "type": "text", "required": False},
-        ],
-    },
-    {
-        "id": "tpl-procesamiento",
-        "name": "Control de Procesamiento",
-        "module": "procesamiento",
-        "version": 1,
-        "fields": [
-            {"key": "tipo_muestra", "label": "Tipo de Muestra", "type": "text", "required": True},
-            {"key": "cantidad", "label": "Cantidad", "type": "number", "required": True},
-            {"key": "proceso", "label": "Proceso Realizado", "type": "select", "required": True, "options": ["Centrifugacion", "Incubacion", "Esterilizacion", "Almacenamiento"]},
-            {"key": "responsable", "label": "Responsable", "type": "text", "required": True},
-            {"key": "observaciones", "label": "Observaciones", "type": "text", "required": False},
-        ],
-    },
-]
-
-
-async def seed_templates(db: AsyncSession):
-    result = await db.execute(select(Template))
-    if result.first() is None:
-        for tpl in TEMPLATES_SEED:
-            template = Template(
-                id=tpl["id"],
-                name=tpl["name"],
-                module=tpl["module"],
-                version=tpl["version"],
-                structure_json=json.dumps(tpl),
-            )
-            db.add(template)
-        await db.commit()
-        print(f"Plantillas seeded: {len(TEMPLATES_SEED)} templates")
 
 
 @router.get("/templates")
@@ -135,6 +54,52 @@ async def get_template(
     }
 
 
+@router.put("/form-entries/{entry_id}")
+async def update_form_entry(
+    entry_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    result = await db.execute(select(FormEntry).where(FormEntry.id == entry_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entrada no encontrada")
+
+    if "module" in payload:
+        entry.module = payload["module"]
+    if "date" in payload:
+        entry.date = payload["date"]
+    if "user_id" in payload:
+        entry.user_id = payload["user_id"]
+    if "version" in payload:
+        entry.version = payload["version"]
+    if "data" in payload:
+        entry.data_json = json.dumps(payload["data"])
+    if "status" in payload:
+        entry.status = payload["status"]
+    entry.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {"success": True, "id": entry.id}
+
+
+@router.delete("/form-entries/{entry_id}")
+async def delete_form_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    result = await db.execute(select(FormEntry).where(FormEntry.id == entry_id))
+    entry = result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entrada no encontrada")
+
+    await db.delete(entry)
+    await db.commit()
+    return {"success": True, "id": entry_id, "deleted": True}
+
+
 @router.post("/form-entries")
 async def save_form_entry(
     payload: dict,
@@ -159,6 +124,8 @@ async def save_form_entry(
 @router.get("/form-entries")
 async def get_form_entries(
     current_user: dict = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 100,
     module: str = None,
     date: str = None,
     db: AsyncSession = Depends(get_session),
@@ -168,7 +135,7 @@ async def get_form_entries(
         query = query.where(FormEntry.module == module)
     if date:
         query = query.where(FormEntry.date == date)
-    query = query.order_by(FormEntry.date.desc())
+    query = query.order_by(FormEntry.date.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     entries = result.scalars().all()
     output = []

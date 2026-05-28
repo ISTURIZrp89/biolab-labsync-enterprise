@@ -40,6 +40,7 @@ def _serialize_log(log: AuditLog) -> dict:
 @router.get("")
 async def get_audit_logs(
     current_user: dict = Depends(get_current_user),
+    skip: int = 0,
     limit: int = 100,
     action: str = None,
     user_id: str = None,
@@ -50,7 +51,7 @@ async def get_audit_logs(
         query = query.where(AuditLog.action == action.upper())
     if user_id:
         query = query.where(AuditLog.user_id == user_id)
-    query = query.limit(limit)
+    query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return [_serialize_log(log) for log in result.scalars().all()]
 
