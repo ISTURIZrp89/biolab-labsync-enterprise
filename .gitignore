@@ -7,16 +7,22 @@ packages/frontend/pubspec.lock
 packages/frontend/android/
 packages/frontend/ios/
 packages/frontend/web/
+packages/frontend/linux/
+packages/frontend/macos/
+packages/frontend/windows/
 
 # Python
 **/__pycache__/
 **/*.pyc
+**/*.pyo
 packages/backend/.venv/
 packages/backend/venv/
 packages/backend/*.egg-info/
 packages/backend/dist/
 packages/backend/build/
 packages/backend/.pytest_cache/
+packages/backend/.coverage
+packages/backend/htmlcov/
 
 # IDE
 .idea/
@@ -29,13 +35,26 @@ packages/backend/.pytest_cache/
 .DS_Store
 Thumbs.db
 
-# Env
+# Environment files
 .env
-*.env.local
+.env.*
+!.env.example
 
-# SQLite
+# Secrets and certificates
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+
+# SQLite / Database files
 *.db
 *.sqlite
+*.sqlite3
+labsync.db
+
+# Docker
+docker-compose.override.yml
 
 # Build artifacts
 *.exe
@@ -43,3 +62,14 @@ Thumbs.db
 *.dmg
 *.AppImage
 *.tar.gz
+*.whl
+*.tar.bz2
+
+# Logs
+*.log
+logs/
+
+# Coverage
+.coverage
+htmlcov/
+coverage/

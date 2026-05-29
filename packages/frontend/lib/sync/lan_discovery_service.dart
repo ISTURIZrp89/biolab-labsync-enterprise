@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/logger.dart';
+
+final _log = getLogger('LanDiscovery');
 
 class DiscoveredPeer {
   final String ip;
@@ -47,15 +50,18 @@ class LanDiscoveryService extends Notifier<LanDiscoveryState> {
   Future<void> startDiscovery({int port = 8765}) async {
     try {
       _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 42069);
-      _socket!.broadcastEnabled = true;
+      final socket = _socket;
+      if (socket == null) return;
+
+      socket.broadcastEnabled = true;
       state = state.copyWith(isRunning: true);
 
       final data = utf8.encode('BIOLAB_DISCOVERY');
-      _socket!.send(data, InternetAddress('255.255.255.255'), 42069);
+      socket.send(data, InternetAddress('255.255.255.255'), 42069);
 
-      _socket!.listen((event) {
+      socket.listen((event) {
         if (event == RawSocketEvent.read) {
-          final packet = _socket!.receive();
+          final packet = socket.receive();
           if (packet != null) {
             final msg = utf8.decode(packet.data);
             if (msg.startsWith('BIOLAB_PEER:')) {
@@ -67,14 +73,17 @@ class LanDiscoveryService extends Notifier<LanDiscoveryState> {
                   hostname: parts[1],
                   deviceId: parts[3],
                 );
-                state = state.copyWith(peers: [...state.peers, newPeer]);
+                final existingIds = state.peers.map((p) => p.deviceId).toSet();
+                if (!existingIds.contains(newPeer.deviceId)) {
+                  state = state.copyWith(peers: [...state.peers, newPeer]);
+                }
               }
             }
           }
         }
       });
-    } catch (e) {
-      debugPrint('LAN Discovery error: $e');
+    } catch (e, st) {
+      _log.error('LAN Discovery error', e, st);
       state = state.copyWith(isRunning: false);
     }
   }

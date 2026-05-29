@@ -55,7 +55,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                   itemBuilder: (_, i) {
                     final u = _users[i];
                     return ListTile(
-                      leading: CircleAvatar(child: Text(u.nombre[0])),
+                      leading: CircleAvatar(child: Text(u.nombre.isNotEmpty ? u.nombre[0] : '?')),
                       title: Text(u.nombre),
                       subtitle: Text('${u.rol} - ${u.area}'),
                       trailing: Icon(

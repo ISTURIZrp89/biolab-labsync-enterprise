@@ -1,6 +1,6 @@
 [project]
 name = "biolab-backend"
-version = "7.0.0"
+version = "0.0.0.1"
 description = "BioLab LABSYNC Enterprise - Backend API"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,7 +17,6 @@ dependencies = [
     "python-multipart==0.0.9",
     "python-dotenv==1.0.1",
     "alembic==1.13.0",
-    "websockets==13.0",
     "httpx==0.27.0",
 ]
 
@@ -25,7 +24,6 @@ dependencies = [
 dev = [
     "pytest==8.3.0",
     "pytest-asyncio==0.24.0",
-    "httpx==0.27.0",
     "ruff==0.6.0",
     "coverage==7.6.0",
 ]

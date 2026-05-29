@@ -72,26 +72,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<bool> _tryOfflineLogin(String userId, String pin) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('offline_pins');
-    if (cached == null) return false;
-    try {
-      final pins = jsonDecode(cached) as Map<String, dynamic>;
-      return pins[userId] == pin;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<void> _cachePinsForOffline(String userId, String pin) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString('offline_pins');
-    final pins = cached != null ? jsonDecode(cached) as Map<String, dynamic> : <String, dynamic>{};
-    pins[userId] = pin;
-    await prefs.setString('offline_pins', jsonEncode(pins));
-  }
-
   Future<void> _attemptLogin() async {
     setState(() => _errorMessage = '');
     final pin = _pinController.text;
@@ -110,10 +90,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final success = await authService.login(_selectedUserId!, pin, deviceId);
 
     if (success && mounted) {
-      await _cachePinsForOffline(_selectedUserId!, pin);
+      await authService.cachePinForOffline(_selectedUserId!, pin);
       Navigator.pushReplacementNamed(context, '/dashboard');
     } else {
-      final offlineOk = await _tryOfflineLogin(_selectedUserId!, pin);
+      final offlineOk = await authService.tryOfflineLogin(_selectedUserId!, pin);
       if (offlineOk && mounted) {
         Navigator.pushReplacementNamed(context, '/dashboard');
       } else {

@@ -81,7 +81,7 @@ class _ClosureScreenState extends State<ClosureScreen> {
                         lastDate: DateTime(2030),
                       );
                       if (picked != null) {
-                        _selectedDate = picked;
+                        setState(() => _selectedDate = picked);
                         _loadStatus();
                       }
                     },

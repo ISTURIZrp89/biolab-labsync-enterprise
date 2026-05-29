@@ -1,4 +1,4 @@
-# BioLab LABSYNC Enterprise v7.0
+# BioLab LABSYNC Enterprise v0.0.0.1
 
 Sistema de bitácora digital para laboratorios clínicos. Multiplataforma (Windows, macOS, Linux).
 
@@ -8,7 +8,7 @@ Sistema de bitácora digital para laboratorios clínicos. Multiplataforma (Windo
 |---|---|
 | Frontend | Flutter + Riverpod + drift |
 | Backend | Python FastAPI + PostgreSQL |
-| Sync | WebSockets + Redis Pub/Sub |
+| Sync | REST API + LAN discovery (UDP) |
 | Infra | Docker Compose |
 
 ## Requisitos
@@ -29,12 +29,14 @@ Sistema de bitácora digital para laboratorios clínicos. Multiplataforma (Windo
 # Frontend
 cd packages/frontend
 flutter pub get
+dart run build_runner build --delete-conflicting-outputs
 flutter run -d windows
 
 # Backend
 cd packages/backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m venv .venv
+.\.venv\Scripts\pip install -e ".[dev]"
+.\.venv\Scripts\uvicorn app.main:app --reload
 
 # Infraestructura (opcional para desarrollo)
 docker compose up -d
@@ -47,6 +49,14 @@ packages/
   frontend/   → Flutter app (Riverpod + drift)
   backend/    → FastAPI modular
 ```
+
+## Seguridad
+
+- Secrets generados aleatoriamente (no hardcodeados)
+- PINs y tokens almacenados en secure storage (frontend)
+- RBAC con roles: ADMIN, JEFE, LABORATORIO, AUDITOR, DUENO
+- Docker container ejecuta como usuario no-root
+- Redis con autenticación
 
 ## Licencia
 

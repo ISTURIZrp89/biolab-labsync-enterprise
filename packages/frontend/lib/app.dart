@@ -4,11 +4,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/theme.dart';
 import 'core/constants.dart';
+import 'core/logger.dart';
 import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/dashboard_screen.dart';
 import 'services/auth_service.dart';
 import 'sync/sync_engine.dart';
 import 'sync/lan_discovery_service.dart';
+
+final _log = getLogger('BioLabApp');
 
 class BioLabApp extends ConsumerStatefulWidget {
   const BioLabApp({super.key});
@@ -36,19 +39,27 @@ class _BioLabAppState extends ConsumerState<BioLabApp> {
     try {
       ref.read(syncEngineProvider.notifier).startPeriodicSync();
       ref.read(lanDiscoveryServiceProvider.notifier).startDiscovery();
-    } catch (e) {
-      debugPrint('Init services error: $e');
+    } catch (e, st) {
+      _log.error('Init services error', e, st);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final initialRoute = _checkingAuth
-        ? null
-        : authState.isAuthenticated
-            ? '/dashboard'
-            : '/login';
+
+    if (_checkingAuth) {
+      return MaterialApp(
+        title: AppConstants.appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        home: const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    final initialRoute = authState.isAuthenticated ? '/dashboard' : '/login';
 
     return MaterialApp(
       title: AppConstants.appName,

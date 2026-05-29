@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_roles
 from app.models.day_closure import DayClosure
 from app.models.month_closure import MonthClosure
 from app.models.form_entry import FormEntry
@@ -58,6 +58,12 @@ async def get_month(
     month: int = None,
     db: AsyncSession = Depends(get_session),
 ):
+    if year is None or month is None:
+        now = datetime.now()
+        year = year or now.year
+        month = month or now.month
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Mes invalido")
     start = date(year, month, 1)
     end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     days = []
@@ -84,7 +90,7 @@ async def get_day(
 @router.post("/close-day")
 async def close_day(
     payload: DayClosureRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
     existing = await db.execute(select(DayClosure).where(DayClosure.date == payload.date))
@@ -122,7 +128,7 @@ async def close_day(
 @router.post("/reopen-day")
 async def reopen_day(
     payload: DayReopenRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(select(DayClosure).where(DayClosure.date == payload.date))
@@ -153,7 +159,7 @@ async def reopen_day(
 @router.post("/close-month")
 async def close_month(
     payload: MonthClosureRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(
@@ -196,7 +202,7 @@ async def close_month(
 @router.post("/reopen-month")
 async def reopen_month(
     payload: MonthReopenRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,9 +16,16 @@ from app.modules.health.router import router as health_router
 from app.modules.templates.router import router as templates_router
 from app.modules.users.router import router as users_router
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logging.basicConfig(
+        level=logging.DEBUG if settings.debug else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    logger.info("Starting %s v%s", settings.app_name, settings.version)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await run_safe_migrations()

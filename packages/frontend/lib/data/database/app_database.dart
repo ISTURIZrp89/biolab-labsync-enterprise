@@ -205,7 +205,6 @@ class AppDatabase extends _$AppDatabase {
       await dbFile.copy('$dbPath.${now.millisecondsSinceEpoch}');
     }
 
-    final dbFile = File(dbPath);
     final sourceFile = File(p.join(
       (await getApplicationDocumentsDirectory()).path,
       'biolab_labsync.db',

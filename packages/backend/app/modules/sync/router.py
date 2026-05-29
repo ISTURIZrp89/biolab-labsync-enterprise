@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
@@ -15,6 +16,8 @@ from app.models.month_closure import MonthClosure
 from app.models.audit_log import AuditLog
 from app.models.sync_history import SyncHistory
 from app.schemas.sync import SyncPayload, SyncResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 
@@ -197,11 +200,10 @@ async def sync_data(
                 processed_ids.append(item.id)
 
         except Exception as ex:
-            print(f"Error procesando item {item.id}: {ex}")
+            logger.error("Error procesando item %s: %s", item.id, ex)
 
     await db.commit()
 
-    # Pull updates
     updates_to_pull = []
     last_sync = None
     if payload.last_sync_timestamp:
@@ -214,6 +216,7 @@ async def sync_data(
     if last_sync:
         query = query.where(FormEntry.updated_at > last_sync)
     query = query.where(FormEntry.device_id != payload.device_id)
+    query = query.limit(500)
     result = await db.execute(query)
     for entry in result.scalars().all():
         updates_to_pull.append({
@@ -236,6 +239,7 @@ async def sync_data(
     q_closures = select(DayClosure)
     if last_sync:
         q_closures = q_closures.where(DayClosure.closed_at > last_sync)
+    q_closures = q_closures.limit(200)
     result = await db.execute(q_closures)
     for closure in result.scalars().all():
         updates_to_pull.append({
@@ -255,6 +259,7 @@ async def sync_data(
     q_mc = select(MonthClosure)
     if last_sync:
         q_mc = q_mc.where(MonthClosure.closed_at > last_sync)
+    q_mc = q_mc.limit(100)
     result = await db.execute(q_mc)
     for mc in result.scalars().all():
         updates_to_pull.append({
@@ -304,7 +309,7 @@ async def get_sync_status(
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(
-        select(SyncHistory).order_by(SyncHistory.synced_at.desc()).limit(limit)
+        select(SyncHistory).order_by(SyncHistory.synced_at.desc()).limit(min(limit, 100))
     )
     return [
         {

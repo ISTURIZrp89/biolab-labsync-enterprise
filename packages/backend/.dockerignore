@@ -5,6 +5,15 @@ __pycache__/
 .gitignore
 .venv/
 .env
+.env.*
 *.egg-info/
 .pytest_cache/
 tests/
+alembic.ini
+README.md
+*.md
+*.sqlite
+*.db
+labsync.db
+.coverage
+htmlcov/

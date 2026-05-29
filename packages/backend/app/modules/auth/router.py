@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from passlib.context import CryptContext
 from jose import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,13 +8,13 @@ import json
 
 from app.core.database import get_session
 from app.core.config import settings
+from app.core.security import pwd_context
 from app.models.usuario import Usuario
 from app.models.device import Device
 from app.models.audit_log import AuditLog
 from app.schemas.auth import DeviceRegister, LoginRequest, LoginResponse
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @router.post("/register-device")
@@ -65,16 +64,14 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_session)):
         await db.commit()
         raise HTTPException(status_code=400, detail="Credenciales incorrectas")
 
-    access_token = jwt.encode(
-        {
-            "sub": user.id,
-            "rol": user.rol.value if hasattr(user.rol, "value") else user.rol,
-            "nombre": user.nombre,
-            "exp": datetime.now(timezone.utc).timestamp() + settings.access_token_expire_minutes * 60,
-        },
-        settings.secret_key,
-        algorithm=settings.algorithm,
-    )
+    from app.core.security import create_access_token
+
+    rol_value = user.rol.value if hasattr(user.rol, "value") else user.rol
+    access_token = create_access_token({
+        "sub": user.id,
+        "rol": rol_value,
+        "nombre": user.nombre,
+    })
 
     audit = AuditLog(
         action="LOGIN",

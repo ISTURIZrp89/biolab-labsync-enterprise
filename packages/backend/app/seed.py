@@ -1,4 +1,6 @@
 import json
+import secrets
+import logging
 from datetime import datetime, timezone
 
 from passlib.context import CryptContext
@@ -9,62 +11,96 @@ from app.models.usuario import Usuario, UserRole
 from app.models.template import Template
 from app.models.audit_log import AuditLog
 
+logger = logging.getLogger(__name__)
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SEED_USERS = [
-    Usuario(
-        id="usr-admin",
-        nombre="Administrador",
-        cargo="ADMINISTRADOR",
-        area="Administracion",
-        rol=UserRole.ADMIN,
-        pin_hash=pwd_context.hash("1234"),
-        pass_hash=pwd_context.hash("admin"),
-    ),
-    Usuario(
-        id="usr-jefe",
-        nombre="Dr. Alberto Parra Barrera",
-        cargo="JEFE DE LABORATORIO",
-        area="Laboratorio Central",
-        supervisor="Director General",
-        firma="Dr. Alberto Parra Barrera",
-        rol=UserRole.JEFE,
-        pin_hash=pwd_context.hash("0000"),
-        pass_hash=pwd_context.hash("biolab"),
-    ),
-    Usuario(
-        id="usr-t1",
-        nombre="Biol. Maria Guadalupe Ramirez Padilla",
-        cargo="BIOLOGO",
-        area="Cultivo Celular",
-        supervisor="Dr. Alberto Parra Barrera",
-        firma="Biol. Maria Guadalupe Ramirez Padilla",
-        rol=UserRole.LABORATORIO,
-        pin_hash=pwd_context.hash("1111"),
-        pass_hash=pwd_context.hash("biolab"),
-    ),
-    Usuario(
-        id="usr-auditor",
-        nombre="Auditor Externo",
-        cargo="QFB",
-        area="Calidad",
-        supervisor="Director General",
-        firma="Auditor Externo",
-        rol=UserRole.AUDITOR,
-        pin_hash=pwd_context.hash("2222"),
-        pass_hash=pwd_context.hash("biolab"),
-    ),
-    Usuario(
-        id="usr-dueno",
-        nombre="Director General",
-        cargo="DIRECTOR GENERAL",
-        area="Direccion General",
-        firma="Director General",
-        rol=UserRole.DUENO,
-        pin_hash=pwd_context.hash("3333"),
-        pass_hash=pwd_context.hash("biolab"),
-    ),
-]
+
+def _generate_pin() -> str:
+    return f"{secrets.randbelow(10000):04d}"
+
+
+def _generate_password() -> str:
+    return secrets.token_urlsafe(16)
+
+
+def _build_seed_users() -> list[Usuario]:
+    admin_pin = _generate_pin()
+    admin_pass = _generate_password()
+    jefe_pin = _generate_pin()
+    jefe_pass = _generate_password()
+    t1_pin = _generate_pin()
+    t1_pass = _generate_password()
+    auditor_pin = _generate_pin()
+    auditor_pass = _generate_password()
+    dueno_pin = _generate_pin()
+    dueno_pass = _generate_password()
+
+    logger.warning("=== SEED USERS CREATED (first run only) ===")
+    logger.warning("Admin  -> ID: usr-admin  | PIN: %s | Pass: %s", admin_pin, admin_pass)
+    logger.warning("Jefe   -> ID: usr-jefe   | PIN: %s | Pass: %s", jefe_pin, jefe_pass)
+    logger.warning("Lab    -> ID: usr-t1     | PIN: %s | Pass: %s", t1_pin, t1_pass)
+    logger.warning("Auditor-> ID: usr-auditor| PIN: %s | Pass: %s", auditor_pin, auditor_pass)
+    logger.warning("Dueño  -> ID: usr-dueno  | PIN: %s | Pass: %s", dueno_pin, dueno_pass)
+    logger.warning("================================================")
+
+    return [
+        Usuario(
+            id="usr-admin",
+            nombre="Administrador",
+            cargo="ADMINISTRADOR",
+            area="Administracion",
+            rol=UserRole.ADMIN,
+            pin_hash=pwd_context.hash(admin_pin),
+            pass_hash=pwd_context.hash(admin_pass),
+        ),
+        Usuario(
+            id="usr-jefe",
+            nombre="Dr. Alberto Parra Barrera",
+            cargo="JEFE DE LABORATORIO",
+            area="Laboratorio Central",
+            supervisor="Director General",
+            firma="Dr. Alberto Parra Barrera",
+            rol=UserRole.JEFE,
+            pin_hash=pwd_context.hash(jefe_pin),
+            pass_hash=pwd_context.hash(jefe_pass),
+        ),
+        Usuario(
+            id="usr-t1",
+            nombre="Biol. Maria Guadalupe Ramirez Padilla",
+            cargo="BIOLOGO",
+            area="Cultivo Celular",
+            supervisor="Dr. Alberto Parra Barrera",
+            firma="Biol. Maria Guadalupe Ramirez Padilla",
+            rol=UserRole.LABORATORIO,
+            pin_hash=pwd_context.hash(t1_pin),
+            pass_hash=pwd_context.hash(t1_pass),
+        ),
+        Usuario(
+            id="usr-auditor",
+            nombre="Auditor Externo",
+            cargo="QFB",
+            area="Calidad",
+            supervisor="Director General",
+            firma="Auditor Externo",
+            rol=UserRole.AUDITOR,
+            pin_hash=pwd_context.hash(auditor_pin),
+            pass_hash=pwd_context.hash(auditor_pass),
+        ),
+        Usuario(
+            id="usr-dueno",
+            nombre="Director General",
+            cargo="DIRECTOR GENERAL",
+            area="Direccion General",
+            firma="Director General",
+            rol=UserRole.DUENO,
+            pin_hash=pwd_context.hash(dueno_pin),
+            pass_hash=pwd_context.hash(dueno_pass),
+        ),
+    ]
+
+
+SEED_USERS = _build_seed_users()
 
 TEMPLATES_SEED = [
     {"id": "tpl-incubadoras", "name": "Bitacora de Incubadoras", "module": "incubadoras", "version": 1, "fields": [
@@ -109,7 +145,7 @@ async def seed_users():
         if result.first() is None:
             db.add_all(SEED_USERS)
             await db.commit()
-            print("Usuarios seeded exitosamente.")
+            logger.info("Usuarios seeded exitosamente.")
 
 
 async def seed_templates():
@@ -126,20 +162,27 @@ async def seed_templates():
                 )
                 db.add(template)
             await db.commit()
-            print(f"Plantillas seeded: {len(TEMPLATES_SEED)} templates")
+            logger.info("Plantillas seeded: %d templates", len(TEMPLATES_SEED))
 
 
 async def run_safe_migrations():
     from sqlalchemy import text
     from app.core.database import engine
+
+    SAFE_MIGRATIONS = {
+        "audit_logs": {
+            "entity_id": "VARCHAR",
+            "changed_fields_json": "TEXT",
+        },
+    }
+
     async with engine.begin() as conn:
-        additions = [
-            ("audit_logs", "entity_id", "VARCHAR"),
-            ("audit_logs", "changed_fields_json", "TEXT"),
-        ]
-        for table, column, col_type in additions:
-            try:
-                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
-                print(f"Migration: added {table}.{column}")
-            except Exception:
-                pass
+        for table, columns in SAFE_MIGRATIONS.items():
+            for column, col_type in columns.items():
+                try:
+                    await conn.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                    )
+                    logger.info("Migration: added %s.%s", table, column)
+                except Exception:
+                    pass

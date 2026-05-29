@@ -1,8 +1,11 @@
+from html import escape
+
+
 class PDFGenerator:
     @staticmethod
     def generate_bitacora_html(data: dict, fields: dict) -> str:
-        module = data.get("module", "desconocido")
-        date = data.get("date", "")
+        module = escape(data.get("module", "desconocido"))
+        date = escape(data.get("date", ""))
         html = f"""
         <html>
         <head><meta charset="utf-8"><style>
@@ -17,13 +20,14 @@ class PDFGenerator:
         <table>
         """
         for key, value in fields.items():
-            html += f"<tr><td>{key}</td><td>{value}</td></tr>"
+            html += f"<tr><td>{escape(str(key))}</td><td>{escape(str(value))}</td></tr>"
         html += "</table></body></html>"
         return html
 
     @staticmethod
     def generate_cover_page_html(year: int, month: int, entries: list, closure_data: dict = None, generated_by: str = "Administrador") -> str:
         month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        safe_generated_by = escape(generated_by)
         html = f"""
         <html>
         <head><meta charset="utf-8"><style>
@@ -37,7 +41,7 @@ class PDFGenerator:
         <h2>Reporte Mensual - {month_names[month-1]} {year}</h2>
         <p class="subtitle">{len(entries)} registros en el mes</p>
         <div class="meta">
-            <p>Generado por: {generated_by}</p>
+            <p>Generado por: {safe_generated_by}</p>
         </div>
         </body></html>
         """
@@ -51,9 +55,9 @@ class PDFGenerator:
             body {{ font-family: Arial, sans-serif; padding: 20px; }}
         </style></head>
         <body>
-        <h2>Cierre del Dia - {data.get('date', '')}</h2>
-        <p>Estado: {data.get('status', '')}</p>
-        <p>Cerrado por: {data.get('closed_by', '')}</p>
-        <p>Notas: {data.get('notes', '')}</p>
+        <h2>Cierre del Dia - {escape(data.get('date', ''))}</h2>
+        <p>Estado: {escape(data.get('status', ''))}</p>
+        <p>Cerrado por: {escape(data.get('closed_by', ''))}</p>
+        <p>Notas: {escape(data.get('notes', ''))}</p>
         </body></html>
         """

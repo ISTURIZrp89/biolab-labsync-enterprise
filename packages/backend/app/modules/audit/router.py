@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -6,9 +7,11 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_roles
 from app.models.audit_log import AuditLog
 from app.schemas.audit import AuditWriteRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/audit", tags=["Audit"])
 
@@ -19,11 +22,11 @@ def _serialize_log(log: AuditLog) -> dict:
     try:
         details = json.loads(log.details_json) if log.details_json else {}
     except Exception:
-        pass
+        logger.debug("Failed to parse details_json for log %s", log.id)
     try:
         changed_fields = json.loads(log.changed_fields_json) if log.changed_fields_json else []
     except Exception:
-        pass
+        logger.debug("Failed to parse changed_fields_json for log %s", log.id)
     return {
         "id": log.id,
         "action": log.action,
@@ -39,7 +42,7 @@ def _serialize_log(log: AuditLog) -> dict:
 
 @router.get("")
 async def get_audit_logs(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE", "AUDITOR")),
     skip: int = 0,
     limit: int = 100,
     action: str = None,
@@ -51,7 +54,7 @@ async def get_audit_logs(
         query = query.where(AuditLog.action == action.upper())
     if user_id:
         query = query.where(AuditLog.user_id == user_id)
-    query = query.offset(skip).limit(limit)
+    query = query.offset(skip).limit(min(limit, 500))
     result = await db.execute(query)
     return [_serialize_log(log) for log in result.scalars().all()]
 
@@ -59,7 +62,7 @@ async def get_audit_logs(
 @router.get("/entity/{entity_id}")
 async def get_entity_history(
     entity_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE", "AUDITOR")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(
@@ -73,7 +76,7 @@ async def get_entity_history(
 
 @router.get("/diffs")
 async def get_diff_logs(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE", "AUDITOR")),
     limit: int = 200,
     action: str = None,
     db: AsyncSession = Depends(get_session),
@@ -85,7 +88,7 @@ async def get_diff_logs(
     ).order_by(AuditLog.timestamp.desc())
     if action:
         query = query.where(AuditLog.action == action.upper())
-    query = query.limit(limit)
+    query = query.limit(min(limit, 500))
     result = await db.execute(query)
     return [_serialize_log(log) for log in result.scalars().all()]
 
@@ -93,12 +96,12 @@ async def get_diff_logs(
 @router.post("")
 async def write_audit_log(
     payload: AuditWriteRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
     log = AuditLog(
         action=payload.action.upper(),
-        user_id=payload.user_id,
+        user_id=current_user.get("sub"),
         device_id=payload.device_id,
         details_json=json.dumps(payload.details),
         entity_id=payload.entity_id,
@@ -111,7 +114,7 @@ async def write_audit_log(
 
 @router.get("/stats")
 async def get_audit_stats(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE", "AUDITOR")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(select(func.count(AuditLog.id)))

@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/logger.dart';
 import '../data/database/database_provider.dart';
 import '../data/database/app_database.dart';
+
+final _log = getLogger('SyncEngine');
 
 class SyncState {
   final bool isSyncing;
@@ -90,6 +93,11 @@ class SyncEngine extends Notifier<SyncState> {
         return false;
       }
 
+      if (_db == null) {
+        state = state.copyWith(isSyncing: false, isOnline: false);
+        return false;
+      }
+
       final prefs = await SharedPreferences.getInstance();
       final deviceId = prefs.getString('device_id') ?? 'dev-unknown';
       final lastSync = prefs.getString('last_sync_timestamp') ?? '';
@@ -164,9 +172,9 @@ class SyncEngine extends Notifier<SyncState> {
       } else {
         state = state.copyWith(failedCount: state.failedCount + 1);
       }
-    } catch (e) {
+    } catch (e, st) {
       state = state.copyWith(isOnline: false, failedCount: state.failedCount + 1);
-      debugPrint('Sync error: $e');
+      _log.error('Sync error', e, st);
     } finally {
       state = state.copyWith(isSyncing: false);
     }

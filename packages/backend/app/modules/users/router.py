@@ -2,23 +2,22 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.dependencies import get_current_user
+from app.core.dependencies import require_roles
+from app.core.security import pwd_context
 from app.models.usuario import Usuario
 from app.models.audit_log import AuditLog
 from app.schemas.auth import UserCreate, UserResponse
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @router.get("", response_model=list[UserResponse])
 async def list_users(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     skip: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_session),
@@ -44,12 +43,9 @@ async def list_users(
 @router.get("/{user_id}")
 async def get_user(
     user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN", "JEFE")),
     db: AsyncSession = Depends(get_session),
 ):
-    if current_user.get("rol") not in ["ADMIN", "JEFE"] and current_user.get("sub") != user_id:
-        raise HTTPException(status_code=403, detail="Permiso denegado")
-
     result = await db.execute(select(Usuario).where(Usuario.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -71,7 +67,7 @@ async def get_user(
 @router.post("")
 async def create_user(
     payload: UserCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(select(Usuario).where(Usuario.id == payload.id))
@@ -114,13 +110,21 @@ async def create_user(
 async def update_user(
     user_id: str,
     payload: dict,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(select(Usuario).where(Usuario.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    ALLOWED_FIELDS = {"nombre", "cargo", "cargo_operativo", "area", "supervisor", "firma", "activo", "pin", "password"}
+    denied_fields = set(payload.keys()) - ALLOWED_FIELDS
+    if denied_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Campos no permitidos: {', '.join(denied_fields)}",
+        )
 
     if "nombre" in payload:
         user.nombre = payload["nombre"]
@@ -134,8 +138,6 @@ async def update_user(
         user.supervisor = payload["supervisor"]
     if "firma" in payload:
         user.firma = payload["firma"]
-    if "rol" in payload:
-        user.rol = payload["rol"]
     if "activo" in payload:
         user.activo = payload["activo"]
     if "pin" in payload and payload["pin"]:
@@ -162,7 +164,7 @@ async def update_user(
 @router.post("/{user_id}/reactivate")
 async def reactivate_user(
     user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(select(Usuario).where(Usuario.id == user_id))
@@ -187,7 +189,7 @@ async def reactivate_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_roles("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ):
     if user_id == current_user.get("sub"):

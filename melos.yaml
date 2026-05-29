@@ -1,4 +1,17 @@
 name: biolab_labsync_enterprise
 packages:
   - packages/frontend
-  - packages/backend
+
+scripts:
+  analyze:
+    run: melos exec -- flutter analyze
+    description: Run Flutter analyzer on all packages
+  test:
+    run: melos exec -- flutter test
+    description: Run Flutter tests on all packages
+  format:
+    run: melos exec -- dart format --set-exit-if-changed .
+    description: Check Dart formatting
+  clean:
+    run: melos exec -- flutter clean
+    description: Clean build artifacts

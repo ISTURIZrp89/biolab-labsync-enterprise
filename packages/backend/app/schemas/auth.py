@@ -23,14 +23,6 @@ class LoginResponse(BaseModel):
     rol: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user_id: str
-    nombre: str
-    rol: str
-
-
 class UserCreate(BaseModel):
     id: str
     nombre: str
