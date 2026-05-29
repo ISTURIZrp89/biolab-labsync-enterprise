@@ -230,7 +230,7 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 
-  Future<List<SyncQueue>> getSyncQueue() async {
+  Future<List> getSyncQueue() async {
     return await select(syncQueue).get();
   }
 

@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/storage_service.dart';
 
 class AuditLogScreen extends StatefulWidget {
   const AuditLogScreen({super.key});
@@ -23,9 +24,8 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
   Future<void> _loadLogs() async {
     setState(() => _loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final serverUrl = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final serverUrl = await storageService.getServerUrl();
       final response = await http.get(
         Uri.parse('$serverUrl/api/audit'),
         headers: {'Authorization': 'Bearer $token'},

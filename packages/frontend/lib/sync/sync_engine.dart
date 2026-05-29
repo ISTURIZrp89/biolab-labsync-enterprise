@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/logger.dart';
+import '../core/storage_service.dart';
 import '../data/database/database_provider.dart';
 import '../data/database/app_database.dart';
 
@@ -70,8 +71,7 @@ class SyncEngine extends Notifier<SyncState> {
 
   Future<bool> checkOnline() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
+      final backendUrl = await storageService.getServerUrl();
       final response = await http
           .get(Uri.parse('$backendUrl/health'))
           .timeout(const Duration(seconds: 5));
@@ -98,10 +98,10 @@ class SyncEngine extends Notifier<SyncState> {
         return false;
       }
 
+      final deviceId = await storageService.getDeviceId();
+      final backendUrl = await storageService.getServerUrl();
       final prefs = await SharedPreferences.getInstance();
-      final deviceId = prefs.getString('device_id') ?? 'dev-unknown';
       final lastSync = prefs.getString('last_sync_timestamp') ?? '';
-      final backendUrl = prefs.getString('backend_url') ?? 'http://localhost:8000';
 
       final queueItems = await _db!.getSyncQueue();
 

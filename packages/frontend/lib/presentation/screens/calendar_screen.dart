@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/storage_service.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -24,9 +25,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> _loadMonth() async {
     setState(() => _loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final url = await storageService.getServerUrl();
       final res = await http.get(
         Uri.parse('$url/api/calendar/month?year=${_currentMonth.year}&month=${_currentMonth.month}'),
         headers: {'Authorization': 'Bearer $token'},

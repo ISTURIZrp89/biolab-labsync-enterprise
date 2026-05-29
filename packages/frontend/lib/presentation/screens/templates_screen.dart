@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/storage_service.dart';
 
 class TemplatesScreen extends StatefulWidget {
   const TemplatesScreen({super.key});
@@ -23,9 +24,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   Future<void> _loadTemplates() async {
     setState(() => _loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final url = await storageService.getServerUrl();
       final res = await http.get(
         Uri.parse('$url/api/templates'),
         headers: {'Authorization': 'Bearer $token'},

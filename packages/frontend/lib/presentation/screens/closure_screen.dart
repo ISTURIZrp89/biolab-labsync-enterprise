@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/storage_service.dart';
 
 class ClosureScreen extends StatefulWidget {
   const ClosureScreen({super.key});
@@ -25,9 +26,8 @@ class _ClosureScreenState extends State<ClosureScreen> {
   Future<void> _loadStatus() async {
     setState(() => _loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final url = await storageService.getServerUrl();
       final dateStr = _selectedDate.toIso8601String().split('T')[0];
       final dayRes = await http.get(
         Uri.parse('$url/api/calendar/day/$dateStr'),
@@ -48,10 +48,9 @@ class _ClosureScreenState extends State<ClosureScreen> {
   }
 
   Future<void> _closeDay() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
-    final url = prefs.getString('server_url') ?? 'http://localhost:8000';
-    final userId = prefs.getString('user_id') ?? '';
+    final token = await storageService.getToken();
+    final url = await storageService.getServerUrl();
+    final userId = await storageService.getUserId();
     final dateStr = _selectedDate.toIso8601String().split('T')[0];
     await http.post(
       Uri.parse('$url/api/calendar/close-day'),

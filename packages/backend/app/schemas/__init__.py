@@ -4,7 +4,6 @@ from app.schemas.auth import (
     UserCreate,
     UserResponse,
     DeviceRegister,
-    TokenResponse,
 )
 from app.schemas.sync import SyncQueueItem, SyncPayload, SyncResponse
 from app.schemas.audit import AuditLogResponse, AuditWriteRequest

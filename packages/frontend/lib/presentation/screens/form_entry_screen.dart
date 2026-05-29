@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/storage_service.dart';
 
 class FormEntryScreen extends StatefulWidget {
   final String? module;
@@ -28,9 +29,8 @@ class _FormEntryScreenState extends State<FormEntryScreen> {
   Future<void> _loadTemplate() async {
     setState(() => _loading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final url = await storageService.getServerUrl();
       final module = widget.module ?? 'incubadoras';
       final res = await http.get(
         Uri.parse('$url/api/templates/tpl-$module'),
@@ -51,11 +51,10 @@ class _FormEntryScreenState extends State<FormEntryScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final userId = prefs.getString('user_id') ?? '';
-      final deviceId = prefs.getString('device_id') ?? '';
-      final url = prefs.getString('server_url') ?? 'http://localhost:8000';
+      final token = await storageService.getToken();
+      final userId = await storageService.getUserId();
+      final deviceId = await storageService.getDeviceId();
+      final url = await storageService.getServerUrl();
       final dateStr = widget.date ?? DateTime.now().toIso8601String().split('T')[0];
 
       final data = <String, dynamic>{};
