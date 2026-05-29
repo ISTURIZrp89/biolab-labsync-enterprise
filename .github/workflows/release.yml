@@ -36,7 +36,7 @@ jobs:
         run: flutter build windows --release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: biolab-windows
           path: packages/frontend/build/windows/x64/runner/Release/
@@ -78,7 +78,7 @@ jobs:
         run: flutter build linux --release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: biolab-linux
           path: packages/frontend/build/linux/x64/release/bundle/
