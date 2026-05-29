@@ -1,20 +1,20 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.database import engine, Base
-from app.seed import seed_users, seed_templates, run_safe_migrations
-from app.modules.auth.router import router as auth_router
-from app.modules.sync.router import router as sync_router
+from app.core.database import Base, engine
 from app.modules.audit.router import router as audit_router
+from app.modules.auth.router import router as auth_router
 from app.modules.calendar.router import router as calendar_router
-from app.modules.reports.router import router as reports_router
 from app.modules.health.router import router as health_router
+from app.modules.reports.router import router as reports_router
+from app.modules.sync.router import router as sync_router
 from app.modules.templates.router import router as templates_router
 from app.modules.users.router import router as users_router
+from app.seed import run_safe_migrations, seed_templates, seed_users
 
 logger = logging.getLogger(__name__)
 

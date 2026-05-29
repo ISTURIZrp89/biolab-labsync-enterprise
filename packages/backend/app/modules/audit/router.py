@@ -1,13 +1,12 @@
 import json
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import require_roles
 from app.models.audit_log import AuditLog
 from app.schemas.audit import AuditWriteRequest
 

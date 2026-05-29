@@ -1,10 +1,9 @@
 import pytest
-from httpx import AsyncClient
 from passlib.context import CryptContext
 from sqlalchemy import select
 
-from app.models.usuario import Usuario, UserRole
 from app.core.security import create_access_token
+from app.models.usuario import UserRole, Usuario
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

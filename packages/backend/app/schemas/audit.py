@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, Any, Dict, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 
 class AuditLogResponse(BaseModel):

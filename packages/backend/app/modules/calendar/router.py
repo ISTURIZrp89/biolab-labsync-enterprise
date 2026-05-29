@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone, timedelta, date
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -7,11 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.dependencies import get_current_user, require_roles
-from app.models.day_closure import DayClosure
-from app.models.month_closure import MonthClosure
-from app.models.form_entry import FormEntry
 from app.models.audit_log import AuditLog
-from app.schemas.calendar import DayClosureRequest, DayReopenRequest, MonthClosureRequest, MonthReopenRequest
+from app.models.day_closure import DayClosure
+from app.models.form_entry import FormEntry
+from app.models.month_closure import MonthClosure
+from app.schemas.calendar import (
+    DayClosureRequest,
+    DayReopenRequest,
+    MonthClosureRequest,
+    MonthReopenRequest,
+)
 
 router = APIRouter(prefix="/api/calendar", tags=["Calendar"])
 

@@ -1,15 +1,13 @@
 import json
-import secrets
 import logging
-from datetime import datetime, timezone
+import secrets
 
 from passlib.context import CryptContext
 from sqlalchemy import select
 
 from app.core.database import async_session
-from app.models.usuario import Usuario, UserRole
 from app.models.template import Template
-from app.models.audit_log import AuditLog
+from app.models.usuario import UserRole, Usuario
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +165,7 @@ async def seed_templates():
 
 async def run_safe_migrations():
     from sqlalchemy import text
+
     from app.core.database import engine
 
     SAFE_MIGRATIONS = {

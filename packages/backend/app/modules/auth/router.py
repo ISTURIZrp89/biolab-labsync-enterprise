@@ -1,17 +1,15 @@
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from jose import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import json
 
 from app.core.database import get_session
-from app.core.config import settings
 from app.core.security import pwd_context
-from app.models.usuario import Usuario
-from app.models.device import Device
 from app.models.audit_log import AuditLog
+from app.models.device import Device
+from app.models.usuario import Usuario
 from app.schemas.auth import DeviceRegister, LoginRequest, LoginResponse
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -40,7 +38,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_session)):
     result = await db.execute(
         select(Usuario).where(
             Usuario.id == payload.user_id,
-            Usuario.activo == True,
+            Usuario.activo,
         )
     )
     user = result.scalar_one_or_none()

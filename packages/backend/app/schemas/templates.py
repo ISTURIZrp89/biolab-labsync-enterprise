@@ -1,5 +1,6 @@
+from typing import List, Optional
+
 from pydantic import BaseModel
-from typing import List, Optional, Any, Dict
 
 
 class TemplateField(BaseModel):

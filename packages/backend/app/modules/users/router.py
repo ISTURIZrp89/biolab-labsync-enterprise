@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -8,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.core.dependencies import require_roles
 from app.core.security import pwd_context
-from app.models.usuario import Usuario
 from app.models.audit_log import AuditLog
+from app.models.usuario import Usuario
 from app.schemas.auth import UserCreate, UserResponse
 
 router = APIRouter(prefix="/api/users", tags=["Users"])

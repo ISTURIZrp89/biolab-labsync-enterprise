@@ -1,5 +1,6 @@
-import pytest
 from datetime import datetime, timedelta, timezone
+
+import pytest
 from jose import jwt
 
 from app.core.config import Settings
@@ -8,7 +9,6 @@ from app.core.security import (
     decode_access_token,
     hash_password,
     verify_password,
-    pwd_context,
 )
 
 

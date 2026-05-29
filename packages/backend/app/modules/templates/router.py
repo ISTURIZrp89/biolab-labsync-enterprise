@@ -7,9 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.dependencies import get_current_user
-from app.models.template import Template
 from app.models.form_entry import FormEntry
-from app.schemas.templates import TemplateResponse
+from app.models.template import Template
 
 router = APIRouter(prefix="/api", tags=["Templates"])
 
